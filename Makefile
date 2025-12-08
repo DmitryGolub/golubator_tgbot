@@ -1,0 +1,21 @@
+DC_FILE := docker-compose.yaml
+BOT_SERVICE := tg_bot
+
+.PHONY: init build up logs down
+
+init: up logs
+
+build:
+	docker compose -f $(DC_FILE) build
+
+up:
+	docker compose -f $(DC_FILE) up -d
+
+logs:
+	docker compose -f $(DC_FILE) logs -f
+
+down:
+	docker compose -f $(DC_FILE) down
+
+ps:
+	docker compose -f $(DC_FILE) ps
