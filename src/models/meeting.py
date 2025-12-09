@@ -1,7 +1,7 @@
 from typing import Optional
 from datetime import datetime
 from sqlalchemy import (
-    Integer, Text, String, DateTime, ForeignKey, func, UniqueConstraint
+    Integer, BigInteger, Text, String, DateTime, ForeignKey, func, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.core.database import Base
@@ -37,7 +37,7 @@ class MeetingUser(Base):
         ForeignKey("meetings.id", ondelete="CASCADE"), primary_key=True
     )
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.telegram_id", ondelete="CASCADE"), primary_key=True
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), primary_key=True
     )
 
     __table_args__ = (

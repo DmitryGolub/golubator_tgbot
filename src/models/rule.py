@@ -1,7 +1,7 @@
 import enum
 from typing import Optional
 from datetime import datetime
-from sqlalchemy import Integer, Text, DateTime, ForeignKey, Enum, func
+from sqlalchemy import Integer, Text, DateTime, ForeignKey, Enum, func, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.user import State
@@ -21,7 +21,7 @@ class UserRule(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False,
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False,
     )
     text: Mapped[str] = mapped_column(
         Text, nullable=False
@@ -49,8 +49,9 @@ class UserRule(Base):
     user: Mapped["User"] = relationship(
         "User", foreign_keys=[user_id], back_populates="user_rules"
     )
+
     author: Mapped["User"] = relationship(
-        "User", foreign_keys=[author_id]
+        "User", foreign_keys=[author_id], back_populates="authored_rules"
     )
 
 
@@ -68,7 +69,7 @@ class StateRule(Base):
         Enum(Regularity, name="regularity_enum"), nullable=False,
     )
     author_id: Mapped[int] = mapped_column(
-        ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=False,
+        BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=False,
     )
     offset_days: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True

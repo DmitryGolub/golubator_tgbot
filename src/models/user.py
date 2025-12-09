@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import String, DateTime, func, Enum, ForeignKey
+from sqlalchemy import String, DateTime, func, Enum, ForeignKey, Integer, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
@@ -26,7 +26,7 @@ class User(Base):
     __tablename__ = "users"
 
     telegram_id: Mapped[int] = mapped_column(
-        primary_key=True, index=True
+        BigInteger, primary_key=True, index=True
     )
     username: Mapped[str] = mapped_column(
         String(255), unique=True, index=True, nullable=False
@@ -43,10 +43,10 @@ class User(Base):
     )
 
     mentor_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True,
+        BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True,
     )
     cohort_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("cohorts.id", ondelete="SET NULL"), nullable=True,
+        Integer, ForeignKey("cohorts.id", ondelete="SET NULL"), nullable=True,
     )
 
     registered_at: Mapped[datetime] = mapped_column(
@@ -74,4 +74,12 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
         lazy="selectin",
+    )
+
+    user_rules: Mapped[list["UserRule"]] = relationship(
+        "UserRule", back_populates="user", foreign_keys="UserRule.user_id", cascade="all, delete-orphan",
+    )
+
+    authored_rules: Mapped[list["UserRule"]] = relationship(
+        "UserRule", back_populates="author", foreign_keys="UserRule.author_id",
     )

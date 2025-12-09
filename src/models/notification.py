@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime
-from sqlalchemy import Integer, Text, DateTime, ForeignKey, func
+from sqlalchemy import BigInteger, Integer, Text, DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
@@ -11,7 +11,7 @@ class Notification(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False,
+        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False,
     )
     text: Mapped[str] = mapped_column(
         Text, nullable=False

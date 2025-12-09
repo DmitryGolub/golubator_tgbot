@@ -1,26 +1,23 @@
 import asyncio
-
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message
-from aiogram.filters import Command
+import logging
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.fsm.storage.redis import RedisStorage
+from src.bot.routers.start import router as start_router
 
 from src.core.config import settings
 
 
-async def cmd_start(message: Message):
-    await message.answer("Привет! Я простой бот на aiogram 😊")
-
-
-async def echo_handler(message: Message):
-    await message.answer(f"Ты написал: {message.text}")
-
-
 async def main():
-    bot = Bot(token=settings.BOT_TOKEN)
-    dp = Dispatcher()
+    logging.basicConfig(level=logging.INFO)
+    bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 
-    dp.message.register(cmd_start, Command(commands=["start"]))
-    dp.message.register(echo_handler, F.text)
+    storage = RedisStorage.from_url(settings.REDIS_URL)
+    dp = Dispatcher(storage=storage)
+
+    dp.include_routers(
+        start_router,
+    )
 
     await dp.start_polling(bot)
 

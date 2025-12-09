@@ -3,7 +3,7 @@ BOT_SERVICE := tg_bot
 
 .PHONY: init build up logs down
 
-init: up logs
+init: build up logs
 
 build:
 	docker compose -f $(DC_FILE) build
