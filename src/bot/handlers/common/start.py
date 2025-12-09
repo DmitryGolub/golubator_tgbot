@@ -4,7 +4,7 @@ from aiogram.filters import CommandStart
 
 from src.dao.user import UserDAO
 from src.models.user import State, Role
-from src.bot.filters.role_filter import RoleFilter
+from src.bot.filters.role import RoleFilter
 
 router = Router()
 

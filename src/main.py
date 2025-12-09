@@ -3,7 +3,10 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.redis import RedisStorage
-from src.bot.routers.start import router as start_router
+
+from src.bot.handlers.common.start import router as start_router
+from src.bot.handlers.common.menu import router as menu_router
+from src.bot.handlers.user.list import router as user_router
 
 from src.core.config import settings
 
@@ -17,6 +20,8 @@ async def main():
 
     dp.include_routers(
         start_router,
+        menu_router,
+        user_router,
     )
 
     await dp.start_polling(bot)

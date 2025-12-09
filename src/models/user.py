@@ -9,17 +9,17 @@ from src.core.database import Base
 
 
 class Role(enum.Enum):
-    admin = "admin"
-    mentor = "mentor"
-    student = "student"
+    admin = "Админ"
+    mentor = "Ментор"
+    student = "Студент"
 
 
 class State(enum.Enum):
-    greeting = "greeting"
-    hold = "hold"
-    study = "study"
-    search = "search"
-    offer = "offer"
+    greeting = "Отбор"
+    hold = "В ожидании"
+    study = "Обучение"
+    search = "Поиск работы"
+    offer = "Оффер"
 
 
 class User(Base):
