@@ -6,7 +6,7 @@ from aiogram.fsm.storage.redis import RedisStorage
 
 from src.bot.handlers.common.start import router as start_router
 from src.bot.handlers.common.menu import router as menu_router
-from src.bot.handlers.user.list import router as user_router
+from src.bot.handlers.user import router as user_router
 
 from src.core.config import settings
 
