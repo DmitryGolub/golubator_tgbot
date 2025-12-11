@@ -42,7 +42,7 @@ class BaseDAO:
                 update(cls.model)
                 .where(cls.model.id == id)
                 .values(**values)
-                .returning(cls.model.id)
+                .returning(cls.model)
             )
             result = await session.execute(query)
             await session.commit()
