@@ -24,6 +24,7 @@ from src.bot.callbacks.update_user import (
 from src.models.user import Role, State
 from src.dao.user import UserDAO
 from src.dao.cohort import CohortDAO
+from src.bot.keyboards.menu import back_to_menu_keyboard
 
 router = Router(name="update-user-fsm")
 
@@ -259,7 +260,7 @@ async def cb_choose_user_for_update(
 
     elif chosen_value_type == "cohort":
 
-        cohort = await CohortDAO.find_one_or_none(telegram_id=chosen_value)
+        cohort = await CohortDAO.find_one_or_none(id=chosen_value)
         await UserDAO.update(telegram_id=user_id, cohort_id=chosen_value)
 
         value_human = cohort.name if cohort else f"id={chosen_value}"
@@ -267,13 +268,9 @@ async def cb_choose_user_for_update(
     else:
         value_human = str(chosen_value)
 
-    text = (
-        "<b>Итог выбора:</b>\n\n"
-        f"Параметр: <b>{param_human}</b>\n"
-        f"Новое значение: <b>{value_human}</b>\n"
-        f"Пользователь: <b>{user.name}</b> @{user.username}\n"
-        "\n(пока просто показываем, что вы выбрали)"
+    await callback.message.edit_text(
+        f"Пользователь {user.name} @{user.username}\n"
+        f"{param_human.title()} обновлено на: {value_human}",
+        reply_markup=back_to_menu_keyboard(),
     )
-
-    await callback.message.edit_text(text)
     await state.clear()

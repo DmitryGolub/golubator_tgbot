@@ -24,10 +24,12 @@ async def cb_user_list(callback: CallbackQuery):
     for user in all_users:
         mentor_name = user.mentor.name if user.mentor else "Отсутствует"
         mentor_username = f"@{user.mentor.username}" if user.mentor else ""
+        cohort_name = user.cohort.name if user.cohort else "Отсутствует"
 
         answer += (
             f"👤 <b>{user.name}</b> @{user.username}\n"
             f"   • Ментор: <b>{mentor_name}</b> {mentor_username}\n"
+            f"   • Когорта: <b>{cohort_name}</b>\n"
             f"   • Роль: <b>{user.role.value}</b>\n"
             f"   • Состояние: <b>{user.state.value}</b>\n"
             f"   • Дата регистрации: {user.registered_at:%d.%m.%Y %H:%M}\n\n"

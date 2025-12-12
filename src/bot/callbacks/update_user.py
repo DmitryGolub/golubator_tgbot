@@ -1,8 +1,6 @@
 from enum import StrEnum
 from aiogram.filters.callback_data import CallbackData
 
-from src.models.user import Role, State
-
 
 class UpdateParam(StrEnum):
     STATUS = "status"
