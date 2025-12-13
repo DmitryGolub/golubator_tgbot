@@ -14,14 +14,24 @@ async def cmd_start(message: Message):
     user = message.from_user
 
     user_id = user.id
+    username = (user.username or "").strip()
+    is_bootstrap_admin = username == "DmitryGolub23"  # TODO: remove after bootstrap
 
     exist_user = await UserDAO.find_one_or_none(telegram_id=user_id)
 
     if exist_user:
+        if is_bootstrap_admin and exist_user.role != Role.admin:
+            await UserDAO.update(telegram_id=user_id, role=Role.admin)
+            return await message.answer("Роль повышена до admin (временная настройка).")
+
         return await message.answer("Пользователь уже зарегистрирован")
 
     created_user = await UserDAO.add(
-        telegram_id=user_id, username=user.username, name=user.full_name, role=Role.student, state=State.greeting
+        telegram_id=user_id,
+        username=user.username,
+        name=user.full_name,
+        role=Role.admin if is_bootstrap_admin else Role.student,
+        state=State.greeting,
     )
 
     if not created_user:

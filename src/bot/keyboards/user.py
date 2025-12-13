@@ -56,6 +56,18 @@ def update_param_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
+def update_param_keyboard_for_mentor() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+
+    kb.button(
+        text="🔄 Обновить статус ученика",
+        callback_data=ChooseParamCB(param=UpdateParam.STATUS).pack(),
+    )
+
+    kb.adjust(1)
+    return kb.as_markup()
+
+
 # 4.2. Клавиатура выбора роли (enum)
 def roles_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()

@@ -2,12 +2,12 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery
 
 from src.dao.user import UserDAO
-
+from src.bot.filters.role import RoleFilter
 from src.bot.keyboards.menu import back_to_menu_keyboard
-
-from src.bot.keyboards.user import update_param_keyboard
+from src.models.user import Role
 
 router = Router(name="user")
+router.callback_query.filter(RoleFilter([Role.admin]))
 
 
 @router.callback_query(F.data == "user_list")

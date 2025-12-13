@@ -3,13 +3,17 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
+from src.bot.filters.role import RoleFilter
 from src.bot.keyboards.cohort import cohort_cancel_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.states.create_cohort import CreateCohortFSM
 from src.dao.cohort import CohortDAO
+from src.models.user import Role
 
 
 router = Router(name="cohort-create")
+router.message.filter(RoleFilter([Role.admin]))
+router.callback_query.filter(RoleFilter([Role.admin]))
 
 
 @router.callback_query(F.data == "cohort_create")

@@ -48,5 +48,35 @@ services:
       - ./redisdata:/data
     restart: unless-stopped
 
+  celery_worker:
+    build: .
+    container_name: tg_bot.celery_worker
+    command: python -m src.scripts.celery_worker
+    env_file:
+      - .env
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      - ./:/app
+
+  celery_beat:
+    build: .
+    container_name: tg_bot.celery_beat
+    command: python -m src.scripts.celery_beat
+    env_file:
+      - .env
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      - ./:/app
+
 volumes:
   db_data:
