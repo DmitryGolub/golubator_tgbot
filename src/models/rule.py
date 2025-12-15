@@ -1,7 +1,7 @@
 import enum
 from typing import Optional
 from datetime import datetime
-from sqlalchemy import Integer, Text, DateTime, ForeignKey, Enum, func, BigInteger
+from sqlalchemy import Integer, Text, DateTime, ForeignKey, Enum, func, BigInteger, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.user import State
@@ -22,6 +22,9 @@ class UserRule(Base):
 
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False,
+    )
+    name: Mapped[str] = mapped_column(
+        String(255), nullable=True
     )
     text: Mapped[str] = mapped_column(
         Text, nullable=False
@@ -61,6 +64,9 @@ class StateRule(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_state: Mapped[State] = mapped_column(
         Enum(State, name="state_enum"), nullable=False,
+    )
+    name: Mapped[str] = mapped_column(
+        String(255), nullable=True
     )
     text: Mapped[str] = mapped_column(
         Text, nullable=False

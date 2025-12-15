@@ -5,6 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.filters.role import RoleFilter
 from src.bot.keyboards.menu import menu_keyboard
+from src.bot.keyboards.mailings import mailings_menu_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.keyboards.user import user_actions_keyboard
 from src.bot.keyboards.cohort import cohort_actions_keyboard
@@ -65,7 +66,7 @@ async def cb_menu_cohorts(callback: CallbackQuery):
 @router.callback_query(RoleFilter([Role.admin]), F.data == "menu_mailings")
 async def cb_menu_mailings(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text("👥 Меню Рассылок")
+    await callback.message.edit_text("👥 Меню Рассылок", reply_markup=mailings_menu_keyboard())
 
 # ==== MENTOR ====
 
