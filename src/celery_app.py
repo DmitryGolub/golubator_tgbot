@@ -10,6 +10,7 @@ celery_app = Celery(
     backend=settings.REDIS_URL,
     include=[
         "src.tasks.meeting",
+        "src.tasks.notification",
     ],
 )
 
@@ -20,6 +21,10 @@ celery_app.conf.update(
         "meeting.cleanup_stale": {
             "task": "meeting.cleanup_stale",
             "schedule": crontab(minute="*"),  # run every minute for timely cleanup
+        },
+        "notifications.tick": {
+            "task": "notifications.tick",
+            "schedule": crontab(minute="*"),
         },
     },
 )
