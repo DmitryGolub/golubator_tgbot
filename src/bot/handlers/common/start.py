@@ -15,7 +15,7 @@ async def cmd_start(message: Message):
 
     user_id = user.id
     username = (user.username or "").strip()
-    is_bootstrap_admin = username == "DmitryGolub23"  # TODO: remove after bootstrap
+    is_bootstrap_admin = username in ("DmitryGolub23", "Aivan")  # TODO: remove after bootstrap
 
     exist_user = await UserDAO.find_one_or_none(telegram_id=user_id)
 
