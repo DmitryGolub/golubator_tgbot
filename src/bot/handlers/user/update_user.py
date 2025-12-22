@@ -28,6 +28,7 @@ from src.dao.user import UserDAO
 from src.dao.cohort import CohortDAO
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.utils.auth import get_user_role
+from src.utils.onboarding import schedule_onboarding_for_mentor, notify_student_new_mentor
 
 router = Router(name="update-user-fsm")
 router.callback_query.filter(RoleFilter([Role.admin, Role.mentor]))
@@ -324,9 +325,16 @@ async def cb_choose_user_for_update(
     elif chosen_value_type == "mentor":
 
         mentor = await UserDAO.find_one_or_none(telegram_id=chosen_value)
+        is_new_mentor = user.mentor_id != chosen_value
         await UserDAO.update(telegram_id=user_id, mentor_id=chosen_value)
 
         value_human = mentor.name if mentor else f"id={chosen_value}"
+
+        if user.role == Role.student and user.state == State.greeting and mentor:
+            await schedule_onboarding_for_mentor(user, mentor.telegram_id)
+
+        if mentor and is_new_mentor:
+            await notify_student_new_mentor(user, mentor)
 
     elif chosen_value_type == "cohort":
 

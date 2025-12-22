@@ -4,7 +4,10 @@ from aiogram.filters import CommandStart
 
 from src.dao.user import UserDAO
 from src.models.user import State, Role
+from datetime import datetime, timezone
+
 from src.core.config import settings
+from src.utils.onboarding import schedule_onboarding_notifications
 
 router = Router()
 
@@ -24,19 +27,23 @@ async def cmd_start(message: Message):
 
     user_id = user.id
     username = (user.username or "").strip()
+    reg_time = datetime.now(timezone.utc)
 
     is_admin_username = username.lower() in settings.admin_usernames if username else False
 
     existing_user = await UserDAO.find_one_or_none(telegram_id=user_id)
 
     if not existing_user:
-        await UserDAO.add(
+        created_user = await UserDAO.add(
             telegram_id=user_id,
             username=user.username,
             name=user.full_name,
             role=Role.admin if is_admin_username else Role.student,
             state=State.greeting,
+            registered_at=reg_time,
         )
+        if created_user:
+            await schedule_onboarding_notifications(created_user, base_time=reg_time)
     else:
         # keep admin role in sync with env setting
         if is_admin_username and existing_user.role != Role.admin:
