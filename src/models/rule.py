@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.user import State, User
 from src.core.database import Base
+from src.models.cohort import Cohort
 
 
 class Regularity(enum.Enum):
@@ -84,4 +85,31 @@ class StateRule(Base):
         Integer, nullable=True
     )
 
+    author: Mapped["User"] = relationship("User")
+
+
+class CohortRule(Base):
+    __tablename__ = "cohort_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cohort_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("cohorts.id", ondelete="CASCADE"), nullable=False
+    )
+    last_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    name: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
+    text: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )
+    regularity: Mapped[Regularity] = mapped_column(
+        Enum(Regularity, name="regularity_enum"), nullable=False,
+    )
+    author_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=False,
+    )
+
+    cohort: Mapped["Cohort"] = relationship("Cohort", lazy="selectin")
     author: Mapped["User"] = relationship("User")

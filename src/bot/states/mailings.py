@@ -7,6 +7,7 @@ class MailingFSM(StatesGroup):
 
     choosing_users = State()
     choosing_states = State()
+    choosing_cohorts = State()
 
     waiting_text = State()
     choosing_regularity = State()

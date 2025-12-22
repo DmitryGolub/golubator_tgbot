@@ -5,15 +5,19 @@ from src.bot.callbacks.rule import (
     MailingTypeCB,
     ToggleUserCB,
     ToggleStateCB,
+    ToggleCohortCB,
     ChooseRegularityCB,
     MailingFinishUsersCB,
     MailingFinishStatesCB,
+    MailingFinishCohortsCB,
     ToggleDeleteUserRuleCB,
     ToggleDeleteStateRuleCB,
+    ToggleDeleteCohortRuleCB,
     DeleteMailingsFinishCB,
 )
 from src.models.user import User, State
-from src.models.rule import Regularity, UserRule, StateRule
+from src.models.cohort import Cohort
+from src.models.rule import Regularity, UserRule, StateRule, CohortRule
 
 
 def mailings_menu_keyboard() -> InlineKeyboardMarkup:
@@ -30,6 +34,7 @@ def mailing_type_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="Индивидуальная", callback_data=MailingTypeCB(kind="individual").pack())
     kb.button(text="По статусам", callback_data=MailingTypeCB(kind="state").pack())
+    kb.button(text="По когортам", callback_data=MailingTypeCB(kind="cohort").pack())
     kb.button(text="⬅️ Назад", callback_data="mailings_menu")
     kb.adjust(1)
     return kb.as_markup()
@@ -63,6 +68,20 @@ def select_states_keyboard(selected: set[str]) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
+def select_cohorts_keyboard(cohorts: list[Cohort], selected: set[int]) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    for c in cohorts:
+        mark = "✅ " if c.id in selected else ""
+        kb.button(
+            text=f"{mark}{c.name}",
+            callback_data=ToggleCohortCB(cohort_id=c.id).pack(),
+        )
+    kb.button(text="Готово", callback_data=MailingFinishCohortsCB(done=True).pack())
+    kb.button(text="❌ Отмена", callback_data="mailings_menu")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
 def regularity_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for reg in Regularity:
@@ -75,8 +94,10 @@ def regularity_keyboard() -> InlineKeyboardMarkup:
 def delete_mailings_keyboard(
     user_rules: list[UserRule],
     state_rules: list[StateRule],
+    cohort_rules: list[CohortRule],
     sel_users: set[int],
     sel_states: set[int],
+    sel_cohorts: set[int],
 ) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
@@ -95,6 +116,14 @@ def delete_mailings_keyboard(
             kb.button(
                 text=f"{mark}{rule.name or rule.text[:20]}",
                 callback_data=ToggleDeleteStateRuleCB(rule_id=rule.id).pack(),
+            )
+    if cohort_rules:
+        kb.button(text="— По когортам —", callback_data="noop")
+        for rule in cohort_rules:
+            mark = "✅ " if rule.id in sel_cohorts else ""
+            kb.button(
+                text=f"{mark}{rule.name or rule.text[:20]}",
+                callback_data=ToggleDeleteCohortRuleCB(rule_id=rule.id).pack(),
             )
 
     kb.button(text="Удалить выбранные", callback_data=DeleteMailingsFinishCB(done=True).pack())

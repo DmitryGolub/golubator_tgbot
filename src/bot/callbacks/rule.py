@@ -5,7 +5,7 @@ from src.models.rule import Regularity
 
 
 class MailingTypeCB(CallbackData, prefix="mailing_type"):
-    kind: str  # individual | state
+    kind: str  # individual | state | cohort
 
 
 class ToggleUserCB(CallbackData, prefix="mail_user"):
@@ -14,6 +14,10 @@ class ToggleUserCB(CallbackData, prefix="mail_user"):
 
 class ToggleStateCB(CallbackData, prefix="mail_state"):
     state: State
+
+
+class ToggleCohortCB(CallbackData, prefix="mail_cohort"):
+    cohort_id: int
 
 
 class ChooseRegularityCB(CallbackData, prefix="mail_reg"):
@@ -28,11 +32,19 @@ class MailingFinishStatesCB(CallbackData, prefix="mail_finish_states"):
     done: bool
 
 
+class MailingFinishCohortsCB(CallbackData, prefix="mail_finish_cohorts"):
+    done: bool
+
+
 class ToggleDeleteUserRuleCB(CallbackData, prefix="mail_del_user"):
     rule_id: int
 
 
 class ToggleDeleteStateRuleCB(CallbackData, prefix="mail_del_state"):
+    rule_id: int
+
+
+class ToggleDeleteCohortRuleCB(CallbackData, prefix="mail_del_cohort"):
     rule_id: int
 
 
