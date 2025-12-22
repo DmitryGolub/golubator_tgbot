@@ -9,6 +9,7 @@ from src.bot.keyboards.mailings import (
     mailing_type_keyboard,
     select_users_keyboard,
     select_states_keyboard,
+    select_cohorts_keyboard,
     regularity_keyboard,
     delete_mailings_keyboard,
 )
@@ -17,16 +18,20 @@ from src.bot.callbacks.rule import (
     MailingTypeCB,
     ToggleUserCB,
     ToggleStateCB,
+    ToggleCohortCB,
     ChooseRegularityCB,
     MailingFinishUsersCB,
     MailingFinishStatesCB,
+    MailingFinishCohortsCB,
     ToggleDeleteUserRuleCB,
     ToggleDeleteStateRuleCB,
+    ToggleDeleteCohortRuleCB,
     DeleteMailingsFinishCB,
 )
 from src.bot.states.mailings import MailingFSM
 from src.dao.user import UserDAO
 from src.dao.rule import RuleDAO
+from src.dao.cohort import CohortDAO
 from src.models.user import Role, State
 from src.models.rule import Regularity
 
@@ -64,6 +69,7 @@ async def cb_mailings_list(callback: CallbackQuery, state: FSMContext):
 
     user_rules = await RuleDAO.list_user_rules()
     state_rules = await RuleDAO.list_state_rules()
+    cohort_rules = await RuleDAO.list_cohort_rules()
 
     parts = ["<b>Список рассылок:</b>", ""]
     if user_rules:
@@ -85,8 +91,19 @@ async def cb_mailings_list(callback: CallbackQuery, state: FSMContext):
                 f"  Регулярность: {rule.regularity.value}\n"
                 f"  Текст: {rule.text or '—'}"
             )
+    if cohort_rules:
+        parts.append("")
+        parts.append("<b>По когортам:</b>")
+        for rule in cohort_rules:
+            cohort_name = rule.cohort.name if rule.cohort else f"id={rule.cohort_id}"
+            parts.append(
+                f"• Название: {rule.name or '—'}\n"
+                f"  Когорта: {cohort_name}\n"
+                f"  Регулярность: {rule.regularity.value}\n"
+                f"  Текст: {rule.text or '—'}"
+            )
 
-    if not user_rules and not state_rules:
+    if not user_rules and not state_rules and not cohort_rules:
         parts = ["<b>Список рассылок пуст.</b>"]
 
     await callback.message.edit_text("\n".join(parts), reply_markup=mailings_menu_keyboard())
@@ -113,15 +130,16 @@ async def cb_choose_type(callback: CallbackQuery, callback_data: MailingTypeCB, 
 async def cb_mailings_delete(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.set_state(MailingFSM.deleting_rules)
-    await state.update_data(del_user_rules=[], del_state_rules=[])
+    await state.update_data(del_user_rules=[], del_state_rules=[], del_cohort_rules=[])
 
     user_rules = await RuleDAO.list_user_rules()
     state_rules = await RuleDAO.list_state_rules()
+    cohort_rules = await RuleDAO.list_cohort_rules()
 
     await callback.answer()
     await callback.message.edit_text(
         "Выберите рассылки для удаления:",
-        reply_markup=delete_mailings_keyboard(user_rules, state_rules, set(), set()),
+        reply_markup=delete_mailings_keyboard(user_rules, state_rules, cohort_rules, set(), set(), set()),
     )
 
 
@@ -145,11 +163,19 @@ async def cb_toggle_delete_user_rule(
 
     user_rules = await RuleDAO.list_user_rules()
     state_rules = await RuleDAO.list_state_rules()
+    cohort_rules = await RuleDAO.list_cohort_rules()
 
     await callback.answer()
     await callback.message.edit_text(
         "Выберите рассылки для удаления:",
-        reply_markup=delete_mailings_keyboard(user_rules, state_rules, sel_users, set(data.get("del_state_rules", []))),
+        reply_markup=delete_mailings_keyboard(
+            user_rules,
+            state_rules,
+            cohort_rules,
+            sel_users,
+            set(data.get("del_state_rules", [])),
+            set(data.get("del_cohort_rules", [])),
+        ),
     )
 
 
@@ -173,11 +199,55 @@ async def cb_toggle_delete_state_rule(
 
     user_rules = await RuleDAO.list_user_rules()
     state_rules = await RuleDAO.list_state_rules()
+    cohort_rules = await RuleDAO.list_cohort_rules()
 
     await callback.answer()
     await callback.message.edit_text(
         "Выберите рассылки для удаления:",
-        reply_markup=delete_mailings_keyboard(user_rules, state_rules, set(data.get("del_user_rules", [])), sel_states),
+        reply_markup=delete_mailings_keyboard(
+            user_rules,
+            state_rules,
+            cohort_rules,
+            set(data.get("del_user_rules", [])),
+            sel_states,
+            set(data.get("del_cohort_rules", [])),
+        ),
+    )
+
+
+@router.callback_query(
+    RoleFilter([Role.admin]),
+    StateFilter(MailingFSM.deleting_rules),
+    ToggleDeleteCohortRuleCB.filter(),
+)
+async def cb_toggle_delete_cohort_rule(
+    callback: CallbackQuery,
+    callback_data: ToggleDeleteCohortRuleCB,
+    state: FSMContext,
+):
+    data = await state.get_data()
+    sel_cohorts = set(data.get("del_cohort_rules", []))
+    if callback_data.rule_id in sel_cohorts:
+        sel_cohorts.remove(callback_data.rule_id)
+    else:
+        sel_cohorts.add(callback_data.rule_id)
+    await state.update_data(del_cohort_rules=list(sel_cohorts))
+
+    user_rules = await RuleDAO.list_user_rules()
+    state_rules = await RuleDAO.list_state_rules()
+    cohort_rules = await RuleDAO.list_cohort_rules()
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "Выберите рассылки для удаления:",
+        reply_markup=delete_mailings_keyboard(
+            user_rules,
+            state_rules,
+            cohort_rules,
+            set(data.get("del_user_rules", [])),
+            set(data.get("del_state_rules", [])),
+            sel_cohorts,
+        ),
     )
 
 
@@ -194,8 +264,9 @@ async def cb_delete_mailings_finish(
     data = await state.get_data()
     sel_users = set(data.get("del_user_rules", []))
     sel_states = set(data.get("del_state_rules", []))
+    sel_cohorts = set(data.get("del_cohort_rules", []))
 
-    if not sel_users and not sel_states:
+    if not sel_users and not sel_states and not sel_cohorts:
         await callback.answer("Нужно выбрать хотя бы одну рассылку.", show_alert=True)
         return
 
@@ -203,6 +274,8 @@ async def cb_delete_mailings_finish(
         await RuleDAO.delete_user_rules(sel_users)
     if sel_states:
         await RuleDAO.delete_state_rules(sel_states)
+    if sel_cohorts:
+        await RuleDAO.delete_cohort_rules(sel_cohorts)
 
     await state.clear()
     await callback.answer()
@@ -232,12 +305,20 @@ async def msg_mailing_title(message: Message, state: FSMContext):
             "Выберите пользователей (можно несколько), затем нажмите «Готово».",
             reply_markup=select_users_keyboard(users, set()),
         )
-    else:
+    elif kind == "state":
         await state.update_data(selected_states=[])
         await state.set_state(MailingFSM.choosing_states)
         await message.answer(
             "Выберите статусы (можно несколько), затем нажмите «Готово».",
             reply_markup=select_states_keyboard(set()),
+        )
+    else:
+        cohorts = await CohortDAO.get_all()
+        await state.update_data(selected_cohorts=[])
+        await state.set_state(MailingFSM.choosing_cohorts)
+        await message.answer(
+            "Выберите когорты (можно несколько), затем нажмите «Готово».",
+            reply_markup=select_cohorts_keyboard(cohorts, set()),
         )
 
 
@@ -308,6 +389,38 @@ async def cb_finish_states(callback: CallbackQuery, callback_data: MailingFinish
     await callback.message.edit_text("Введите текст рассылки:")
 
 
+@router.callback_query(RoleFilter([Role.admin]), StateFilter(MailingFSM.choosing_cohorts), ToggleCohortCB.filter())
+async def cb_toggle_cohort(callback: CallbackQuery, callback_data: ToggleCohortCB, state: FSMContext):
+    data = await state.get_data()
+    selected = set(data.get("selected_cohorts", []))
+    cohort_id = callback_data.cohort_id
+    if cohort_id in selected:
+        selected.remove(cohort_id)
+    else:
+        selected.add(cohort_id)
+    await state.update_data(selected_cohorts=list(selected))
+
+    cohorts = await CohortDAO.get_all()
+    await callback.answer()
+    await callback.message.edit_text(
+        "Выберите когорты (можно несколько), затем нажмите «Готово».",
+        reply_markup=select_cohorts_keyboard(cohorts, selected),
+    )
+
+
+@router.callback_query(RoleFilter([Role.admin]), StateFilter(MailingFSM.choosing_cohorts), MailingFinishCohortsCB.filter())
+async def cb_finish_cohorts(callback: CallbackQuery, callback_data: MailingFinishCohortsCB, state: FSMContext):
+    data = await state.get_data()
+    selected: set[int] = set(data.get("selected_cohorts", set()))
+    if not selected:
+        await callback.answer("Нужно выбрать хотя бы одну когорту.", show_alert=True)
+        return
+
+    await state.set_state(MailingFSM.waiting_text)
+    await callback.answer()
+    await callback.message.edit_text("Введите текст рассылки:")
+
+
 @router.message(RoleFilter([Role.admin]), StateFilter(MailingFSM.waiting_text))
 async def msg_mailing_text(message: Message, state: FSMContext):
     text = (message.text or "").strip()
@@ -355,7 +468,7 @@ async def cb_choose_regularity(
             "Индивидуальная рассылка создана.",
             reply_markup=mailings_menu_keyboard(),
         )
-    else:
+    elif kind == "state":
         selected_state_names = set(data.get("selected_states", []))
         selected_states = {State(name) for name in selected_state_names}
         offset_days = REGULARITY_TO_OFFSET.get(regularity, None)
@@ -370,6 +483,20 @@ async def cb_choose_regularity(
         await state.clear()
         await callback.message.edit_text(
             "Рассылка по статусам создана.",
+            reply_markup=mailings_menu_keyboard(),
+        )
+    else:
+        selected_cohorts = set(data.get("selected_cohorts", []))
+        await RuleDAO.create_cohort_rules(
+            cohort_ids=selected_cohorts,
+            name=title,
+            text=full_text,
+            regularity=regularity,
+            author_id=author_id,
+        )
+        await state.clear()
+        await callback.message.edit_text(
+            "Рассылка по когортам создана.",
             reply_markup=mailings_menu_keyboard(),
         )
 

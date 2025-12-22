@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from src.celery_app import celery_app
 from src.core.config import settings
 from src.models.notification import Notification
-from src.models.rule import UserRule, StateRule, Regularity
+from src.models.rule import UserRule, StateRule, CohortRule, Regularity
 from src.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -135,10 +135,61 @@ async def _create_notifications_for_state_rules(now: datetime) -> int:
     return created
 
 
+async def _create_notifications_for_cohort_rules(now: datetime) -> int:
+    """Create notifications for rules that target cohorts."""
+    created = 0
+    engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with Session() as session:
+            result = await session.execute(
+                select(CohortRule).options(joinedload(CohortRule.cohort))
+            )
+            rules: Iterable[CohortRule] = result.scalars().all()
+
+            for rule in rules:
+                delta = REGULARITY_TO_DELTA.get(rule.regularity)
+                if not delta:
+                    continue
+                if rule.last_sent_at and rule.last_sent_at + delta > now:
+                    continue
+
+                users_result = await session.execute(
+                    select(User).where(User.cohort_id == rule.cohort_id)
+                )
+                users: Iterable[User] = users_result.scalars().all()
+                if not users:
+                    continue
+
+                for user in users:
+                    session.add(
+                        Notification(
+                            user_id=user.telegram_id,
+                            text=rule.text,
+                            scheduled_at=now,
+                        )
+                    )
+                    created += 1
+
+                await session.execute(
+                    update(CohortRule)
+                    .where(CohortRule.id == rule.id)
+                    .values(last_sent_at=now)
+                )
+
+            await session.commit()
+    finally:
+        await engine.dispose()
+    if created:
+        logger.info("Created %s notifications from cohort rules", created)
+    return created
+
+
 async def _generate_notifications() -> None:
     now = _now_utc()
     await _create_notifications_for_user_rules(now)
     await _create_notifications_for_state_rules(now)
+    await _create_notifications_for_cohort_rules(now)
 
 
 async def _send_due_notifications() -> None:
