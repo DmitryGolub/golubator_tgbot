@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     REDIS_HOST: str
     REDIS_PORT: int
+    ADMIN_USERNAMES: str | None = None
 
     @property
     def DATABASE_URL(self) -> str:
@@ -25,6 +26,12 @@ class Settings(BaseSettings):
     @property
     def REDIS_URL(self) -> str:
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
+
+    @property
+    def admin_usernames(self) -> set[str]:
+        if not self.ADMIN_USERNAMES:
+            return set()
+        return {name.strip().lower() for name in self.ADMIN_USERNAMES.split(",") if name.strip()}
 
 
 settings = Settings()
