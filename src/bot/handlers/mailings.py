@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.filters import StateFilter
 from aiogram.types import CallbackQuery, Message
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 
 from src.bot.filters.role import RoleFilter
@@ -448,7 +449,6 @@ async def cb_choose_regularity(
     title = data.get("title")
     text_body = data.get("text")
 
-    full_text = f"{title}\n\n{text_body}"
     regularity = callback_data.regularity
     author_id = callback.from_user.id
 
@@ -459,7 +459,7 @@ async def cb_choose_regularity(
         await RuleDAO.create_user_rules(
             user_ids=selected,
             name=title,
-            text=full_text,
+            text=text_body,
             regularity=regularity,
             author_id=author_id,
         )
@@ -475,7 +475,7 @@ async def cb_choose_regularity(
         await RuleDAO.create_state_rules(
             states=selected_states,
             name=title,
-            text=full_text,
+            text=text_body,
             regularity=regularity,
             author_id=author_id,
             offset_days=offset_days,
@@ -490,7 +490,7 @@ async def cb_choose_regularity(
         await RuleDAO.create_cohort_rules(
             cohort_ids=selected_cohorts,
             name=title,
-            text=full_text,
+            text=text_body,
             regularity=regularity,
             author_id=author_id,
         )

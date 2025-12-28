@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.filters.role import RoleFilter
@@ -25,7 +26,11 @@ async def _render_menu(message_or_callback, role: Role):
     if isinstance(message_or_callback, Message):
         await message_or_callback.answer(text=text, reply_markup=markup)
     else:
-        await message_or_callback.message.edit_text(text=text, reply_markup=markup)
+        try:
+            await message_or_callback.message.edit_text(text=text, reply_markup=markup)
+        except TelegramBadRequest as exc:
+            if "message is not modified" not in str(exc).lower():
+                raise
 
 
 @router.message(Command("menu"))
@@ -54,19 +59,31 @@ async def cb_menu(callback: CallbackQuery):
 @router.callback_query(RoleFilter([Role.admin]), F.data == "menu_users")
 async def cb_menu_users(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text("👥 Меню Пользователей", reply_markup=user_actions_keyboard())
+    try:
+        await callback.message.edit_text("👥 Меню Пользователей", reply_markup=user_actions_keyboard())
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 @router.callback_query(RoleFilter([Role.admin]), F.data == "menu_cohorts")
 async def cb_menu_cohorts(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text("👥 Меню Когорт", reply_markup=cohort_actions_keyboard())
+    try:
+        await callback.message.edit_text("👥 Меню Когорт", reply_markup=cohort_actions_keyboard())
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 @router.callback_query(RoleFilter([Role.admin]), F.data == "menu_mailings")
 async def cb_menu_mailings(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text("👥 Меню Рассылок", reply_markup=mailings_menu_keyboard())
+    try:
+        await callback.message.edit_text("👥 Меню Рассылок", reply_markup=mailings_menu_keyboard())
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 # ==== MENTOR ====
 
@@ -91,10 +108,14 @@ def _mentor_meetings_menu_kb():
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_students_menu")
 async def cb_mentor_students_menu(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text(
-        "Ученики:",
-        reply_markup=_mentor_students_menu_kb(),
-    )
+    try:
+        await callback.message.edit_text(
+            "Ученики:",
+            reply_markup=_mentor_students_menu_kb(),
+        )
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_students_list")
@@ -103,10 +124,14 @@ async def cb_mentor_students_list(callback: CallbackQuery):
 
     students = await UserDAO.get_all(mentor_id=callback.from_user.id)
     if not students:
-        await callback.message.edit_text(
-            "Список учеников пуст.",
-            reply_markup=_mentor_students_menu_kb(),
-        )
+        try:
+            await callback.message.edit_text(
+                "Список учеников пуст.",
+                reply_markup=_mentor_students_menu_kb(),
+            )
+        except TelegramBadRequest as exc:
+            if "message is not modified" not in str(exc).lower():
+                raise
         return
 
     lines = ["<b>Мои ученики:</b>", ""]
@@ -119,10 +144,14 @@ async def cb_mentor_students_list(callback: CallbackQuery):
             f"   • Состояние: <b>{student.state.value}</b>\n"
         )
 
-    await callback.message.edit_text(
-        "\n".join(lines),
-        reply_markup=_mentor_students_menu_kb(),
-    )
+    try:
+        await callback.message.edit_text(
+            "\n".join(lines),
+            reply_markup=_mentor_students_menu_kb(),
+        )
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_students_add")
@@ -164,7 +193,11 @@ async def cb_mentor_me_info(callback: CallbackQuery):
         f"Состояние: <b>{mentor.state.value}</b>\n"
     )
 
-    await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
+    try:
+        await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 # ==== STUDENT ====
@@ -192,6 +225,10 @@ async def cb_student_me_info(callback: CallbackQuery):
         f"Состояние: <b>{student.state.value}</b>\n"
     )
 
-    await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
+    try:
+        await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 # ==== MENTOR/STUDENT callbacks now live in meeting handler ====
