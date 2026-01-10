@@ -182,14 +182,11 @@ async def cb_mentor_me_info(callback: CallbackQuery):
         await callback.message.edit_text("Профиль не найден.", reply_markup=back_to_menu_keyboard())
         return
 
-    cohort_name = mentor.cohort.name if mentor.cohort else "Отсутствует"
-
     text = (
         "<b>Моя информация:</b>\n\n"
         f"Имя: <b>{mentor.name}</b>\n"
         f"Юзернейм: @{mentor.username}\n"
         f"Роль: <b>{mentor.role.value}</b>\n"
-        f"Когорта: <b>{cohort_name}</b>\n"
         f"Состояние: <b>{mentor.state.value}</b>\n"
     )
 
@@ -211,7 +208,6 @@ async def cb_student_me_info(callback: CallbackQuery):
         await callback.message.edit_text("Профиль не найден.", reply_markup=back_to_menu_keyboard())
         return
 
-    cohort_name = student.cohort.name if student.cohort else "Отсутствует"
     mentor_name = student.mentor.name if student.mentor else "Отсутствует"
     mentor_username = f"@{student.mentor.username}" if student.mentor else ""
 
@@ -220,7 +216,6 @@ async def cb_student_me_info(callback: CallbackQuery):
         f"Имя: <b>{student.name}</b>\n"
         f"Юзернейм: @{student.username}\n"
         f"Роль: <b>{student.role.value}</b>\n"
-        f"Когорта: <b>{cohort_name}</b>\n"
         f"Мой ментор: <b>{mentor_name}</b> {mentor_username}\n"
         f"Состояние: <b>{student.state.value}</b>\n"
     )
