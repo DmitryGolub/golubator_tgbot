@@ -75,6 +75,12 @@ class User(Base):
         passive_deletes=True,
         lazy="selectin",
     )
+    survey_responses: Mapped[list["SurveyResponse"]] = relationship(
+        "SurveyResponse",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
 
     user_rules: Mapped[list["UserRule"]] = relationship(
         "UserRule", back_populates="user", foreign_keys="UserRule.user_id", cascade="all, delete-orphan",
