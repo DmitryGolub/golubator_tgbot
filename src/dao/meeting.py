@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select, insert, delete, text
+from sqlalchemy import select, insert, delete, text, update
 from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
@@ -103,11 +103,18 @@ class MeetingDAO(BaseDAO):
 
     @classmethod
     async def purge_older_than(cls, cutoff: datetime) -> int:
-        # Normalize to UTC aware for consistent comparisons
+        # Deprecated name: now marks meetings as completed instead of deleting.
         if cutoff.tzinfo is None:
             cutoff = cutoff.replace(tzinfo=timezone.utc)
         async with async_session_maker() as session:
-            stmt = delete(Meeting).where((Meeting.scheduled_at - text("interval '3 hours'")) <= cutoff)
+            stmt = (
+                update(Meeting)
+                .where(
+                    (Meeting.scheduled_at - text("interval '3 hours'")) <= cutoff,
+                    Meeting.completed_at.is_(None),
+                )
+                .values(completed_at=cutoff, survey_available_at=cutoff)
+            )
             res = await session.execute(stmt)
             await session.commit()
             return res.rowcount or 0

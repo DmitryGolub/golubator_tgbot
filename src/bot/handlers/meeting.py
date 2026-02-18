@@ -29,7 +29,7 @@ import logging
 from src.tasks.meeting import (
     notify_meeting_created,
     notify_meeting_reminder,
-    delete_meeting as delete_meeting_task,
+    complete_meeting as complete_meeting_task,
 )
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,6 @@ def _format_meetings(meetings, viewer_id: int, role: Role) -> str:
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_meetings_list")
 async def cb_mentor_meetings(callback: CallbackQuery):
     await callback.answer()
-    await MeetingDAO.purge_older_than(datetime.now(timezone.utc))
     meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
 
     text = _format_meetings(meetings, callback.from_user.id, Role.mentor)
@@ -106,7 +105,6 @@ async def cb_mentor_meetings(callback: CallbackQuery):
 @router.callback_query(RoleFilter([Role.student]), F.data == "student_meetings")
 async def cb_student_meetings(callback: CallbackQuery):
     await callback.answer()
-    await MeetingDAO.purge_older_than(datetime.now(timezone.utc))
     meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
 
     text = _format_meetings(meetings, callback.from_user.id, Role.student)
@@ -308,14 +306,6 @@ def _to_utc_assuming_msk(dt: datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
-def _to_utc_assuming_msk(dt: datetime | None) -> datetime | None:
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=MOSCOW_TZ)
-    return dt.astimezone(timezone.utc)
-
-
 def _schedule_meeting_tasks(meeting) -> None:
     meeting_id = meeting.id
     scheduled_at = meeting.scheduled_at
@@ -335,11 +325,11 @@ def _schedule_meeting_tasks(meeting) -> None:
             logger.info("Scheduled reminder for meeting %s at %s", meeting_id, reminder_eta)
 
         if scheduled_utc <= now:
-            delete_meeting_task.delay(meeting_id)
-            logger.info("Meeting %s already in past, deleting now", meeting_id)
+            complete_meeting_task.delay(meeting_id)
+            logger.info("Meeting %s already in past, completing now", meeting_id)
         else:
-            delete_meeting_task.apply_async(args=[meeting_id], eta=scheduled_utc)
-            logger.info("Scheduled delete for meeting %s at %s", meeting_id, scheduled_utc)
+            complete_meeting_task.apply_async(args=[meeting_id], eta=scheduled_utc)
+            logger.info("Scheduled completion for meeting %s at %s", meeting_id, scheduled_utc)
 
 
 @router.message(RoleFilter([Role.mentor]), StateFilter(CreateMeetingFSM.waiting_link))
