@@ -60,7 +60,9 @@ async def cb_menu(callback: CallbackQuery):
 async def cb_menu_users(callback: CallbackQuery):
     await callback.answer()
     try:
-        await callback.message.edit_text("👥 Меню Пользователей", reply_markup=user_actions_keyboard())
+        await callback.message.edit_text(
+            "👥 Меню Пользователей", reply_markup=user_actions_keyboard()
+        )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
@@ -70,7 +72,9 @@ async def cb_menu_users(callback: CallbackQuery):
 async def cb_menu_cohorts(callback: CallbackQuery):
     await callback.answer()
     try:
-        await callback.message.edit_text("👥 Меню Когорт", reply_markup=cohort_actions_keyboard())
+        await callback.message.edit_text(
+            "👥 Меню Когорт", reply_markup=cohort_actions_keyboard()
+        )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
@@ -80,12 +84,16 @@ async def cb_menu_cohorts(callback: CallbackQuery):
 async def cb_menu_mailings(callback: CallbackQuery):
     await callback.answer()
     try:
-        await callback.message.edit_text("👥 Меню Рассылок", reply_markup=mailings_menu_keyboard())
+        await callback.message.edit_text(
+            "👥 Меню Рассылок", reply_markup=mailings_menu_keyboard()
+        )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
 
+
 # ==== MENTOR ====
+
 
 def _mentor_students_menu_kb():
     kb = InlineKeyboardBuilder()
@@ -100,6 +108,7 @@ def _mentor_meetings_menu_kb():
     kb = InlineKeyboardBuilder()
     kb.button(text="Список созвонов", callback_data="mentor_meetings_list")
     kb.button(text="Добавить созвон", callback_data="meeting_create")
+    kb.button(text="Закончить созвон", callback_data="mentor_end_call")
     kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
     kb.adjust(1)
     return kb.as_markup()
@@ -172,6 +181,11 @@ async def cb_mentor_meetings_menu(callback: CallbackQuery):
     )
 
 
+@router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_end_call")
+async def cb_mentor_end_call(callback: CallbackQuery):
+    await callback.answer("Функция будет доступна позже.", show_alert=True)
+
+
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_me_info")
 async def cb_mentor_me_info(callback: CallbackQuery):
     await callback.answer()
@@ -179,7 +193,9 @@ async def cb_mentor_me_info(callback: CallbackQuery):
     mentors = await UserDAO.get_all(telegram_id=callback.from_user.id)
     mentor = mentors[0] if mentors else None
     if not mentor:
-        await callback.message.edit_text("Профиль не найден.", reply_markup=back_to_menu_keyboard())
+        await callback.message.edit_text(
+            "Профиль не найден.", reply_markup=back_to_menu_keyboard()
+        )
         return
 
     text = (
@@ -205,7 +221,9 @@ async def cb_student_me_info(callback: CallbackQuery):
     students = await UserDAO.get_all(telegram_id=callback.from_user.id)
     student = students[0] if students else None
     if not student:
-        await callback.message.edit_text("Профиль не найден.", reply_markup=back_to_menu_keyboard())
+        await callback.message.edit_text(
+            "Профиль не найден.", reply_markup=back_to_menu_keyboard()
+        )
         return
 
     mentor_name = student.mentor.name if student.mentor else "Отсутствует"
@@ -225,5 +243,6 @@ async def cb_student_me_info(callback: CallbackQuery):
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
+
 
 # ==== MENTOR/STUDENT callbacks now live in meeting handler ====
