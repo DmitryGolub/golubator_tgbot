@@ -59,12 +59,16 @@ def upgrade() -> None:
             "status",
             call_status_enum,
             nullable=False,
-            server_default="идёт",
+            server_default=sa.text("'идёт'"),
         ),
     )
+    op.create_index("ix_calls_mentor_id", "calls", ["mentor_id"])
+    op.create_index("ix_calls_student_id", "calls", ["student_id"])
 
 
 def downgrade() -> None:
     """Downgrade schema."""
+    op.drop_index("ix_calls_student_id", table_name="calls")
+    op.drop_index("ix_calls_mentor_id", table_name="calls")
     op.drop_table("calls")
     op.execute("DROP TYPE IF EXISTS call_status_enum")

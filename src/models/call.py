@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Integer, func
+from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Integer, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
@@ -17,10 +17,16 @@ class Call(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     mentor_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False
+        BigInteger,
+        ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     student_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False
+        BigInteger,
+        ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -37,7 +43,7 @@ class Call(Base):
         ),
         nullable=False,
         default=CallStatus.ongoing,
-        server_default="идёт",
+        server_default=text("'идёт'"),
     )
 
     mentor: Mapped["User"] = relationship(
