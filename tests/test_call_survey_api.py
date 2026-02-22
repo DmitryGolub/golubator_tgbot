@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 # Required for settings initialization during imports
 os.environ.setdefault("BOT_TOKEN", "test-token")
@@ -220,3 +221,86 @@ async def test_duplicate_submit_is_idempotent(fake_service: FakeSurveyService) -
     assert second.status_code == 200
     assert second.json()["already_submitted"] is True
     assert second.json()["response"]["comment"] == "Первый ответ"
+
+
+@pytest.mark.anyio
+async def test_call_id_out_of_range_returns_422(fake_service: FakeSurveyService) -> None:
+    transport = httpx.ASGITransport(app=app)
+    too_large_call_id = 9999999999999
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as test_client:
+        get_response = await test_client.get(f"/calls/{too_large_call_id}/survey")
+        post_response = await test_client.post(f"/calls/{too_large_call_id}/survey", json=_payload())
+
+    assert get_response.status_code == 422
+    assert post_response.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_sqlalchemy_error_mapped_to_503() -> None:
+    class FailingSurveyService:
+        @staticmethod
+        def build_questions() -> list[SurveyQuestion]:
+            return []
+
+        async def get_survey_state(self, call_id: int) -> tuple[SurveyStatus, None]:
+            raise SQLAlchemyError("db unavailable")
+
+        async def submit_survey(
+            self,
+            *,
+            call_id: int,
+            payload: SurveySubmitRequest,
+        ) -> tuple[FakeSurveyResponse, bool]:
+            raise SQLAlchemyError("db unavailable")
+
+    async def _override_service() -> FailingSurveyService:
+        return FailingSurveyService()
+
+    app.dependency_overrides[get_survey_service] = _override_service
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as test_client:
+            get_response = await test_client.get("/calls/101/survey")
+            post_response = await test_client.post("/calls/101/survey", json=_payload())
+    finally:
+        app.dependency_overrides.clear()
+
+    assert get_response.status_code == 503
+    assert post_response.status_code == 503
+
+
+@pytest.mark.anyio
+async def test_asyncpg_error_mapped_to_503() -> None:
+    asyncpg = pytest.importorskip("asyncpg")
+
+    class FailingSurveyService:
+        @staticmethod
+        def build_questions() -> list[SurveyQuestion]:
+            return []
+
+        async def get_survey_state(self, call_id: int) -> tuple[SurveyStatus, None]:
+            raise asyncpg.exceptions.InvalidCatalogNameError("database does not exist")
+
+        async def submit_survey(
+            self,
+            *,
+            call_id: int,
+            payload: SurveySubmitRequest,
+        ) -> tuple[FakeSurveyResponse, bool]:
+            raise asyncpg.exceptions.InvalidCatalogNameError("database does not exist")
+
+    async def _override_service() -> FailingSurveyService:
+        return FailingSurveyService()
+
+    app.dependency_overrides[get_survey_service] = _override_service
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as test_client:
+            get_response = await test_client.get("/calls/101/survey")
+            post_response = await test_client.post("/calls/101/survey", json=_payload())
+    finally:
+        app.dependency_overrides.clear()
+
+    assert get_response.status_code == 503
+    assert post_response.status_code == 503

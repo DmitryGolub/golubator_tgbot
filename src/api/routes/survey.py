@@ -1,6 +1,8 @@
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
+from sqlalchemy.exc import DataError, OperationalError, ProgrammingError, SQLAlchemyError
 
 from src.api.dependencies import get_survey_service
 from src.api.schemas.survey import (
@@ -19,10 +21,24 @@ from src.services.survey import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/calls", tags=["survey"])
 
+CallIdPath = Annotated[int, Path(ge=1, le=2147483647)]
+DB_ERRORS: tuple[type[BaseException], ...] = (
+    OperationalError,
+    ProgrammingError,
+    SQLAlchemyError,
+)
+
+try:
+    import asyncpg
+except ImportError:
+    asyncpg = None
+else:
+    DB_ERRORS = DB_ERRORS + (asyncpg.PostgresError,)
+
 
 @router.get("/{call_id}/survey", response_model=SurveyStateResponse)
 async def get_call_survey(
-    call_id: int,
+    call_id: CallIdPath,
     service: SurveyService = Depends(get_survey_service),
 ) -> SurveyStateResponse:
     try:
@@ -30,6 +46,15 @@ async def get_call_survey(
     except CallNotFoundError as exc:
         logger.info("Survey call not found: call_id=%s", call_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Созвон не найден") from exc
+    except DataError as exc:
+        logger.info("Invalid call_id value for survey state: call_id=%s", call_id)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Некорректный call_id") from exc
+    except DB_ERRORS as exc:
+        logger.exception("Survey state DB error: call_id=%s", call_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Сервис временно недоступен",
+        ) from exc
 
     return SurveyStateResponse(
         call_id=call_id,
@@ -41,7 +66,7 @@ async def get_call_survey(
 
 @router.post("/{call_id}/survey", response_model=SurveySubmitResponse)
 async def submit_call_survey(
-    call_id: int,
+    call_id: CallIdPath,
     payload: SurveySubmitRequest,
     service: SurveyService = Depends(get_survey_service),
 ) -> SurveySubmitResponse:
@@ -61,6 +86,15 @@ async def submit_call_survey(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Не удалось определить ученика для созвона",
+        ) from exc
+    except DataError as exc:
+        logger.info("Invalid call_id value for survey submit: call_id=%s", call_id)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Некорректный call_id") from exc
+    except DB_ERRORS as exc:
+        logger.exception("Survey submit DB error: call_id=%s", call_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Сервис временно недоступен",
         ) from exc
 
     return SurveySubmitResponse(

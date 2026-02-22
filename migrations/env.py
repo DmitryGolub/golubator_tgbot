@@ -13,6 +13,11 @@ from src.core.config import settings
 # access to the values within the .ini file in use.
 config = context.config
 
+# Keep Alembic DSN in sync with app settings loaded from .env.
+# Alembic runs with sync engine, so async driver must be swapped.
+sync_database_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2", 1)
+config.set_main_option("sqlalchemy.url", sync_database_url)
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
