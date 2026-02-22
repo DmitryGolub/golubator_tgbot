@@ -103,7 +103,6 @@ class MeetingDAO(BaseDAO):
 
     @classmethod
     async def purge_older_than(cls, cutoff: datetime) -> int:
-        # Deprecated name: now marks meetings as completed instead of deleting.
         if cutoff.tzinfo is None:
             cutoff = cutoff.replace(tzinfo=timezone.utc)
         async with async_session_maker() as session:

@@ -7,7 +7,6 @@ import httpx
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-# Required for settings initialization during imports
 os.environ.setdefault("BOT_TOKEN", "test-token")
 os.environ.setdefault("DB_NAME", "test")
 os.environ.setdefault("DB_USER", "test")
