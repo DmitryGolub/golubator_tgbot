@@ -13,15 +13,12 @@ from src.core.config import settings
 # access to the values within the .ini file in use.
 config = context.config
 
-# Keep Alembic DSN in sync with app settings loaded from .env.
-# Alembic runs with sync engine, so async driver must be swapped.
-sync_database_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2", 1)
-config.set_main_option("sqlalchemy.url", sync_database_url)
-
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL_SYNC)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -73,9 +70,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()
