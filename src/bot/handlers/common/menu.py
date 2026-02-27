@@ -13,6 +13,7 @@ from src.bot.keyboards.cohort import cohort_actions_keyboard
 from src.models.user import Role
 from src.utils.auth import get_user_role
 from src.dao.user import UserDAO
+from src.dao.call import CallDAO
 
 router = Router(name="menu")
 router.message.filter(RoleFilter([Role.admin, Role.mentor, Role.student]))
@@ -183,7 +184,43 @@ async def cb_mentor_meetings_menu(callback: CallbackQuery):
 
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_end_call")
 async def cb_mentor_end_call(callback: CallbackQuery):
-    await callback.answer("Функция будет доступна позже.", show_alert=True)
+    await callback.answer()
+
+    call = await CallDAO.get_active_for_mentor(callback.from_user.id)
+    if not call:
+        try:
+            await callback.message.edit_text(
+                "У вас нет активного созвона.",
+                reply_markup=_mentor_meetings_menu_kb(),
+            )
+        except TelegramBadRequest as exc:
+            if "message is not modified" not in str(exc).lower():
+                raise
+        return
+
+    finished = await CallDAO.finish_call(call.id, callback.from_user.id)
+    if not finished:
+        try:
+            await callback.message.edit_text(
+                "Не удалось завершить созвон. Попробуйте ещё раз.",
+                reply_markup=_mentor_meetings_menu_kb(),
+            )
+        except TelegramBadRequest as exc:
+            if "message is not modified" not in str(exc).lower():
+                raise
+        return
+
+    try:
+        await callback.message.edit_text(
+            f"✅ Созвон #{finished.id} завершён.\n"
+            f"Начало: {finished.started_at:%d.%m.%Y %H:%M}\n"
+            f"Конец: {finished.ended_at:%d.%m.%Y %H:%M}\n\n"
+            f"<code>call_id={finished.id}</code> — используйте для фидбека.",
+            reply_markup=_mentor_meetings_menu_kb(),
+        )
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_me_info")
