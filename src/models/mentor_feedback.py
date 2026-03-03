@@ -15,6 +15,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
+from src.mentor_feedback.constants import (
+    MENTOR_FEEDBACK_DURATION_SQL,
+    MENTOR_FEEDBACK_STATUS_SQL,
+)
 
 
 class MentorFeedback(Base):
@@ -22,11 +26,11 @@ class MentorFeedback(Base):
     __table_args__ = (
         Index("ix_mentor_feedback_call_id", "call_id", unique=True),
         CheckConstraint(
-            "status IN ('not_ready', 'bad', 'ok', 'great')",
+            f"status IN ({MENTOR_FEEDBACK_STATUS_SQL})",
             name="ck_mentor_feedback_status",
         ),
         CheckConstraint(
-            "duration IN ('lt_30', 'min_30_60', 'min_60_90', 'ge_90')",
+            f"duration IN ({MENTOR_FEEDBACK_DURATION_SQL})",
             name="ck_mentor_feedback_duration",
         ),
         CheckConstraint(
