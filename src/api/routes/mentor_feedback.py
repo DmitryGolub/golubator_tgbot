@@ -9,10 +9,9 @@ from src.api.schemas.mentor_feedback import (
     MentorFeedbackCreateRequest,
     MentorFeedbackResponse,
 )
-from src.services.mentor_feedback import (
+from src.mentor_feedback.errors import (
     CallNotFoundError,
     MentorFeedbackAlreadyExistsError,
-    MentorFeedbackService,
     MentorNotInCallError,
 )
 
@@ -37,7 +36,7 @@ except ImportError:
 async def create_mentor_feedback(
     call_id: CallIdPath,
     payload: MentorFeedbackCreateRequest,
-    service: MentorFeedbackService = Depends(get_mentor_feedback_service),
+    service: object = Depends(get_mentor_feedback_service),
 ) -> MentorFeedbackResponse:
     try:
         feedback = await service.create_feedback(

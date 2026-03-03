@@ -3,20 +3,13 @@ from sqlalchemy.exc import IntegrityError
 from src.api.schemas.mentor_feedback import MentorFeedbackCreateRequest
 from src.dao.meeting import MeetingDAO
 from src.dao.mentor_feedback import MentorFeedbackDAO
+from src.mentor_feedback.errors import (
+    CallNotFoundError,
+    MentorFeedbackAlreadyExistsError,
+    MentorNotInCallError,
+)
 from src.models.mentor_feedback import MentorFeedback
 from src.models.user import Role
-
-
-class CallNotFoundError(Exception):
-    pass
-
-
-class MentorNotInCallError(Exception):
-    pass
-
-
-class MentorFeedbackAlreadyExistsError(Exception):
-    pass
 
 
 class MentorFeedbackService:
