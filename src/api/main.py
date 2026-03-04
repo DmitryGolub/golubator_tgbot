@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from src.api.routes.mentor import router as mentor_router
 from src.api.routes.survey import router as survey_router
 
 
@@ -10,6 +11,7 @@ def create_app() -> FastAPI:
         description="API для опроса после завершения созвона",
     )
     app.include_router(survey_router)
+    app.include_router(mentor_router)
     return app
 
 
