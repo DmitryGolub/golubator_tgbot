@@ -18,10 +18,6 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
-        "meeting.cleanup_stale": {
-            "task": "meeting.cleanup_stale",
-            "schedule": crontab(minute="*"),  # run every minute for timely cleanup
-        },
         "notifications.tick": {
             "task": "notifications.tick",
             "schedule": crontab(minute="*"),

@@ -1,6 +1,5 @@
 from sqlalchemy.exc import IntegrityError
 
-from src.api.schemas.mentor_feedback import MentorFeedbackCreateRequest
 from src.dao.meeting import MeetingDAO
 from src.dao.mentor_feedback import MentorFeedbackDAO
 from src.mentor_feedback.errors import (
@@ -8,6 +7,7 @@ from src.mentor_feedback.errors import (
     MentorFeedbackAlreadyExistsError,
     MentorNotInCallError,
 )
+from src.mentor_feedback.dto import MentorFeedbackCreateData
 from src.models.mentor_feedback import MentorFeedback
 from src.models.user import Role
 
@@ -18,7 +18,7 @@ class MentorFeedbackService:
         *,
         call_id: int,
         mentor_id: int,
-        payload: MentorFeedbackCreateRequest,
+        payload: MentorFeedbackCreateData,
     ) -> MentorFeedback:
         meeting = await MeetingDAO.get_with_participants(call_id)
         if not meeting:

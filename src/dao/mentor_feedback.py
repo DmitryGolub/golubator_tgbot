@@ -49,3 +49,13 @@ class MentorFeedbackDAO:
             query = select(MentorFeedback.id).where(MentorFeedback.call_id == call_id)
             result = await session.execute(query)
             return result.scalar_one_or_none() is not None
+
+    @classmethod
+    async def get_call_ids(cls, call_ids: list[int]) -> set[int]:
+        if not call_ids:
+            return set()
+
+        async with async_session_maker() as session:
+            query = select(MentorFeedback.call_id).where(MentorFeedback.call_id.in_(call_ids))
+            result = await session.execute(query)
+            return set(result.scalars().all())

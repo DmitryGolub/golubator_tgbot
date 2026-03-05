@@ -17,6 +17,7 @@ from src.models.meeting import Meeting
 def mentor_meetings_keyboard(meetings: list[Meeting] | None = None) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="Добавить созвон", callback_data="meeting_create")
+    kb.button(text="Заполнить фидбек", callback_data="mentor_feedback_start")
 
     if meetings:
         for meeting in meetings:
