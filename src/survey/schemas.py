@@ -41,22 +41,9 @@ class SurveyAnswer(BaseModel):
     created_at: datetime
 
 
-class SurveyStateResponse(BaseModel):
-    call_id: int
-    status: SurveyStatus
-    questions: list[SurveyQuestion]
-    response: Optional[SurveyAnswer] = None
-
-
 class SurveySubmitRequest(BaseModel):
     duration_option: DurationOption
     mentor_style: int = Field(ge=1, le=5)
     knowledge_depth: int = Field(ge=1, le=5)
     understanding: int = Field(ge=1, le=5)
     comment: Optional[str] = None
-
-
-class SurveySubmitResponse(BaseModel):
-    call_id: int
-    already_submitted: bool
-    response: SurveyAnswer

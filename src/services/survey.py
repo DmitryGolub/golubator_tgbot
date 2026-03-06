@@ -1,4 +1,4 @@
-from src.api.schemas.survey import SurveyQuestion, SurveyQuestionOption, SurveyStatus, SurveySubmitRequest
+from src.survey.schemas import SurveyQuestion, SurveyQuestionOption, SurveyStatus, SurveySubmitRequest
 from src.survey.constants import DURATION_OPTION_LABELS
 
 
@@ -11,6 +11,10 @@ class SurveyNotAvailableError(Exception):
 
 
 class SurveyStudentNotFoundError(Exception):
+    pass
+
+
+class SurveyAccessDeniedError(Exception):
     pass
 
 
@@ -113,6 +117,72 @@ class SurveyService:
         student_id = self._resolve_student_id(meeting)
         if student_id is None:
             raise SurveyStudentNotFoundError
+
+        return await SurveyDAO.submit_response(
+            call_id=call_id,
+            student_id=student_id,
+            duration_option=payload.duration_option.value,
+            mentor_style=payload.mentor_style,
+            knowledge_depth=payload.knowledge_depth,
+            understanding=payload.understanding,
+            comment=payload.comment,
+        )
+
+    async def get_survey_state_for_student(
+        self,
+        *,
+        call_id: int,
+        student_id: int,
+    ) -> tuple[SurveyStatus, object | None]:
+        from src.dao.survey import SurveyDAO
+
+        meeting = await SurveyDAO.get_call_with_participants(call_id)
+        if not meeting:
+            raise CallNotFoundError
+
+        participant_ids = {p.telegram_id for p in meeting.participants}
+        if student_id not in participant_ids:
+            raise SurveyAccessDeniedError
+
+        resolved_student_id = self._resolve_student_id(meeting)
+        if resolved_student_id is None:
+            raise SurveyStudentNotFoundError
+        if resolved_student_id != student_id:
+            raise SurveyAccessDeniedError
+
+        if meeting.survey_response:
+            return SurveyStatus.completed, meeting.survey_response
+
+        if meeting.completed_at is None or meeting.survey_available_at is None:
+            return SurveyStatus.not_available, None
+
+        return SurveyStatus.available, None
+
+    async def submit_survey_for_student(
+        self,
+        *,
+        call_id: int,
+        student_id: int,
+        payload: SurveySubmitRequest,
+    ) -> tuple[object, bool]:
+        from src.dao.survey import SurveyDAO
+
+        meeting = await SurveyDAO.get_call_with_participants(call_id)
+        if not meeting:
+            raise CallNotFoundError
+
+        participant_ids = {p.telegram_id for p in meeting.participants}
+        if student_id not in participant_ids:
+            raise SurveyAccessDeniedError
+
+        if meeting.completed_at is None or meeting.survey_available_at is None:
+            raise SurveyNotAvailableError
+
+        resolved_student_id = self._resolve_student_id(meeting)
+        if resolved_student_id is None:
+            raise SurveyStudentNotFoundError
+        if resolved_student_id != student_id:
+            raise SurveyAccessDeniedError
 
         return await SurveyDAO.submit_response(
             call_id=call_id,
