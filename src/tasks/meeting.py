@@ -1,21 +1,21 @@
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import joinedload
 
 from src.celery_app import celery_app
 from src.core.config import settings
 from src.models.meeting import Meeting
+from src.models.notification import Notification
 from src.models.user import Role, User
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from sqlalchemy import select, delete
-from sqlalchemy.orm import joinedload
 
 logger = logging.getLogger(__name__)
-MOSCOW_TZ = timezone(timedelta(hours=3))
 
 
 def _format_dt(dt: Optional[datetime]) -> str:
@@ -24,14 +24,6 @@ def _format_dt(dt: Optional[datetime]) -> str:
     if dt.tzinfo:
         return dt.astimezone(dt.tzinfo).strftime("%d.%m.%Y %H:%M MSK")
     return dt.strftime("%d.%m.%Y %H:%M MSK")
-
-
-def _to_utc_assuming_msk(dt: datetime | None) -> datetime | None:
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=MOSCOW_TZ)
-    return dt.astimezone(timezone.utc)
 
 
 def _split_participants(meeting: Meeting) -> tuple[Optional[User], Optional[User]]:
@@ -43,6 +35,14 @@ def _split_participants(meeting: Meeting) -> tuple[Optional[User], Optional[User
             None,
         )
     return mentor, student
+
+
+def _survey_notification_text(meeting: Meeting) -> str:
+    return (
+        "<b>Созвон завершён.</b>\n"
+        "Пожалуйста, оставьте обратную связь по встрече.\n"
+        f"ID созвона: <b>#{meeting.id}</b>"
+    )
 
 
 async def _send_to_student(student: Optional[User], text: str) -> None:
@@ -109,13 +109,46 @@ async def _notify_reminder_async(meeting_id: int) -> None:
     await _send_to_student(student, text)
 
 
-async def _delete_meeting_async(meeting_id: int) -> None:
+async def _complete_meeting_async(meeting_id: int) -> bool:
+    now = datetime.now(timezone.utc)
     engine = create_async_engine(settings.DATABASE_URL)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+
     try:
-        async with engine.begin() as conn:
-            res = await conn.execute(delete(Meeting).where(Meeting.id == meeting_id))
-            rows = res.rowcount or 0
-            logger.info("Deleted meeting %s, rows=%s", meeting_id, rows)
+        async with Session() as session:
+            query = (
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .options(joinedload(Meeting.participants))
+            )
+            result = await session.execute(query)
+            meeting = result.unique().scalar_one_or_none()
+
+            if not meeting:
+                logger.info("Meeting %s not found for completion", meeting_id)
+                return False
+
+            if meeting.completed_at is not None:
+                logger.info("Meeting %s already completed at %s", meeting_id, meeting.completed_at)
+                return False
+
+            meeting.completed_at = now
+            if meeting.survey_available_at is None:
+                meeting.survey_available_at = now
+
+            _, student = _split_participants(meeting)
+            if student:
+                session.add(
+                    Notification(
+                        user_id=student.telegram_id,
+                        text=_survey_notification_text(meeting),
+                        scheduled_at=now,
+                    )
+                )
+
+            await session.commit()
+            logger.info("Meeting %s completed at %s", meeting_id, now)
+            return True
     finally:
         await engine.dispose()
 
@@ -123,11 +156,41 @@ async def _delete_meeting_async(meeting_id: int) -> None:
 async def _cleanup_stale_async() -> None:
     cutoff = datetime.now(timezone.utc)
     engine = create_async_engine(settings.DATABASE_URL)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+
     try:
-        async with engine.begin() as conn:
-            res = await conn.execute(delete(Meeting).where(Meeting.scheduled_at <= cutoff))
-            rows = res.rowcount or 0
-            logger.info("Cleanup stale meetings: cutoff=%s, removed=%s", cutoff, rows)
+        async with Session() as session:
+            query = (
+                select(Meeting)
+                .where(
+                    Meeting.scheduled_at <= cutoff,
+                    Meeting.completed_at.is_(None),
+                )
+                .options(joinedload(Meeting.participants))
+            )
+            result = await session.execute(query)
+            meetings = result.unique().scalars().all()
+
+            completed = 0
+            for meeting in meetings:
+                meeting.completed_at = cutoff
+                if meeting.survey_available_at is None:
+                    meeting.survey_available_at = cutoff
+
+                _, student = _split_participants(meeting)
+                if student:
+                    session.add(
+                        Notification(
+                            user_id=student.telegram_id,
+                            text=_survey_notification_text(meeting),
+                            scheduled_at=cutoff,
+                        )
+                    )
+                completed += 1
+
+            if completed:
+                await session.commit()
+            logger.info("Cleanup stale meetings: cutoff=%s, completed=%s", cutoff, completed)
     finally:
         await engine.dispose()
 
@@ -142,9 +205,15 @@ def notify_meeting_reminder(meeting_id: int) -> None:
     asyncio.run(_notify_reminder_async(meeting_id))
 
 
+@celery_app.task(name="meeting.complete")
+def complete_meeting(meeting_id: int) -> None:
+    asyncio.run(_complete_meeting_async(meeting_id))
+
+
 @celery_app.task(name="meeting.delete")
 def delete_meeting(meeting_id: int) -> None:
-    asyncio.run(_delete_meeting_async(meeting_id))
+    # Backward-compatibility alias for already planned tasks.
+    asyncio.run(_complete_meeting_async(meeting_id))
 
 
 @celery_app.task(name="meeting.cleanup_stale")

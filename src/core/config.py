@@ -24,6 +24,11 @@ class Settings(BaseSettings):
         return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     @property
+    def DATABASE_URL_SYNC(self) -> str:
+        """Синхронный URL для Alembic миграций"""
+        return f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+
+    @property
     def REDIS_URL(self) -> str:
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
@@ -31,7 +36,11 @@ class Settings(BaseSettings):
     def admin_usernames(self) -> set[str]:
         if not self.ADMIN_USERNAMES:
             return set()
-        return {name.strip().lower() for name in self.ADMIN_USERNAMES.split(",") if name.strip()}
+        return {
+            name.strip().lower()
+            for name in self.ADMIN_USERNAMES.split(",")
+            if name.strip()
+        }
 
 
 settings = Settings()
