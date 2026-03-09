@@ -109,7 +109,7 @@ def _mentor_meetings_menu_kb():
     kb = InlineKeyboardBuilder()
     kb.button(text="Список созвонов", callback_data="mentor_meetings_list")
     kb.button(text="Добавить созвон", callback_data="meeting_create")
-    kb.button(text="Закончить созвон", callback_data="mentor_end_call")
+    kb.button(text="Заполнить фидбек", callback_data="mentor_feedback_start")
     kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
     kb.adjust(1)
     return kb.as_markup()
@@ -280,6 +280,3 @@ async def cb_student_me_info(callback: CallbackQuery):
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
-
-
-# ==== MENTOR/STUDENT callbacks now live in meeting handler ====

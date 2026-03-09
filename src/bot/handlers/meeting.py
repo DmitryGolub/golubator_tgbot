@@ -29,7 +29,6 @@ import logging
 from src.tasks.meeting import (
     notify_meeting_created,
     notify_meeting_reminder,
-    complete_meeting as complete_meeting_task,
 )
 
 logger = logging.getLogger(__name__)
@@ -323,14 +322,6 @@ def _schedule_meeting_tasks(meeting) -> None:
         if reminder_eta > now:
             notify_meeting_reminder.apply_async(args=[meeting_id], eta=reminder_eta)
             logger.info("Scheduled reminder for meeting %s at %s", meeting_id, reminder_eta)
-
-        if scheduled_utc <= now:
-            complete_meeting_task.delay(meeting_id)
-            logger.info("Meeting %s already in past, completing now", meeting_id)
-        else:
-            complete_meeting_task.apply_async(args=[meeting_id], eta=scheduled_utc)
-            logger.info("Scheduled completion for meeting %s at %s", meeting_id, scheduled_utc)
-
 
 @router.message(RoleFilter([Role.mentor]), StateFilter(CreateMeetingFSM.waiting_link))
 async def msg_meeting_link(message: Message, state: FSMContext):
