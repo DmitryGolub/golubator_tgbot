@@ -5,14 +5,15 @@ from typing import Optional
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
+from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import joinedload
 
+from src.bot.keyboards.survey import survey_start_keyboard
 from src.celery_app import celery_app
 from src.core.config import settings
 from src.models.meeting import Meeting
-from src.models.notification import Notification
 from src.models.user import Role, User
 
 logger = logging.getLogger(__name__)
@@ -37,22 +38,37 @@ def _split_participants(meeting: Meeting) -> tuple[Optional[User], Optional[User
     return mentor, student
 
 
-def _survey_notification_text(meeting: Meeting) -> str:
+def _survey_notification_text(call_id: int) -> str:
     return (
         "<b>Созвон завершён.</b>\n"
         "Пожалуйста, оставьте обратную связь по встрече.\n"
-        f"ID созвона: <b>#{meeting.id}</b>"
+        f"ID созвона: <b>#{call_id}</b>\n"
+        f"Или отправьте команду: <code>/survey {call_id}</code>"
     )
 
 
-async def _send_to_student(student: Optional[User], text: str) -> None:
-    if not student:
-        return
+async def _send_to_user(
+    user_id: int,
+    text: str,
+    *,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> None:
     bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     try:
-        await bot.send_message(student.telegram_id, text)
+        await bot.send_message(user_id, text, reply_markup=reply_markup)
     finally:
         await bot.session.close()
+
+
+async def _send_to_student(
+    student: Optional[User],
+    text: str,
+    *,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> None:
+    if not student:
+        return
+    await _send_to_user(student.telegram_id, text, reply_markup=reply_markup)
 
 
 async def _load_meeting(meeting_id: int) -> Optional[Meeting]:
@@ -113,6 +129,9 @@ async def _complete_meeting_async(meeting_id: int) -> bool:
     now = datetime.now(timezone.utc)
     engine = create_async_engine(settings.DATABASE_URL)
     Session = async_sessionmaker(engine, expire_on_commit=False)
+    student_to_notify: Optional[User] = None
+    survey_call_id: Optional[int] = None
+    survey_text: Optional[str] = None
 
     try:
         async with Session() as session:
@@ -138,16 +157,20 @@ async def _complete_meeting_async(meeting_id: int) -> bool:
 
             _, student = _split_participants(meeting)
             if student:
-                session.add(
-                    Notification(
-                        user_id=student.telegram_id,
-                        text=_survey_notification_text(meeting),
-                        scheduled_at=now,
-                    )
-                )
+                student_to_notify = student
+                survey_call_id = meeting.id
+                survey_text = _survey_notification_text(meeting.id)
 
             await session.commit()
             logger.info("Meeting %s completed at %s", meeting_id, now)
+
+            if student_to_notify and survey_call_id and survey_text:
+                await _send_to_student(
+                    student_to_notify,
+                    survey_text,
+                    reply_markup=survey_start_keyboard(survey_call_id),
+                )
+
             return True
     finally:
         await engine.dispose()
@@ -157,6 +180,7 @@ async def _cleanup_stale_async() -> None:
     cutoff = datetime.now(timezone.utc)
     engine = create_async_engine(settings.DATABASE_URL)
     Session = async_sessionmaker(engine, expire_on_commit=False)
+    survey_notifications: list[tuple[int, int]] = []
 
     try:
         async with Session() as session:
@@ -179,13 +203,7 @@ async def _cleanup_stale_async() -> None:
 
                 _, student = _split_participants(meeting)
                 if student:
-                    session.add(
-                        Notification(
-                            user_id=student.telegram_id,
-                            text=_survey_notification_text(meeting),
-                            scheduled_at=cutoff,
-                        )
-                    )
+                    survey_notifications.append((student.telegram_id, meeting.id))
                 completed += 1
 
             if completed:
@@ -193,6 +211,13 @@ async def _cleanup_stale_async() -> None:
             logger.info("Cleanup stale meetings: cutoff=%s, completed=%s", cutoff, completed)
     finally:
         await engine.dispose()
+
+    for student_id, call_id in survey_notifications:
+        await _send_to_user(
+            student_id,
+            _survey_notification_text(call_id),
+            reply_markup=survey_start_keyboard(call_id),
+        )
 
 
 @celery_app.task(name="meeting.notify_created")
