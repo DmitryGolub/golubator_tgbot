@@ -11,6 +11,7 @@ celery_app = Celery(
     include=[
         "src.tasks.meeting",
         "src.tasks.notification",
+        "src.tasks.mentor_self_review",
     ],
 )
 
@@ -21,6 +22,10 @@ celery_app.conf.update(
         "notifications.tick": {
             "task": "notifications.tick",
             "schedule": crontab(minute="*"),
+        },
+        "mentor_self_review.trigger_monthly": {
+            "task": "mentor_self_review.trigger_monthly",
+            "schedule": crontab(day_of_month="1", hour="9", minute="0"),
         },
     },
 )
