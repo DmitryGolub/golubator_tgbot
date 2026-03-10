@@ -1,9 +1,8 @@
 """add mentor self review
 
 Revision ID: add_mentor_self_review
-Revises: add_calls
-Create Date: 2026-03-10 12:00:00.000000
-
+Revises: add_mentor_feedback
+Create Date: 2026-03-10 00:00:00.000000
 """
 
 from typing import Sequence, Union
@@ -14,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "add_mentor_self_review"
-down_revision: Union[str, Sequence[str], None] = "add_calls"
+down_revision: Union[str, Sequence[str], None] = "add_mentor_feedback"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -38,10 +37,18 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
             nullable=False,
+            server_default=sa.text("now()"),
         ),
-        sa.CheckConstraint("workload BETWEEN 1 AND 5", name="ck_mentor_self_review_workload_range"),
+        sa.UniqueConstraint(
+            "mentor_id",
+            "period",
+            name="uq_mentor_self_review_mentor_period",
+        ),
+        sa.CheckConstraint(
+            "workload BETWEEN 1 AND 5",
+            name="ck_mentor_self_review_workload_range",
+        ),
         sa.CheckConstraint(
             "pigeon_stupidity BETWEEN 1 AND 5",
             name="ck_mentor_self_review_pigeon_stupidity_range",
@@ -54,10 +61,13 @@ def upgrade() -> None:
             "period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'",
             name="ck_mentor_self_review_period_format",
         ),
-        sa.UniqueConstraint("mentor_id", "period", name="uq_mentor_self_review_mentor_period"),
     )
-
-    op.create_index("ix_mentor_self_reviews_mentor_id", "mentor_self_reviews", ["mentor_id"])
+    op.create_index(
+        "ix_mentor_self_reviews_mentor_id",
+        "mentor_self_reviews",
+        ["mentor_id"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
