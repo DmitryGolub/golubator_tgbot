@@ -13,6 +13,7 @@ from src.bot.handlers.user.list import router as user_router
 from src.bot.handlers.user.update_user import router as update_user_fsm_router
 from src.bot.handlers.meeting import router as meeting_router
 from src.bot.handlers.mailings import router as mailings_router
+from src.bot.handlers.mentor_self_review import router as mentor_self_review_router
 
 
 from src.core.config import settings
@@ -35,6 +36,7 @@ async def main():
         update_user_fsm_router,
         meeting_router,
         mailings_router,
+        mentor_self_review_router,
     )
 
     await dp.start_polling(bot)
