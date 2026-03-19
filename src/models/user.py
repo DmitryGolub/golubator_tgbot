@@ -102,3 +102,6 @@ class User(Base):
     student_calls: Mapped[list["Call"]] = relationship(
         "Call", foreign_keys="Call.student_id", back_populates="student", lazy="selectin",
     )
+    tags: Mapped[list["Tag"]] = relationship(
+        "Tag", secondary="user_tags", back_populates="users", lazy="selectin",
+    )
