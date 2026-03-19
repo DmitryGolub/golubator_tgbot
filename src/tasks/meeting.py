@@ -11,7 +11,7 @@ from src.core.config import settings
 from src.models.meeting import Meeting
 from src.models.user import Role, User
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 logger = logging.getLogger(__name__)
@@ -111,11 +111,18 @@ async def _notify_reminder_async(meeting_id: int) -> None:
 
 async def _delete_meeting_async(meeting_id: int) -> None:
     engine = create_async_engine(settings.DATABASE_URL)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
     try:
-        async with engine.begin() as conn:
-            res = await conn.execute(delete(Meeting).where(Meeting.id == meeting_id))
-            rows = res.rowcount or 0
-            logger.info("Deleted meeting %s, rows=%s", meeting_id, rows)
+        async with Session() as session:
+            query = select(Meeting).where(Meeting.id == meeting_id)
+            result = await session.execute(query)
+            meeting = result.scalar_one_or_none()
+            if not meeting or meeting.completed_at is not None:
+                return
+
+            meeting.completed_at = datetime.now(timezone.utc)
+            await session.commit()
+            logger.info("Completed meeting %s via scheduled task", meeting_id)
     finally:
         await engine.dispose()
 
@@ -123,11 +130,25 @@ async def _delete_meeting_async(meeting_id: int) -> None:
 async def _cleanup_stale_async() -> None:
     cutoff = datetime.now(timezone.utc)
     engine = create_async_engine(settings.DATABASE_URL)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
     try:
-        async with engine.begin() as conn:
-            res = await conn.execute(delete(Meeting).where(Meeting.scheduled_at <= cutoff))
-            rows = res.rowcount or 0
-            logger.info("Cleanup stale meetings: cutoff=%s, removed=%s", cutoff, rows)
+        async with Session() as session:
+            query = (
+                select(Meeting)
+                .where(
+                    Meeting.scheduled_at <= cutoff,
+                    Meeting.completed_at.is_(None),
+                )
+            )
+            result = await session.execute(query)
+            meetings = result.scalars().all()
+
+            for meeting in meetings:
+                meeting.completed_at = cutoff
+
+            if meetings:
+                await session.commit()
+            logger.info("Cleanup stale meetings: cutoff=%s, completed=%s", cutoff, len(meetings))
     finally:
         await engine.dispose()
 

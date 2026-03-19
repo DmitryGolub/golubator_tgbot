@@ -9,6 +9,10 @@ class DeleteMeetingCB(CallbackData, prefix="meeting_del"):
     meeting_id: int
 
 
+class StartMeetingCallCB(CallbackData, prefix="meeting_start_call"):
+    meeting_id: int
+
+
 class ChooseMeetingDateCB(CallbackData, prefix="meeting_date"):
     year: int
     month: int
