@@ -106,7 +106,6 @@ def _format_meetings(meetings, viewer_id: int, role: Role) -> str:
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_meetings_list")
 async def cb_mentor_meetings(callback: CallbackQuery):
     await callback.answer()
-    await MeetingDAO.purge_older_than(datetime.now(timezone.utc))
     meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
 
     text = _format_meetings(meetings, callback.from_user.id, Role.mentor)
@@ -116,7 +115,6 @@ async def cb_mentor_meetings(callback: CallbackQuery):
 @router.callback_query(RoleFilter([Role.student]), F.data == "student_meetings")
 async def cb_student_meetings(callback: CallbackQuery):
     await callback.answer()
-    await MeetingDAO.purge_older_than(datetime.now(timezone.utc))
     meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
 
     text = _format_meetings(meetings, callback.from_user.id, Role.student)

@@ -75,6 +75,19 @@ class User(Base):
         passive_deletes=True,
         lazy="selectin",
     )
+    survey_responses: Mapped[list["SurveyResponse"]] = relationship(
+        "SurveyResponse",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
+    mentor_self_reviews: Mapped[list["MentorSelfReview"]] = relationship(
+        "MentorSelfReview",
+        back_populates="mentor",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
 
     user_rules: Mapped[list["UserRule"]] = relationship(
         "UserRule", back_populates="user", foreign_keys="UserRule.user_id", cascade="all, delete-orphan",
@@ -82,4 +95,13 @@ class User(Base):
 
     authored_rules: Mapped[list["UserRule"]] = relationship(
         "UserRule", back_populates="author", foreign_keys="UserRule.author_id",
+    )
+    mentor_calls: Mapped[list["Call"]] = relationship(
+        "Call", foreign_keys="Call.mentor_id", back_populates="mentor", lazy="selectin",
+    )
+    student_calls: Mapped[list["Call"]] = relationship(
+        "Call", foreign_keys="Call.student_id", back_populates="student", lazy="selectin",
+    )
+    tags: Mapped[list["Tag"]] = relationship(
+        "Tag", secondary="user_tags", back_populates="users", lazy="selectin",
     )

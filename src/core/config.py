@@ -18,10 +18,20 @@ class Settings(BaseSettings):
     REDIS_HOST: str
     REDIS_PORT: int
     ADMIN_USERNAMES: str | None = None
+    YANDEX_SHEETS_TOKEN: str | None = None
+    YANDEX_SHEETS_FILE_PATH: str | None = None
+    YANDEX_SHEETS_SHEET_NAME: str = "feedback_export"
+    YANDEX_SHEETS_BASE_URL: str = "https://cloud-api.yandex.net/v1/disk"
+    YANDEX_SHEETS_TIMEOUT_SECONDS: float = 30.0
 
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+
+    @property
+    def DATABASE_URL_SYNC(self) -> str:
+        """Синхронный URL для Alembic миграций"""
+        return f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     @property
     def REDIS_URL(self) -> str:
@@ -31,7 +41,11 @@ class Settings(BaseSettings):
     def admin_usernames(self) -> set[str]:
         if not self.ADMIN_USERNAMES:
             return set()
-        return {name.strip().lower() for name in self.ADMIN_USERNAMES.split(",") if name.strip()}
+        return {
+            name.strip().lower()
+            for name in self.ADMIN_USERNAMES.split(",")
+            if name.strip()
+        }
 
 
 settings = Settings()

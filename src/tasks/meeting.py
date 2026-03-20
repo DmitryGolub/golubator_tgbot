@@ -1,11 +1,16 @@
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
+from aiogram.types import InlineKeyboardMarkup
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import joinedload
 
+from src.bot.keyboards.survey import survey_start_keyboard
 from src.celery_app import celery_app
 from src.core.config import settings
 from src.models.meeting import Meeting
@@ -15,7 +20,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 logger = logging.getLogger(__name__)
-MOSCOW_TZ = timezone(timedelta(hours=3))
 
 
 def _format_dt(dt: Optional[datetime]) -> str:
@@ -24,14 +28,6 @@ def _format_dt(dt: Optional[datetime]) -> str:
     if dt.tzinfo:
         return dt.astimezone(dt.tzinfo).strftime("%d.%m.%Y %H:%M MSK")
     return dt.strftime("%d.%m.%Y %H:%M MSK")
-
-
-def _to_utc_assuming_msk(dt: datetime | None) -> datetime | None:
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=MOSCOW_TZ)
-    return dt.astimezone(timezone.utc)
 
 
 def _split_participants(meeting: Meeting) -> tuple[Optional[User], Optional[User]]:
@@ -45,14 +41,37 @@ def _split_participants(meeting: Meeting) -> tuple[Optional[User], Optional[User
     return mentor, student
 
 
-async def _send_to_student(student: Optional[User], text: str) -> None:
-    if not student:
-        return
+def _survey_notification_text(call_id: int) -> str:
+    return (
+        "<b>Созвон завершён.</b>\n"
+        "Пожалуйста, оставьте обратную связь по встрече.\n"
+        f"ID созвона: <b>#{call_id}</b>\n"
+        f"Или отправьте команду: <code>/survey {call_id}</code>"
+    )
+
+
+async def _send_to_user(
+    user_id: int,
+    text: str,
+    *,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> None:
     bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     try:
-        await bot.send_message(student.telegram_id, text)
+        await bot.send_message(user_id, text, reply_markup=reply_markup)
     finally:
         await bot.session.close()
+
+
+async def _send_to_student(
+    student: Optional[User],
+    text: str,
+    *,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> None:
+    if not student:
+        return
+    await _send_to_user(student.telegram_id, text, reply_markup=reply_markup)
 
 
 async def _load_meeting(meeting_id: int) -> Optional[Meeting]:
@@ -109,7 +128,8 @@ async def _notify_reminder_async(meeting_id: int) -> None:
     await _send_to_student(student, text)
 
 
-async def _delete_meeting_async(meeting_id: int) -> None:
+async def _complete_meeting_async(meeting_id: int) -> bool:
+    now = datetime.now(timezone.utc)
     engine = create_async_engine(settings.DATABASE_URL)
     Session = async_sessionmaker(engine, expire_on_commit=False)
     try:
@@ -152,6 +172,13 @@ async def _cleanup_stale_async() -> None:
     finally:
         await engine.dispose()
 
+    for student_id, call_id in survey_notifications:
+        await _send_to_user(
+            student_id,
+            _survey_notification_text(call_id),
+            reply_markup=survey_start_keyboard(call_id),
+        )
+
 
 @celery_app.task(name="meeting.notify_created")
 def notify_meeting_created(meeting_id: int) -> None:
@@ -163,9 +190,15 @@ def notify_meeting_reminder(meeting_id: int) -> None:
     asyncio.run(_notify_reminder_async(meeting_id))
 
 
+@celery_app.task(name="meeting.complete")
+def complete_meeting(meeting_id: int) -> None:
+    asyncio.run(_complete_meeting_async(meeting_id))
+
+
 @celery_app.task(name="meeting.delete")
 def delete_meeting(meeting_id: int) -> None:
-    asyncio.run(_delete_meeting_async(meeting_id))
+    # Backward-compatibility alias for already planned tasks.
+    asyncio.run(_complete_meeting_async(meeting_id))
 
 
 @celery_app.task(name="meeting.cleanup_stale")
