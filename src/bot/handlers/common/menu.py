@@ -13,7 +13,7 @@ from src.bot.keyboards.cohort import cohort_actions_keyboard
 from src.models.user import Role
 from src.utils.auth import get_user_role
 from src.dao.user import UserDAO
-from src.dao.call import CallDAO
+from src.services.call_flow import ActiveCallNotFoundError, CallFlowService
 
 router = Router(name="menu")
 router.message.filter(RoleFilter([Role.admin, Role.mentor, Role.student]))
@@ -109,10 +109,33 @@ def _mentor_meetings_menu_kb():
     kb = InlineKeyboardBuilder()
     kb.button(text="Список созвонов", callback_data="mentor_meetings_list")
     kb.button(text="Добавить созвон", callback_data="meeting_create")
+    kb.button(text="Завершить активный созвон", callback_data="mentor_end_call")
     kb.button(text="Заполнить фидбек", callback_data="mentor_feedback_start")
     kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
     kb.adjust(1)
     return kb.as_markup()
+
+
+async def _finish_active_call_text(mentor_id: int) -> str:
+    service = CallFlowService()
+    try:
+        result = await service.end_active_call(mentor_id=mentor_id)
+    except ActiveCallNotFoundError:
+        return "У вас нет активного созвона."
+
+    if result.meeting is None:
+        return (
+            "✅ Активный созвон завершён.\n"
+            f"Начало: {result.call.started_at:%d.%m.%Y %H:%M}\n"
+            f"Конец: {result.call.ended_at:%d.%m.%Y %H:%M}"
+        )
+
+    return (
+        f"✅ Созвон по встрече #{result.meeting.id} завершён.\n"
+        f"Начало: {result.call.started_at:%d.%m.%Y %H:%M}\n"
+        f"Конец: {result.call.ended_at:%d.%m.%Y %H:%M}\n\n"
+        "Теперь можно заполнить фидбек."
+    )
 
 
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_students_menu")
@@ -185,42 +208,14 @@ async def cb_mentor_meetings_menu(callback: CallbackQuery):
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_end_call")
 async def cb_mentor_end_call(callback: CallbackQuery):
     await callback.answer()
+    text = await _finish_active_call_text(callback.from_user.id)
+    await callback.message.edit_text(text, reply_markup=_mentor_meetings_menu_kb())
 
-    call = await CallDAO.get_active_for_mentor(callback.from_user.id)
-    if not call:
-        try:
-            await callback.message.edit_text(
-                "У вас нет активного созвона.",
-                reply_markup=_mentor_meetings_menu_kb(),
-            )
-        except TelegramBadRequest as exc:
-            if "message is not modified" not in str(exc).lower():
-                raise
-        return
 
-    finished = await CallDAO.finish_call(call.id, callback.from_user.id)
-    if not finished:
-        try:
-            await callback.message.edit_text(
-                "Не удалось завершить созвон. Попробуйте ещё раз.",
-                reply_markup=_mentor_meetings_menu_kb(),
-            )
-        except TelegramBadRequest as exc:
-            if "message is not modified" not in str(exc).lower():
-                raise
-        return
-
-    try:
-        await callback.message.edit_text(
-            f"✅ Созвон #{finished.id} завершён.\n"
-            f"Начало: {finished.started_at:%d.%m.%Y %H:%M}\n"
-            f"Конец: {finished.ended_at:%d.%m.%Y %H:%M}\n\n"
-            f"<code>call_id={finished.id}</code> — используйте для фидбека.",
-            reply_markup=_mentor_meetings_menu_kb(),
-        )
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+@router.message(RoleFilter([Role.mentor]), Command("end_call"))
+async def cmd_end_call(message: Message):
+    text = await _finish_active_call_text(message.from_user.id)
+    await message.answer(text, reply_markup=_mentor_meetings_menu_kb())
 
 
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_me_info")

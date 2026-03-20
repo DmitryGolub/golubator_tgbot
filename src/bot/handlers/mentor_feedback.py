@@ -1,63 +1,155 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from enum import StrEnum
 
 from aiogram import F, Router
+from aiogram.filters.callback_data import CallbackData
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy.exc import SQLAlchemyError
+from aiogram.types import InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from src.bot.callbacks.mentor_feedback import (
-    ChooseFeedbackDurationCB,
-    ChooseFeedbackMeetingCB,
-    ChooseFeedbackStatusCB,
-)
 from src.bot.filters.role import RoleFilter
-from src.bot.keyboards.mentor_feedback import (
-    mentor_feedback_cancel_keyboard,
-    mentor_feedback_duration_keyboard,
-    mentor_feedback_meetings_keyboard,
-    mentor_feedback_status_keyboard,
-)
 from src.bot.keyboards.menu import menu_keyboard
-from src.bot.states.mentor_feedback import MentorFeedbackFSM
 from src.dao.meeting import MeetingDAO
 from src.dao.mentor_feedback import MentorFeedbackDAO
-from src.mentor_feedback.constants import (
-    MentorFeedbackDuration,
-    MentorFeedbackStatus,
-)
-from src.mentor_feedback.dto import MentorFeedbackCreateData
-from src.mentor_feedback.errors import (
-    CallNotFoundError,
-    MentorFeedbackAlreadyExistsError,
-    MentorNotInCallError,
-)
 from src.models.meeting import Meeting
 from src.models.user import Role
-from src.services.mentor_feedback import MentorFeedbackService
 
 
 logger = logging.getLogger(__name__)
 router = Router(name="mentor-feedback")
 router.message.filter(RoleFilter([Role.mentor]))
 router.callback_query.filter(RoleFilter([Role.mentor]))
-MOSCOW_TZ = timezone(timedelta(hours=3))
 
 
-def _to_utc_assuming_msk(dt: datetime | None) -> datetime | None:
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=MOSCOW_TZ)
-    return dt.astimezone(timezone.utc)
+class MentorFeedbackStatus(StrEnum):
+    not_ready = "not_ready"
+    bad = "bad"
+    ok = "ok"
+    great = "great"
+
+
+class MentorFeedbackDuration(StrEnum):
+    lt_30 = "lt_30"
+    min_30_60 = "min_30_60"
+    min_60_90 = "min_60_90"
+    ge_90 = "ge_90"
+
+
+class MentorFeedbackFSM(StatesGroup):
+    choosing_meeting = State()
+    choosing_status = State()
+    choosing_duration = State()
+    waiting_motivation = State()
+    waiting_neuromutation_stage = State()
+    waiting_comment = State()
+
+
+class ChooseFeedbackMeetingCB(CallbackData, prefix="feedback_meeting"):
+    meeting_id: int
+
+
+class ChooseFeedbackStatusCB(CallbackData, prefix="feedback_status"):
+    value: str
+
+
+class ChooseFeedbackDurationCB(CallbackData, prefix="feedback_duration"):
+    value: str
+
+
+STATUS_LABELS = {
+    MentorFeedbackStatus.not_ready: "Не готов",
+    MentorFeedbackStatus.bad: "Плохо",
+    MentorFeedbackStatus.ok: "Нормально",
+    MentorFeedbackStatus.great: "Отлично",
+}
+
+DURATION_LABELS = {
+    MentorFeedbackDuration.lt_30: "До 30 минут",
+    MentorFeedbackDuration.min_30_60: "30-60 минут",
+    MentorFeedbackDuration.min_60_90: "60-90 минут",
+    MentorFeedbackDuration.ge_90: "90+ минут",
+}
+
+
+def _meeting_title(meeting: Meeting) -> str:
+    student = next(
+        (
+            participant
+            for participant in meeting.participants
+            if participant.role == Role.student
+        ),
+        None,
+    )
+    student_name = student.name if student else "ученик"
+    when = meeting.scheduled_at.strftime("%d.%m %H:%M") if meeting.scheduled_at else "без даты"
+    return f"Созвон #{meeting.id} • {when} • {student_name}"
+
+
+def mentor_feedback_meetings_keyboard(meetings: list[Meeting]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for meeting in meetings:
+        builder.button(
+            text=_meeting_title(meeting),
+            callback_data=ChooseFeedbackMeetingCB(meeting_id=meeting.id).pack(),
+        )
+
+    builder.button(text="❌ Отмена", callback_data="mentor_feedback_cancel")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def mentor_feedback_status_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for status in MentorFeedbackStatus:
+        builder.button(
+            text=STATUS_LABELS[status],
+            callback_data=ChooseFeedbackStatusCB(value=status.value).pack(),
+        )
+
+    builder.button(text="❌ Отмена", callback_data="mentor_feedback_cancel")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def mentor_feedback_duration_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for duration in MentorFeedbackDuration:
+        builder.button(
+            text=DURATION_LABELS[duration],
+            callback_data=ChooseFeedbackDurationCB(value=duration.value).pack(),
+        )
+
+    builder.button(text="❌ Отмена", callback_data="mentor_feedback_cancel")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def mentor_feedback_cancel_keyboard(
+    *,
+    allow_skip_comment: bool = False,
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    if allow_skip_comment:
+        builder.button(
+            text="Пропустить комментарий",
+            callback_data="mentor_feedback_skip_comment",
+        )
+
+    builder.button(text="❌ Отмена", callback_data="mentor_feedback_cancel")
+    builder.adjust(1)
+    return builder.as_markup()
 
 
 def _is_completed_meeting(meeting: Meeting) -> bool:
-    scheduled_utc = _to_utc_assuming_msk(meeting.scheduled_at)
-    if scheduled_utc is None:
-        return False
-    return scheduled_utc <= datetime.now(timezone.utc)
+    return meeting.completed_at is not None
 
 
 async def _get_feedback_candidates(mentor_id: int) -> list[Meeting]:
@@ -101,37 +193,53 @@ async def _submit_feedback(
     data = await state.get_data()
 
     try:
-        call_id = int(data["meeting_id"])
-        payload = MentorFeedbackCreateData(
-            status=MentorFeedbackStatus(data["status"]),
-            duration=MentorFeedbackDuration(data["duration"]),
-            motivation=int(data["motivation"]),
-            neuromutation_stage=int(data["neuromutation_stage"]),
-            comment=comment,
-        )
+        meeting_id = int(data["meeting_id"])
+        status = MentorFeedbackStatus(data["status"])
+        duration = MentorFeedbackDuration(data["duration"])
+        motivation = int(data["motivation"])
+        neuromutation_stage = int(data["neuromutation_stage"])
     except (KeyError, TypeError, ValueError):
         await state.clear()
         return "Сценарий фидбека устарел. Запустите его заново."
 
-    service = MentorFeedbackService()
+    meeting = await MeetingDAO.get_with_participants(meeting_id)
+    if not meeting:
+        await state.clear()
+        return "Созвон не найден. Возможно, он был удален."
+
+    mentor = next(
+        (
+            participant
+            for participant in meeting.participants
+            if participant.telegram_id == mentor_id and participant.role == Role.mentor
+        ),
+        None,
+    )
+    if not mentor:
+        await state.clear()
+        return "Не удалось подтвердить доступ к этому созвону."
+
+    if await MentorFeedbackDAO.get_by_call_id(meeting_id):
+        await state.clear()
+        return "Фидбек для этого созвона уже сохранен."
 
     try:
-        await service.create_feedback(
-            call_id=call_id,
+        await MentorFeedbackDAO.create(
+            call_id=meeting_id,
             mentor_id=mentor_id,
-            payload=payload,
+            status=status.value,
+            duration=duration.value,
+            motivation=motivation,
+            neuromutation_stage=neuromutation_stage,
+            comment=comment,
         )
-    except CallNotFoundError:
-        text = "Созвон не найден. Возможно, он был удален."
-    except MentorNotInCallError:
-        text = "Не удалось подтвердить доступ к этому созвону."
-    except MentorFeedbackAlreadyExistsError:
+    except IntegrityError:
         text = "Фидбек для этого созвона уже сохранен."
     except SQLAlchemyError:
         logger.exception(
-            "Failed to save mentor feedback via bot: mentor_id=%s call_id=%s",
+            "Failed to save mentor feedback via bot: mentor_id=%s meeting_id=%s",
             mentor_id,
-            call_id,
+            meeting_id,
         )
         text = "Не удалось сохранить фидбек. Попробуйте позже."
     else:
@@ -141,10 +249,7 @@ async def _submit_feedback(
     return text
 
 
-@router.callback_query(
-    RoleFilter([Role.mentor]),
-    F.data == "mentor_feedback_start",
-)
+@router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_feedback_start")
 async def cb_mentor_feedback_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
@@ -246,10 +351,7 @@ async def cb_choose_feedback_duration(
     )
 
 
-@router.message(
-    RoleFilter([Role.mentor]),
-    StateFilter(MentorFeedbackFSM.waiting_motivation),
-)
+@router.message(RoleFilter([Role.mentor]), StateFilter(MentorFeedbackFSM.waiting_motivation))
 async def msg_feedback_motivation(message: Message, state: FSMContext):
     motivation = _parse_score(message.text, min_value=1, max_value=5)
     if motivation is None:
@@ -288,10 +390,7 @@ async def msg_feedback_neuromutation_stage(message: Message, state: FSMContext):
     )
 
 
-@router.message(
-    RoleFilter([Role.mentor]),
-    StateFilter(MentorFeedbackFSM.waiting_comment),
-)
+@router.message(RoleFilter([Role.mentor]), StateFilter(MentorFeedbackFSM.waiting_comment))
 async def msg_feedback_comment(message: Message, state: FSMContext):
     if not message.text:
         await message.answer(

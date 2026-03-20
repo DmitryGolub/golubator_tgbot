@@ -6,6 +6,7 @@ from datetime import date
 from src.bot.callbacks.meeting import (
     ChooseMeetingStudentCB,
     DeleteMeetingCB,
+    StartMeetingCallCB,
     ChooseMeetingDateCB,
     NavigateMeetingMonthCB,
     ChooseMeetingTimeCB,
@@ -17,10 +18,16 @@ from src.models.meeting import Meeting
 def mentor_meetings_keyboard(meetings: list[Meeting] | None = None) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="Добавить созвон", callback_data="meeting_create")
+    kb.button(text="Завершить активный созвон", callback_data="mentor_end_call")
     kb.button(text="Заполнить фидбек", callback_data="mentor_feedback_start")
 
     if meetings:
         for meeting in meetings:
+            if meeting.completed_at is None:
+                kb.button(
+                    text=f"Начать созвон #{meeting.id}",
+                    callback_data=StartMeetingCallCB(meeting_id=meeting.id).pack(),
+                )
             kb.button(
                 text=f"Удалить созвон #{meeting.id}",
                 callback_data=DeleteMeetingCB(meeting_id=meeting.id).pack(),

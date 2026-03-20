@@ -16,6 +16,13 @@ class Call(Base):
     __tablename__ = "calls"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    meeting_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("meetings.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
     mentor_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("users.telegram_id", ondelete="CASCADE"),
@@ -38,7 +45,7 @@ class Call(Base):
         Enum(
             CallStatus,
             name="call_status_enum",
-            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
             create_type=False,
         ),
         nullable=False,
@@ -46,9 +53,4 @@ class Call(Base):
         server_default=text("'идёт'"),
     )
 
-    mentor: Mapped["User"] = relationship(
-        "User", foreign_keys=[mentor_id], back_populates="mentor_calls"
-    )
-    student: Mapped["User"] = relationship(
-        "User", foreign_keys=[student_id], back_populates="student_calls"
-    )
+    meeting: Mapped["Meeting"] = relationship("Meeting", back_populates="call")

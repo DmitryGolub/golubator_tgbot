@@ -44,13 +44,6 @@ class MentorFeedbackDAO:
             return result.scalar_one_or_none()
 
     @classmethod
-    async def exists_by_call_id(cls, call_id: int) -> bool:
-        async with async_session_maker() as session:
-            query = select(MentorFeedback.id).where(MentorFeedback.call_id == call_id)
-            result = await session.execute(query)
-            return result.scalar_one_or_none() is not None
-
-    @classmethod
     async def get_call_ids(cls, call_ids: list[int]) -> set[int]:
         if not call_ids:
             return set()

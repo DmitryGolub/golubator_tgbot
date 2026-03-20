@@ -12,13 +12,13 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from src.core.database import Base
-from src.mentor_feedback.constants import (
-    MENTOR_FEEDBACK_DURATION_SQL,
-    MENTOR_FEEDBACK_STATUS_SQL,
-)
+
+
+MENTOR_FEEDBACK_STATUS_SQL = "'not_ready', 'bad', 'ok', 'great'"
+MENTOR_FEEDBACK_DURATION_SQL = "'lt_30', 'min_30_60', 'min_60_90', 'ge_90'"
 
 
 class MentorFeedback(Base):
@@ -64,6 +64,3 @@ class MentorFeedback(Base):
         nullable=False,
         server_default=func.now(),
     )
-
-    meeting: Mapped["Meeting"] = relationship("Meeting", lazy="selectin")
-    mentor: Mapped["User"] = relationship("User", lazy="selectin")

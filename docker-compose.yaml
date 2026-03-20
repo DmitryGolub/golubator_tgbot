@@ -11,7 +11,7 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,6 +23,9 @@ services:
       sh -c "alembic upgrade head"
     env_file:
       - .env
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
     depends_on:
       db:
         condition: service_healthy
@@ -34,9 +37,14 @@ services:
     container_name: tg_bot.bot
     env_file:
       - .env
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
     depends_on:
       migrations:
         condition: service_completed_successfully
+      redis:
+        condition: service_started
     restart: unless-stopped
     volumes:
       - ./:/app
@@ -56,6 +64,9 @@ services:
     command: python -m src.scripts.celery_worker
     env_file:
       - .env
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
     depends_on:
       migrations:
         condition: service_completed_successfully
@@ -71,6 +82,9 @@ services:
     command: python -m src.scripts.celery_beat
     env_file:
       - .env
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
     depends_on:
       migrations:
         condition: service_completed_successfully

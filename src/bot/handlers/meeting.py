@@ -8,6 +8,7 @@ from aiogram.exceptions import TelegramBadRequest
 from src.bot.callbacks.meeting import (
     ChooseMeetingStudentCB,
     DeleteMeetingCB,
+    StartMeetingCallCB,
     ChooseMeetingDateCB,
     NavigateMeetingMonthCB,
     ChooseMeetingTimeCB,
@@ -24,11 +25,21 @@ from src.bot.keyboards.menu import menu_keyboard
 from src.bot.states.meeting import CreateMeetingFSM
 from src.dao.meeting import MeetingDAO
 from src.dao.user import UserDAO
+from src.models.call import CallStatus
 from src.models.user import Role
 import logging
 from src.tasks.meeting import (
     notify_meeting_created,
     notify_meeting_reminder,
+)
+from src.services.call_flow import (
+    ActiveCallAlreadyExistsError,
+    CallAlreadyExistsError,
+    CallFlowService,
+    MeetingAlreadyCompletedError,
+    MeetingNotFoundError,
+    MeetingStudentNotFoundError,
+    MentorNotInMeetingError,
 )
 
 logger = logging.getLogger(__name__)
@@ -112,6 +123,56 @@ async def cb_student_meetings(callback: CallbackQuery):
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
+
+
+@router.callback_query(RoleFilter([Role.mentor]), StartMeetingCallCB.filter())
+async def cb_start_meeting_call(
+    callback: CallbackQuery,
+    callback_data: StartMeetingCallCB,
+):
+    await callback.answer()
+
+    service = CallFlowService()
+
+    try:
+        call = await service.start_call(
+            mentor_id=callback.from_user.id,
+            meeting_id=callback_data.meeting_id,
+        )
+    except MeetingNotFoundError:
+        text = "Созвон не найден."
+    except MentorNotInMeetingError:
+        text = "У вас нет доступа к этому созвону."
+    except MeetingAlreadyCompletedError:
+        text = "Этот созвон уже завершён."
+    except MeetingStudentNotFoundError:
+        text = "Не удалось определить ученика для этого созвона."
+    except ActiveCallAlreadyExistsError as exc:
+        if exc.call.meeting_id == callback_data.meeting_id:
+            text = "Этот созвон уже запущен и числится активным."
+        else:
+            text = (
+                "У вас уже есть активный созвон. "
+                "Сначала завершите его через кнопку или команду /end_call."
+            )
+    except CallAlreadyExistsError as exc:
+        if exc.call.status == CallStatus.ongoing:
+            text = "Этот созвон уже запущен и числится активным."
+        else:
+            text = "Для этого созвона уже есть завершённая сессия."
+    else:
+        text = (
+            f"✅ Созвон по встрече #{callback_data.meeting_id} начат.\n"
+            f"Активный Call #{call.id} создан.\n\n"
+            "После окончания используйте кнопку «Завершить активный созвон» "
+            "или команду /end_call."
+        )
+
+    meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
+    await callback.message.edit_text(
+        text,
+        reply_markup=mentor_meetings_keyboard(meetings),
+    )
 
 
 @router.callback_query(RoleFilter([Role.mentor]), F.data == "meeting_create")
@@ -322,6 +383,7 @@ def _schedule_meeting_tasks(meeting) -> None:
         if reminder_eta > now:
             notify_meeting_reminder.apply_async(args=[meeting_id], eta=reminder_eta)
             logger.info("Scheduled reminder for meeting %s at %s", meeting_id, reminder_eta)
+
 
 @router.message(RoleFilter([Role.mentor]), StateFilter(CreateMeetingFSM.waiting_link))
 async def msg_meeting_link(message: Message, state: FSMContext):

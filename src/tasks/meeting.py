@@ -15,6 +15,9 @@ from src.celery_app import celery_app
 from src.core.config import settings
 from src.models.meeting import Meeting
 from src.models.user import Role, User
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 logger = logging.getLogger(__name__)
 
@@ -129,49 +132,17 @@ async def _complete_meeting_async(meeting_id: int) -> bool:
     now = datetime.now(timezone.utc)
     engine = create_async_engine(settings.DATABASE_URL)
     Session = async_sessionmaker(engine, expire_on_commit=False)
-    student_to_notify: Optional[User] = None
-    survey_call_id: Optional[int] = None
-    survey_text: Optional[str] = None
-
     try:
         async with Session() as session:
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants))
-            )
+            query = select(Meeting).where(Meeting.id == meeting_id)
             result = await session.execute(query)
-            meeting = result.unique().scalar_one_or_none()
+            meeting = result.scalar_one_or_none()
+            if not meeting or meeting.completed_at is not None:
+                return
 
-            if not meeting:
-                logger.info("Meeting %s not found for completion", meeting_id)
-                return False
-
-            if meeting.completed_at is not None:
-                logger.info("Meeting %s already completed at %s", meeting_id, meeting.completed_at)
-                return False
-
-            meeting.completed_at = now
-            if meeting.survey_available_at is None:
-                meeting.survey_available_at = now
-
-            _, student = _split_participants(meeting)
-            if student:
-                student_to_notify = student
-                survey_call_id = meeting.id
-                survey_text = _survey_notification_text(meeting.id)
-
+            meeting.completed_at = datetime.now(timezone.utc)
             await session.commit()
-            logger.info("Meeting %s completed at %s", meeting_id, now)
-
-            if student_to_notify and survey_call_id and survey_text:
-                await _send_to_student(
-                    student_to_notify,
-                    survey_text,
-                    reply_markup=survey_start_keyboard(survey_call_id),
-                )
-
-            return True
+            logger.info("Completed meeting %s via scheduled task", meeting_id)
     finally:
         await engine.dispose()
 
@@ -180,8 +151,6 @@ async def _cleanup_stale_async() -> None:
     cutoff = datetime.now(timezone.utc)
     engine = create_async_engine(settings.DATABASE_URL)
     Session = async_sessionmaker(engine, expire_on_commit=False)
-    survey_notifications: list[tuple[int, int]] = []
-
     try:
         async with Session() as session:
             query = (
@@ -190,25 +159,16 @@ async def _cleanup_stale_async() -> None:
                     Meeting.scheduled_at <= cutoff,
                     Meeting.completed_at.is_(None),
                 )
-                .options(joinedload(Meeting.participants))
             )
             result = await session.execute(query)
-            meetings = result.unique().scalars().all()
+            meetings = result.scalars().all()
 
-            completed = 0
             for meeting in meetings:
                 meeting.completed_at = cutoff
-                if meeting.survey_available_at is None:
-                    meeting.survey_available_at = cutoff
 
-                _, student = _split_participants(meeting)
-                if student:
-                    survey_notifications.append((student.telegram_id, meeting.id))
-                completed += 1
-
-            if completed:
+            if meetings:
                 await session.commit()
-            logger.info("Cleanup stale meetings: cutoff=%s, completed=%s", cutoff, completed)
+            logger.info("Cleanup stale meetings: cutoff=%s, completed=%s", cutoff, len(meetings))
     finally:
         await engine.dispose()
 
