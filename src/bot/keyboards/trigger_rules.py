@@ -1,0 +1,126 @@
+from aiogram.types import InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from src.bot.callbacks.trigger_rules import (
+    TriggerActionCB,
+    TriggerActionTypeCB,
+    TriggerRecipientTypeCB,
+    TriggerRuleDeleteCB,
+    TriggerRuleDetailCB,
+    TriggerRuleSendCB,
+    TriggerRuleToggleCB,
+    TriggerSurveyTemplateCB,
+    TriggerTypeCB,
+)
+from src.models.trigger import TriggerRule
+
+
+TRIGGER_TYPE_LABELS = {
+    "meeting_created": "Создание встречи",
+    "call_ended": "Завершение созвона",
+    "periodic_cron": "По расписанию",
+    "user_state_changed": "Смена статуса",
+    "manual": "Ручной",
+}
+
+ACTION_TYPE_LABELS = {
+    "send_notification": "Отправить уведомление",
+    "send_survey": "Отправить опрос",
+}
+
+RECIPIENT_TYPE_LABELS = {
+    "event_student": "Ученик из события",
+    "event_mentor": "Ментор из события",
+    "by_role": "По роли",
+    "by_cohort": "По когорте",
+    "by_state": "По статусу",
+    "by_tag": "По тегу",
+    "specific_users": "Конкретные пользователи",
+}
+
+
+def trigger_menu_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Создать правило", callback_data=TriggerActionCB(action="create"))
+    builder.button(text="Список правил", callback_data=TriggerActionCB(action="list"))
+    builder.button(text="Отправить вручную", callback_data=TriggerActionCB(action="manual_send"))
+    builder.button(text="Назад", callback_data="menu_back")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def trigger_type_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for value, label in TRIGGER_TYPE_LABELS.items():
+        builder.button(text=label, callback_data=TriggerTypeCB(value=value))
+    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def action_type_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for value, label in ACTION_TYPE_LABELS.items():
+        builder.button(text=label, callback_data=TriggerActionTypeCB(value=value))
+    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def recipient_type_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for value, label in RECIPIENT_TYPE_LABELS.items():
+        builder.button(text=label, callback_data=TriggerRecipientTypeCB(value=value))
+    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def survey_templates_keyboard(templates) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for t in templates:
+        builder.button(text=t.title, callback_data=TriggerSurveyTemplateCB(template_id=t.id))
+    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def rules_list_keyboard(rules: list[TriggerRule]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for r in rules:
+        status = "ON" if r.is_active else "OFF"
+        trigger_label = TRIGGER_TYPE_LABELS.get(r.trigger_type.value, r.trigger_type.value)
+        builder.button(
+            text=f"[{status}] {r.name} ({trigger_label})",
+            callback_data=TriggerRuleDetailCB(rule_id=r.id),
+        )
+    builder.button(text="Назад", callback_data="menu_triggers")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def rule_detail_keyboard(rule: TriggerRule) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    toggle_text = "Выключить" if rule.is_active else "Включить"
+    builder.button(text=toggle_text, callback_data=TriggerRuleToggleCB(rule_id=rule.id))
+    builder.button(text="Отправить сейчас", callback_data=TriggerRuleSendCB(rule_id=rule.id))
+    builder.button(text="Удалить", callback_data=TriggerRuleDeleteCB(rule_id=rule.id))
+    builder.button(text="Назад", callback_data=TriggerActionCB(action="list"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def manual_send_rules_keyboard(rules: list[TriggerRule]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for r in rules:
+        builder.button(text=r.name, callback_data=TriggerRuleSendCB(rule_id=r.id))
+    builder.button(text="Назад", callback_data="menu_triggers")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def cancel_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.adjust(1)
+    return builder.as_markup()

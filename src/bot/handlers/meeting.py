@@ -377,23 +377,38 @@ def _to_utc_assuming_msk(dt: datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
-def _schedule_meeting_tasks(meeting) -> None:
+async def _schedule_meeting_tasks(meeting, mentor_id: int, student_id: int) -> None:
     meeting_id = meeting.id
     scheduled_at = meeting.scheduled_at
 
     scheduled_utc = _to_utc_assuming_msk(scheduled_at)
 
-    now = datetime.now(timezone.utc)
-
-    # immediate notification
+    # Legacy notifications (kept for backward compatibility during transition)
     notify_meeting_created.delay(meeting_id)
     logger.info("Scheduled notify_created for meeting %s", meeting_id)
 
+    now = datetime.now(timezone.utc)
     if scheduled_utc:
         reminder_eta = scheduled_utc - timedelta(minutes=5)
         if reminder_eta > now:
             notify_meeting_reminder.apply_async(args=[meeting_id], eta=reminder_eta)
             logger.info("Scheduled reminder for meeting %s at %s", meeting_id, reminder_eta)
+
+    # New trigger system
+    try:
+        from src.models.trigger import TriggerType
+        from src.services.events.dispatcher import EventDispatcher
+        await EventDispatcher.emit(
+            TriggerType.meeting_created,
+            {
+                "meeting_id": meeting_id,
+                "mentor_id": mentor_id,
+                "student_id": student_id,
+                "scheduled_at": scheduled_utc.isoformat() if scheduled_utc else None,
+            },
+        )
+    except Exception:
+        logger.exception("Failed to emit meeting_created event for meeting %s", meeting_id)
 
 
 @router.message(PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_link))
@@ -423,7 +438,7 @@ async def msg_meeting_link(message: Message, state: FSMContext):
         mentor_id=message.from_user.id,
         student_id=student_id,
     )
-    _schedule_meeting_tasks(meeting)
+    await _schedule_meeting_tasks(meeting, mentor_id=message.from_user.id, student_id=student_id)
     await state.clear()
 
     await message.answer(

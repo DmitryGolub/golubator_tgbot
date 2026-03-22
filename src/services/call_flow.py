@@ -140,8 +140,27 @@ class CallFlowService:
                 completed_at=finished_call.ended_at,
             )
 
-        return EndCallResult(
+        result = EndCallResult(
             call=finished_call,
             meeting=meeting,
             meeting_was_completed=meeting_was_completed,
         )
+
+        # Emit call_ended trigger for dynamic actions (surveys, notifications)
+        if meeting_was_completed and meeting:
+            try:
+                from src.models.trigger import TriggerType
+                from src.services.events.dispatcher import EventDispatcher
+                await EventDispatcher.emit(
+                    TriggerType.call_ended,
+                    {
+                        "meeting_id": meeting.id,
+                        "mentor_id": finished_call.mentor_id,
+                        "student_id": finished_call.student_id,
+                    },
+                )
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("Failed to emit call_ended event")
+
+        return result

@@ -13,6 +13,8 @@ def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
         kb.button(text="Рассылки", callback_data="menu_mailings")
     if "manage_surveys" in permissions:
         kb.button(text="Опросы", callback_data="menu_surveys")
+    if "manage_triggers" in permissions:
+        kb.button(text="Триггеры", callback_data="menu_triggers")
     if "manage_roles" in permissions:
         kb.button(text="Роли", callback_data="menu_roles")
     if "view_students" in permissions:

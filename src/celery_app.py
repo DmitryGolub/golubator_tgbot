@@ -13,6 +13,7 @@ celery_app = Celery(
         "src.tasks.notification",
         "src.tasks.mentor_self_review",
         "src.tasks.notion_sync",
+        "src.tasks.trigger",
     ],
 )
 
@@ -31,6 +32,14 @@ celery_app.conf.update(
         "notion.sync_cohorts": {
             "task": "notion.sync_cohorts",
             "schedule": crontab(minute="*/5"),
+        },
+        "triggers.tick_periodic": {
+            "task": "triggers.tick_periodic",
+            "schedule": crontab(minute="*"),
+        },
+        "triggers.process_pending": {
+            "task": "triggers.process_pending",
+            "schedule": crontab(minute="*"),
         },
     },
 )
