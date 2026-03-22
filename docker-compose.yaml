@@ -111,6 +111,40 @@ services:
       - dev
     restart: unless-stopped
 
+  nginx:
+    image: nginx:alpine
+    container_name: tg_bot.nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
+      - certbot_data:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    depends_on:
+      bot:
+        condition: service_healthy
+    profiles:
+      - prod
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot
+    container_name: tg_bot.certbot
+    volumes:
+      - certbot_data:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+    profiles:
+      - prod
+    entrypoint: >
+      sh -c "certbot certonly --webroot -w /var/www/certbot
+      -d ${DOMAIN} --email ${CERTBOT_EMAIL:-admin@example.com}
+      --agree-tos --non-interactive"
+
 volumes:
   db_data:
   redis_data:
+  certbot_data:
+  letsencrypt:
