@@ -78,7 +78,7 @@ class NotionClient:
                 logger.warning(
                     "Notion database %s unavailable: %s",
                     self._database_id,
-                    e.message,
+                    str(e),
                 )
                 raise NotionDatabaseUnavailableError(
                     f"Database {self._database_id} is not accessible"

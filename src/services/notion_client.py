@@ -181,27 +181,32 @@ class NotionService:
 
         if prop_type == "status":
             names: list[str] = []
+            status_block = prop_config.get("status", {})
 
-            # data_sources format: groups as dict at top level
-            # {"groups": {"to_do": [...], "in_progress": [...], ...}}
-            groups = prop_config.get("groups")
-            if groups is None:
-                # databases format: groups nested under "status"
-                groups = prop_config.get("status", {}).get("groups")
+            # Primary: options directly (like select/multi_select)
+            options_list = prop_config.get("options") or status_block.get("options", [])
+            if options_list:
+                names = [o["name"] for o in options_list if o.get("name")]
 
-            if isinstance(groups, dict):
-                for group_items in groups.values():
-                    if isinstance(group_items, list):
-                        for opt in group_items:
-                            if isinstance(opt, dict) and opt.get("name"):
+            # Fallback: extract from groups
+            if not names:
+                groups = prop_config.get("groups")
+                if groups is None:
+                    groups = status_block.get("groups")
+
+                if isinstance(groups, dict):
+                    for group_items in groups.values():
+                        if isinstance(group_items, list):
+                            for opt in group_items:
+                                if isinstance(opt, dict) and opt.get("name"):
+                                    names.append(opt["name"])
+                elif isinstance(groups, list):
+                    for group in groups:
+                        for opt in group.get("options", []):
+                            if opt.get("name"):
                                 names.append(opt["name"])
-            elif isinstance(groups, list):
-                # databases format: list of group objects with "options"
-                for group in groups:
-                    for opt in group.get("options", []):
-                        if opt.get("name"):
-                            names.append(opt["name"])
 
+            logger.debug("Status prop_config: %s, extracted: %s", prop_config, names)
             return names
 
         return []

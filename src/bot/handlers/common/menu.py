@@ -15,6 +15,7 @@ from src.dao.user import UserDAO
 from src.dao.notion_cache import NotionCacheDAO
 
 from src.services.call_flow import ActiveCallNotFoundError, CallFlowService
+from src.models.user import Role
 from src.utils.escape import e
 
 router = Router(name="menu")
@@ -300,8 +301,9 @@ async def cb_mentor_me_info(callback: CallbackQuery):
         f"Имя: <b>{e(mentor.name)}</b>\n"
         f"Юзернейм: @{e(mentor.username)}\n"
         f"Роль: <b>{e(role_display)}</b>\n"
-        f"Состояние: <b>{e(mentor.state.value)}</b>\n"
     )
+    if mentor.role == Role.student and mentor.state:
+        text += f"Состояние: <b>{e(mentor.state.value)}</b>\n"
 
     try:
         await callback.message.edit_text(text, reply_markup=await _mentor_me_keyboard())

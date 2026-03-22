@@ -7,7 +7,9 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.core.config import settings
-from src.models.meeting import Meeting
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from src.models.meeting import Meeting, MeetingUser
 from src.models.notion_cache import NotionCohortCache
 from src.models.user import State, User
 from src.services.notion import (
@@ -77,6 +79,37 @@ def _build_repos() -> (
         )
 
     return mentor_repo, mentee_repo, event_repo
+
+
+async def _resolve_mentor_id(session: AsyncSession, mentor_name: str | None) -> int | None:
+    if not mentor_name:
+        return None
+    result = await session.execute(
+        select(User.telegram_id).where(User.name == mentor_name)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _resolve_mentee_id(session: AsyncSession, tg_tag: str | None) -> int | None:
+    if not tg_tag:
+        return None
+    clean = tg_tag.lstrip("@")
+    result = await session.execute(
+        select(User.telegram_id).where(User.username == clean)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _ensure_meeting_users(
+    session: AsyncSession, meeting_id: int, mentor_id: int | None, mentee_id: int | None
+) -> None:
+    user_ids = [uid for uid in (mentor_id, mentee_id) if uid is not None]
+    if not user_ids:
+        return
+    stmt = pg_insert(MeetingUser).values(
+        [{"meeting_id": meeting_id, "user_id": uid} for uid in user_ids]
+    ).on_conflict_do_nothing()
+    await session.execute(stmt)
 
 
 class NotionSyncServiceV2:
@@ -156,6 +189,9 @@ class NotionSyncServiceV2:
                 meeting = result.scalar_one_or_none()
                 now = datetime.now(timezone.utc)
 
+                mentor_id = await _resolve_mentor_id(session, data.mentor_name)
+                mentee_id = await _resolve_mentee_id(session, data.mentee_tg_tag)
+
                 if meeting:
                     if (
                         meeting.synced_at
@@ -163,6 +199,10 @@ class NotionSyncServiceV2:
                         and meeting.synced_at >= data.last_edited_time
                     ):
                         logger.debug("Skipping echo for event %s", page_id)
+                        await _ensure_meeting_users(
+                            session, meeting.id, mentor_id, mentee_id
+                        )
+                        await session.commit()
                         return
 
                     meeting.topic = data.topic
@@ -172,6 +212,8 @@ class NotionSyncServiceV2:
                     meeting.summary = data.summary
                     meeting.action_items = data.action_items
                     meeting.project = data.project
+                    if mentor_id:
+                        meeting.mentor_telegram_id = mentor_id
 
                     if data.date:
                         from dateutil.parser import isoparse
@@ -190,6 +232,9 @@ class NotionSyncServiceV2:
                         meeting.completed_at = now
 
                     meeting.synced_at = now
+                    await _ensure_meeting_users(
+                        session, meeting.id, mentor_id, mentee_id
+                    )
                 else:
                     scheduled_at = None
                     if data.date:
@@ -213,10 +258,15 @@ class NotionSyncServiceV2:
                         action_items=data.action_items,
                         project=data.project,
                         synced_at=now,
+                        mentor_telegram_id=mentor_id,
                     )
                     if data.status == "Проведён":
                         new_meeting.completed_at = now
                     session.add(new_meeting)
+                    await session.flush()
+                    await _ensure_meeting_users(
+                        session, new_meeting.id, mentor_id, mentee_id
+                    )
 
                 await session.commit()
         finally:
@@ -545,6 +595,8 @@ class NotionSyncServiceV2:
                         meeting = result.scalar_one_or_none()
 
                         now = datetime.now(timezone.utc)
+                        mentor_id = await _resolve_mentor_id(session, ev.mentor_name)
+                        mentee_id = await _resolve_mentee_id(session, ev.mentee_tg_tag)
 
                         if meeting:
                             if (
@@ -552,6 +604,9 @@ class NotionSyncServiceV2:
                                 and ev.last_edited_time
                                 and meeting.synced_at >= ev.last_edited_time
                             ):
+                                await _ensure_meeting_users(
+                                    session, meeting.id, mentor_id, mentee_id
+                                )
                                 continue
                             meeting.topic = ev.topic
                             meeting.event_type = ev.event_type
@@ -560,11 +615,16 @@ class NotionSyncServiceV2:
                             meeting.summary = ev.summary
                             meeting.action_items = ev.action_items
                             meeting.project = ev.project
+                            if mentor_id:
+                                meeting.mentor_telegram_id = mentor_id
                             if ev.link:
                                 meeting.meeting_link = ev.link
                             if ev.status == "Проведён" and not meeting.completed_at:
                                 meeting.completed_at = now
                             meeting.synced_at = now
+                            await _ensure_meeting_users(
+                                session, meeting.id, mentor_id, mentee_id
+                            )
                         else:
                             scheduled_at = None
                             if ev.date:
@@ -588,10 +648,15 @@ class NotionSyncServiceV2:
                                 action_items=ev.action_items,
                                 project=ev.project,
                                 synced_at=now,
+                                mentor_telegram_id=mentor_id,
                             )
                             if ev.status == "Проведён":
                                 new_meeting.completed_at = now
                             session.add(new_meeting)
+                            await session.flush()
+                            await _ensure_meeting_users(
+                                session, new_meeting.id, mentor_id, mentee_id
+                            )
 
                         count += 1
                     except Exception:
