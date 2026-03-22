@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from src.models.meeting import Meeting
+    from src.models.user import User
 
 from src.core.database import Base
 
@@ -60,3 +61,13 @@ class Call(Base):
     )
 
     meeting: Mapped["Meeting"] = relationship("Meeting", back_populates="call")
+    mentor: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[mentor_id],
+        back_populates="mentor_calls",
+    )
+    student: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[student_id],
+        back_populates="student_calls",
+    )

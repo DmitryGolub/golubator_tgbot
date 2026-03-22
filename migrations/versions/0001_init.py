@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import ENUM as pgEnum
 
 revision: str = "init"
 down_revision: Union[str, None] = None
@@ -18,29 +19,41 @@ depends_on: Union[str, Sequence[str], None] = None
 
 # ── Enums ──────────────────────────────────────────────────────────────────
 
-role_enum = sa.Enum("Админ", "Ментор", "Студент", name="role_enum")
-state_enum = sa.Enum(
-    "Отбор", "В ожидании", "Обучение", "Поиск работы", "Оффер", name="state_enum"
+role_enum = pgEnum(
+    "Админ", "Ментор", "Студент", name="role_enum", create_type=False
 )
-regularity_enum = sa.Enum("day", "week", "fortnight", "month", name="regularity_enum")
-call_status_enum = sa.Enum("идёт", "завершён", name="call_status_enum")
-question_type_enum = sa.Enum(
-    "text", "rating", "single_choice", "multiple_choice", name="question_type_enum"
+state_enum = pgEnum(
+    "Отбор", "В ожидании", "Обучение", "Поиск работы", "Оффер",
+    name="state_enum", create_type=False,
 )
-session_status_enum = sa.Enum(
-    "pending", "in_progress", "completed", name="session_status_enum"
+regularity_enum = pgEnum(
+    "day", "week", "fortnight", "month", name="regularity_enum", create_type=False
 )
-trigger_type_enum = sa.Enum(
+call_status_enum = pgEnum(
+    "идёт", "завершён", name="call_status_enum", create_type=False
+)
+question_type_enum = pgEnum(
+    "text", "rating", "single_choice", "multiple_choice",
+    name="question_type_enum", create_type=False,
+)
+session_status_enum = pgEnum(
+    "pending", "in_progress", "completed", name="session_status_enum", create_type=False
+)
+trigger_type_enum = pgEnum(
     "meeting_created",
     "call_ended",
     "periodic_cron",
     "user_state_changed",
     "manual",
-    name="trigger_type_enum",
+    name="trigger_type_enum", create_type=False,
 )
-action_type_enum = sa.Enum("send_notification", "send_survey", name="action_type_enum")
-delay_mode_enum = sa.Enum("after_trigger", "before_scheduled", name="delay_mode_enum")
-recipient_type_enum = sa.Enum(
+action_type_enum = pgEnum(
+    "send_notification", "send_survey", name="action_type_enum", create_type=False
+)
+delay_mode_enum = pgEnum(
+    "after_trigger", "before_scheduled", name="delay_mode_enum", create_type=False
+)
+recipient_type_enum = pgEnum(
     "event_student",
     "event_mentor",
     "by_role",
@@ -48,13 +61,14 @@ recipient_type_enum = sa.Enum(
     "by_state",
     "by_tag",
     "specific_users",
-    name="recipient_type_enum",
+    name="recipient_type_enum", create_type=False,
 )
-trigger_regularity_enum = sa.Enum(
-    "day", "week", "fortnight", "month", name="trigger_regularity_enum"
+trigger_regularity_enum = pgEnum(
+    "day", "week", "fortnight", "month",
+    name="trigger_regularity_enum", create_type=False,
 )
-execution_status_enum = sa.Enum(
-    "pending", "sent", "failed", name="execution_status_enum"
+execution_status_enum = pgEnum(
+    "pending", "sent", "failed", name="execution_status_enum", create_type=False
 )
 
 
