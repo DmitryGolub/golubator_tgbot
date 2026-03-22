@@ -8,6 +8,8 @@ from aiogram.fsm.context import FSMContext
 from src.bot.callbacks.survey_builder import (
     SurveyBuilderActionCB,
     SurveyQuestionTypeCB,
+    SurveyResultsSessionCB,
+    SurveyResultsTemplateCB,
     SurveyTemplateDeleteCB,
     SurveyTemplateDetailCB,
     SurveyTemplateToggleCB,
@@ -19,12 +21,18 @@ from src.bot.keyboards.survey_builder import (
     after_question_keyboard,
     cancel_keyboard,
     question_type_keyboard,
+    results_sessions_keyboard,
+    results_templates_keyboard,
     survey_builder_menu_keyboard,
     template_detail_keyboard,
     templates_list_keyboard,
 )
 from src.bot.states.survey_builder import SurveyBuilderFSM
+from src.dao.survey_session import SurveySessionDAO
+from src.dao.user import UserDAO
+from src.services.survey_session import SessionNotFoundError, SurveySessionService
 from src.services.survey_template import SlugAlreadyExistsError, SurveyTemplateService
+from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
 
@@ -406,6 +414,84 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
         f"Опрос <b>{template.title}</b> создан.\n"
         f"Slug: <code>{template.slug}</code>\n"
         f"Вопросов: {len(template.questions)}{questions_text}",
+        reply_markup=survey_builder_menu_keyboard(),
+    )
+
+
+# --- Results ---
+
+@router.callback_query(SurveyBuilderActionCB.filter(F.action == "results"))
+async def cb_results_templates(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    service = SurveyTemplateService()
+    templates = await service.list_active()
+    if not templates:
+        await callback.answer("Нет опросов")
+        return
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "Выберите опрос для просмотра результатов:",
+        reply_markup=results_templates_keyboard(templates),
+    )
+
+
+@router.callback_query(SurveyResultsTemplateCB.filter())
+async def cb_results_sessions(callback: CallbackQuery, callback_data: SurveyResultsTemplateCB):
+    await callback.answer()
+    sessions = await SurveySessionDAO.get_completed_by_template(callback_data.template_id)
+    if not sessions:
+        await callback.message.edit_text(
+            "Завершённых сессий нет.",
+            reply_markup=survey_builder_menu_keyboard(),
+        )
+        return
+
+    await callback.message.edit_text(
+        f"Завершённых сессий: {len(sessions)}",
+        reply_markup=results_sessions_keyboard(sessions),
+    )
+
+
+@router.callback_query(SurveyResultsSessionCB.filter())
+async def cb_results_session_detail(callback: CallbackQuery, callback_data: SurveyResultsSessionCB):
+    await callback.answer()
+    service = SurveySessionService()
+    try:
+        session = await service.get_session(callback_data.session_id)
+    except SessionNotFoundError:
+        await callback.message.edit_text(
+            "Сессия не найдена.",
+            reply_markup=survey_builder_menu_keyboard(),
+        )
+        return
+
+    respondent_list = await UserDAO.get_all(telegram_id=session.respondent_id)
+    respondent = respondent_list[0] if respondent_list else None
+    respondent_name = e(respondent.name) if respondent else str(session.respondent_id)
+
+    lines = [
+        f"<b>Результаты сессии #{session.id}</b>",
+        f"Респондент: {respondent_name}",
+        f"Статус: {session.status.value}",
+        "",
+    ]
+
+    for answer in session.answers:
+        q = answer.question
+        q_title = e(q.title) if q else f"Вопрос #{answer.question_id}"
+        if answer.value_text is not None:
+            val = e(answer.value_text)
+        elif answer.value_int is not None:
+            val = str(answer.value_int)
+        elif answer.value_choice is not None:
+            val = ", ".join(answer.value_choice)
+        else:
+            val = "—"
+        lines.append(f"<b>{q_title}</b>\n  {val}")
+
+    await callback.message.edit_text(
+        "\n".join(lines),
         reply_markup=survey_builder_menu_keyboard(),
     )
 

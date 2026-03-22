@@ -1,6 +1,10 @@
+import logging
+
 from sqlalchemy import select, insert, delete, update
 
 from src.core.database import async_session_maker
+
+logger = logging.getLogger(__name__)
 
 
 class BaseDAO:
@@ -26,7 +30,11 @@ class BaseDAO:
             query = insert(cls.model).values(**data).returning(cls.model)
             result = await session.execute(query)
             await session.commit()
-            return result.scalars().first()
+            obj = result.scalars().first()
+            logger.debug(
+                "%s.add -> id=%s", cls.model.__name__, getattr(obj, "id", "?")
+            )
+            return obj
 
     @classmethod
     async def delete(cls, **filter_by):
@@ -34,6 +42,7 @@ class BaseDAO:
             query = delete(cls.model).filter_by(**filter_by)
             await session.execute(query)
             await session.commit()
+            logger.debug("%s.delete(%s)", cls.model.__name__, filter_by)
 
     @classmethod
     async def update(cls, id: int, **values):
@@ -46,4 +55,6 @@ class BaseDAO:
             )
             result = await session.execute(query)
             await session.commit()
-            return result.scalars().first()
+            obj = result.scalars().first()
+            logger.debug("%s.update(id=%s)", cls.model.__name__, id)
+            return obj

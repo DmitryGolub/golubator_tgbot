@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     NOTION_TOKEN: str | None = None
     NOTION_DATABASE_ID: str | None = None
 
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "dev"  # "dev" | "json"
+
     YANDEX_SHEETS_TOKEN: str | None = None
     YANDEX_SHEETS_FILE_PATH: str | None = None
     YANDEX_SHEETS_SHEET_NAME: str = "feedback_export"

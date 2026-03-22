@@ -26,6 +26,7 @@ async def cb_start_survey(callback: CallbackQuery, callback_data: StartDynamicSu
     try:
         session = await service.start_session(callback_data.session_id)
     except SessionNotFoundError:
+        logger.warning("Survey session %s not found", callback_data.session_id)
         await state.clear()
         await callback.answer("Опрос не найден")
         return
@@ -33,6 +34,8 @@ async def cb_start_survey(callback: CallbackQuery, callback_data: StartDynamicSu
         await state.clear()
         await callback.answer("Вы уже заполнили этот опрос")
         return
+
+    logger.info("Survey started: session=%s user=%s", session.id, callback.from_user.id)
 
     questions = await service.get_questions(session.id)
     if not questions:
@@ -216,6 +219,7 @@ async def _advance(message, state: FSMContext, data: dict):
     if idx >= len(questions):
         service = SurveySessionService()
         await service.complete_session(data["session_id"])
+        logger.info("Survey completed: session=%s", data["session_id"])
 
         await state.clear()
         await message.answer("Спасибо! Опрос завершён.")

@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -11,6 +13,7 @@ from src.bot.states.cohort import CohortTypeFSM
 from src.services.notion_client import get_notion_service
 from src.utils.escape import e
 
+logger = logging.getLogger(__name__)
 
 router = Router(name="cohort-edit")
 router.message.filter(PermissionFilter("manage_cohorts"))
@@ -59,11 +62,13 @@ async def process_rename_type(message: Message, state: FSMContext):
     await state.clear()
 
     if success:
+        logger.info("Cohort type renamed: %s -> %s", old_name, new_name)
         await message.answer(
             f'Тип когорты переименован: "<b>{e(old_name)}</b>" → "<b>{e(new_name)}</b>".',
             reply_markup=back_to_menu_keyboard(),
         )
     else:
+        logger.warning("Failed to rename cohort type: %s", old_name)
         await message.answer(
             f'Не удалось переименовать тип "{e(old_name)}". Возможно, он защищён.',
             reply_markup=back_to_menu_keyboard(),

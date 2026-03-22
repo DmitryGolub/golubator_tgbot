@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import Router, F
 from aiogram.filters import StateFilter
 from aiogram.types import CallbackQuery, Message
@@ -38,6 +40,8 @@ from src.dao.notion_cache import NotionCacheDAO
 from src.models.user import State
 from src.models.enums import Regularity
 from src.utils.escape import e
+
+logger = logging.getLogger(__name__)
 
 router = Router(name="mailings")
 router.message.filter(PermissionFilter("manage_mailings"))
@@ -270,6 +274,10 @@ async def cb_delete_mailings_finish(
     if sel_cohorts:
         await RuleDAO.delete_cohort_rules(sel_cohorts)
 
+    logger.info(
+        "Mailings deleted: user_rules=%d state_rules=%d cohort_rules=%d",
+        len(sel_users), len(sel_states), len(sel_cohorts),
+    )
     await state.clear()
     await callback.answer()
     await callback.message.edit_text(
@@ -522,6 +530,10 @@ async def cb_choose_regularity(
             regularity=regularity,
             author_id=author_id,
         )
+        logger.info(
+            "Mailing created: kind=individual name=%s users=%d author=%s",
+            title, len(selected), author_id,
+        )
         await state.clear()
         await callback.message.edit_text(
             "Индивидуальная рассылка создана.",
@@ -539,6 +551,10 @@ async def cb_choose_regularity(
             author_id=author_id,
             offset_days=offset_days,
         )
+        logger.info(
+            "Mailing created: kind=state name=%s states=%s author=%s",
+            title, selected_state_names, author_id,
+        )
         await state.clear()
         await callback.message.edit_text(
             "Рассылка по статусам создана.",
@@ -554,6 +570,10 @@ async def cb_choose_regularity(
             text=text_body,
             regularity=regularity,
             author_id=author_id,
+        )
+        logger.info(
+            "Mailing created: kind=cohort name=%s type=%s values=%d author=%s",
+            title, cohort_type, len(selected_values), author_id,
         )
         await state.clear()
         await callback.message.edit_text(

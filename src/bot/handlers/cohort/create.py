@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -11,6 +13,7 @@ from src.bot.states.cohort import CohortTypeFSM
 from src.services.notion_client import get_notion_service
 from src.utils.escape import e
 
+logger = logging.getLogger(__name__)
 
 router = Router(name="cohort-create")
 router.message.filter(PermissionFilter("manage_cohorts"))
@@ -53,11 +56,13 @@ async def process_type_name(message: Message, state: FSMContext):
     await state.clear()
 
     if success:
+        logger.info("Cohort type created: %s", name)
         await message.answer(
             f'Тип когорты "<b>{e(name)}</b>" создан в Notion.',
             reply_markup=back_to_menu_keyboard(),
         )
     else:
+        logger.warning("Failed to create cohort type: %s", name)
         await message.answer(
             f'Не удалось создать тип "{e(name)}". Проверьте логи.',
             reply_markup=back_to_menu_keyboard(),

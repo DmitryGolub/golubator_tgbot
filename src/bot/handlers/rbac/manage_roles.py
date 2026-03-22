@@ -1,3 +1,4 @@
+import logging
 import re
 
 from aiogram import F, Router
@@ -23,6 +24,8 @@ from src.bot.states.rbac import CreateRoleFSM
 from src.dao.role import PermissionDAO, RoleDAO
 from src.services.auth import AuthService
 from src.utils.escape import e
+
+logger = logging.getLogger(__name__)
 
 router = Router(name="rbac")
 router.message.filter(PermissionFilter("manage_roles"))
@@ -99,8 +102,10 @@ async def cb_toggle_perm(callback: CallbackQuery, callback_data: TogglePermCB):
     has_perm = any(p.id == callback_data.perm_id for p in role.permissions)
     if has_perm:
         await RoleDAO.remove_permission(callback_data.role_id, callback_data.perm_id)
+        logger.info("Permission removed: role=%s perm_id=%s", role.name, callback_data.perm_id)
     else:
         await RoleDAO.add_permission(callback_data.role_id, callback_data.perm_id)
+        logger.info("Permission added: role=%s perm_id=%s", role.name, callback_data.perm_id)
 
     await AuthService.invalidate_role(callback_data.role_id)
 
@@ -140,6 +145,7 @@ async def cb_confirm_delete(callback: CallbackQuery, callback_data: ConfirmDelet
         return
 
     await RoleDAO.delete(id=callback_data.role_id)
+    logger.info("Role deleted: role_id=%s", callback_data.role_id)
     roles = await RoleDAO.get_all()
     await callback.message.edit_text(
         "Роль удалена.",
@@ -225,6 +231,7 @@ async def cb_is_student(callback: CallbackQuery, state: FSMContext):
         is_mentor=data["is_mentor"],
         is_student=is_student,
     )
+    logger.info("Role created: %s (%s)", role.name, role.display_name)
 
     roles = await RoleDAO.get_all()
     await callback.message.edit_text(

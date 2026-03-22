@@ -77,6 +77,24 @@ class SurveySessionDAO:
             return result.unique().scalar_one_or_none()
 
     @classmethod
+    async def get_completed_by_template(cls, template_id: int) -> list[SurveySession]:
+        async with async_session_maker() as session:
+            query = (
+                select(SurveySession)
+                .where(
+                    SurveySession.template_id == template_id,
+                    SurveySession.status == SessionStatus.completed,
+                )
+                .options(
+                    joinedload(SurveySession.answers)
+                    .joinedload(SurveyAnswer.question),
+                )
+                .order_by(SurveySession.completed_at.desc())
+            )
+            result = await session.execute(query)
+            return list(result.unique().scalars().all())
+
+    @classmethod
     async def find_for_respondent(
         cls,
         *,

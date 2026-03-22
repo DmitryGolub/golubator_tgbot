@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
@@ -8,6 +10,7 @@ from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.services.notion_client import get_notion_service
 from src.utils.escape import e
 
+logger = logging.getLogger(__name__)
 
 router = Router(name="cohort-delete")
 router.callback_query.filter(PermissionFilter("manage_cohorts"))
@@ -45,11 +48,13 @@ async def do_delete_type(callback: CallbackQuery):
         await notion.close()
 
     if success:
+        logger.info("Cohort type deleted: %s", type_name)
         await callback.message.edit_text(
             f'Тип когорты "<b>{e(type_name)}</b>" удалён из Notion.',
             reply_markup=back_to_menu_keyboard(),
         )
     else:
+        logger.warning("Failed to delete cohort type: %s", type_name)
         await callback.message.edit_text(
             f'Не удалось удалить тип "{e(type_name)}". Возможно, он защищён.',
             reply_markup=back_to_menu_keyboard(),

@@ -97,8 +97,10 @@ class FeedbackExportService:
         date_to: Optional[datetime] = None,
         dry_run: bool = False,
     ) -> FeedbackExportResult:
+        logger.info("Feedback export started: dry_run=%s", dry_run)
         dataset = await self.build_dataset(date_from=date_from, date_to=date_to)
         if dry_run:
+            logger.info("Feedback export dry_run: rows=%d", dataset.rows_count)
             return FeedbackExportResult(dataset=dataset, dry_run=True)
 
         writer = self._sheet_writer or YandexSheetsWriter()
@@ -106,6 +108,7 @@ class FeedbackExportService:
             headers=dataset.headers,
             rows=dataset.serialized_rows(),
         )
+        logger.info("Feedback export completed: rows=%d", dataset.rows_count)
         return FeedbackExportResult(
             dataset=dataset,
             dry_run=False,

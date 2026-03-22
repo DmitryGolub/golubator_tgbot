@@ -147,7 +147,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("start_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("end_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("author_id", sa.BigInteger, sa.ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=False),
+        sa.Column("author_id", sa.BigInteger, sa.ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True),
     )
     op.create_table(
         "state_rules",
@@ -157,7 +157,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(255), nullable=True),
         sa.Column("text", sa.Text, nullable=False),
         sa.Column("regularity", regularity_enum, nullable=False),
-        sa.Column("author_id", sa.BigInteger, sa.ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=False),
+        sa.Column("author_id", sa.BigInteger, sa.ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True),
         sa.Column("offset_days", sa.Integer, nullable=True),
     )
     op.create_table(
@@ -169,7 +169,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(255), nullable=True),
         sa.Column("text", sa.Text, nullable=False),
         sa.Column("regularity", regularity_enum, nullable=False),
-        sa.Column("author_id", sa.BigInteger, sa.ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=False),
+        sa.Column("author_id", sa.BigInteger, sa.ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True),
     )
 
     # ── 7. Notion cohort cache ───────────────────────────────────────────
@@ -272,6 +272,7 @@ def upgrade() -> None:
         sa.Column("scheduled_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("executed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("error_message", sa.Text, nullable=True),
+        sa.Column("context", sa.JSON, nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.UniqueConstraint("rule_id", "event_key", "recipient_id", name="uq_trigger_execution_unique"),
     )
@@ -297,6 +298,7 @@ def upgrade() -> None:
         ("end_call", "Завершение активного созвона"),
         ("fill_survey", "Заполнение опросов"),
         ("fill_self_review", "Заполнение самооценки"),
+        ("export_feedback", "Экспорт фидбека в Yandex Sheets"),
     ]
     conn.execute(permissions_t.insert().values([
         {"codename": c, "description": d} for c, d in PERMISSIONS

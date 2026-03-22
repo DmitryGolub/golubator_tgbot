@@ -120,11 +120,16 @@ class CallFlowService:
         if not student:
             raise MeetingStudentNotFoundError
 
-        return await CallDAO.create_for_meeting(
+        call = await CallDAO.create_for_meeting(
             meeting_id=meeting_id,
             mentor_id=mentor_id,
             student_id=student.telegram_id,
         )
+        logger.info(
+            "Call started: call_id=%s meeting=%s mentor=%s student=%s",
+            call.id, meeting_id, mentor_id, student.telegram_id,
+        )
+        return call
 
     async def end_active_call(self, *, mentor_id: int) -> EndCallResult:
         active_call = await CallDAO.get_active_for_mentor(mentor_id)
@@ -147,6 +152,10 @@ class CallFlowService:
             call=finished_call,
             meeting=meeting,
             meeting_was_completed=meeting_was_completed,
+        )
+        logger.info(
+            "Call ended: call_id=%s mentor=%s meeting_completed=%s",
+            finished_call.id, mentor_id, meeting_was_completed,
         )
 
         # Emit call_ended trigger for dynamic actions (surveys, notifications)

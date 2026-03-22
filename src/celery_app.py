@@ -1,7 +1,16 @@
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import setup_logging as celery_setup_logging
 
 from src.core.config import settings
+from src.core.logging_config import setup_logging
+
+setup_logging(settings.LOG_LEVEL, settings.LOG_FORMAT)
+
+
+@celery_setup_logging.connect
+def _on_celery_setup_logging(**kwargs):
+    """Prevent Celery from overriding our logging config."""
 
 
 celery_app = Celery(

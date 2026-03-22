@@ -1,5 +1,6 @@
 import asyncio
 import logging
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.redis import RedisStorage
@@ -18,16 +19,32 @@ from src.bot.handlers.rbac.manage_roles import router as rbac_router
 from src.bot.handlers.survey_builder import router as survey_builder_router
 from src.bot.handlers.dynamic_survey import router as dynamic_survey_router
 from src.bot.handlers.trigger_rules import router as trigger_rules_router
+from src.bot.handlers.mentor_stats import router as mentor_stats_router
+from src.bot.handlers.export_feedback import router as export_feedback_router
+from src.bot.handlers.tags import router as tags_router
 
+from src.bot.middlewares.logging_middleware import LoggingMiddleware
 from src.core.config import settings
+from src.core.logging_config import setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    setup_logging(settings.LOG_LEVEL, settings.LOG_FORMAT)
+    logger.info(
+        "Starting bot: log_level=%s, log_format=%s, db_host=%s, redis=%s, admins=%d",
+        settings.LOG_LEVEL,
+        settings.LOG_FORMAT,
+        settings.DB_HOST,
+        settings.REDIS_HOST,
+        len(settings.admin_ids),
+    )
     bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 
     storage = RedisStorage.from_url(settings.REDIS_URL)
     dp = Dispatcher(storage=storage)
+    dp.update.outer_middleware(LoggingMiddleware())
 
     dp.include_routers(
         start_router,
@@ -44,6 +61,9 @@ async def main():
         survey_builder_router,
         dynamic_survey_router,
         trigger_rules_router,
+        mentor_stats_router,
+        export_feedback_router,
+        tags_router,
     )
 
     await dp.start_polling(bot)

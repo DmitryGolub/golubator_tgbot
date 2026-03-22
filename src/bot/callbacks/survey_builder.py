@@ -19,3 +19,11 @@ class SurveyTemplateToggleCB(CallbackData, prefix="sb_toggle"):
 
 class SurveyTemplateDeleteCB(CallbackData, prefix="sb_delete"):
     template_id: int
+
+
+class SurveyResultsTemplateCB(CallbackData, prefix="sb_res_tmpl"):
+    template_id: int
+
+
+class SurveyResultsSessionCB(CallbackData, prefix="sb_res_sess"):
+    session_id: int

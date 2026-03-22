@@ -222,6 +222,14 @@ async def cmd_end_call(message: Message):
     await message.answer(text, reply_markup=_mentor_meetings_menu_kb())
 
 
+def _mentor_me_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Моя статистика", callback_data="mentor_my_stats")
+    kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
 @router.callback_query(PermissionFilter("view_own_info"), F.data == "mentor_me_info")
 async def cb_mentor_me_info(callback: CallbackQuery):
     await callback.answer()
@@ -244,7 +252,7 @@ async def cb_mentor_me_info(callback: CallbackQuery):
     )
 
     try:
-        await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
+        await callback.message.edit_text(text, reply_markup=_mentor_me_keyboard())
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
