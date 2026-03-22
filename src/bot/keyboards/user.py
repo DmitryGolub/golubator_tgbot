@@ -8,11 +8,9 @@ from src.bot.callbacks.update_user import (
     ChooseParamCB,
     ChooseEnumValueCB,
     ChooseMentorCB,
-    ChooseCohortCB,
     ChooseUserCB,
 )
 from src.models.user import State, User
-from src.models.cohort import Cohort
 
 
 class UserDetailCB(CallbackData, prefix="user"):
@@ -47,10 +45,6 @@ def update_param_keyboard() -> InlineKeyboardMarkup:
         text="👨‍🏫 Обновить ментора",
         callback_data=ChooseParamCB(param=UpdateParam.MENTOR).pack(),
     )
-    kb.button(
-        text="👥 Обновить когорту",
-        callback_data=ChooseParamCB(param=UpdateParam.COHORT).pack(),
-    )
 
     kb.adjust(1)
     return kb.as_markup()
@@ -68,7 +62,6 @@ def update_param_keyboard_for_mentor() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-# 4.2. Клавиатура выбора роли (from DB)
 async def roles_keyboard() -> InlineKeyboardMarkup:
     from src.dao.role import RoleDAO
 
@@ -86,7 +79,6 @@ async def roles_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-# 4.3. Клавиатура выбора статуса (enum)
 def statuses_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
@@ -103,7 +95,6 @@ def statuses_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-# 4.4. Клавиатура выбора ментора
 def mentors_keyboard(mentors: list[User]) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
@@ -117,21 +108,6 @@ def mentors_keyboard(mentors: list[User]) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-# 4.5. Клавиатура выбора когорты
-def cohorts_keyboard(cohorts: list[Cohort]) -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-
-    for cohort in cohorts:
-        kb.button(
-            text=cohort.name,
-            callback_data=ChooseCohortCB(cohort_id=cohort.id).pack(),
-        )
-
-    kb.adjust(1)
-    return kb.as_markup()
-
-
-# 4.6. Клавиатура выбора пользователя
 def users_keyboard(users: list[User]) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 

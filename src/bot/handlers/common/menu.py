@@ -12,6 +12,7 @@ from src.bot.keyboards.user import user_actions_keyboard
 from src.bot.keyboards.cohort import cohort_actions_keyboard
 from src.services.auth import AuthService
 from src.dao.user import UserDAO
+from src.dao.notion_cache import NotionCacheDAO
 
 from src.services.call_flow import ActiveCallNotFoundError, CallFlowService
 
@@ -167,11 +168,13 @@ async def cb_mentor_students_list(callback: CallbackQuery):
 
     lines = ["<b>Мои ученики:</b>", ""]
     for student in students:
-        cohort_name = student.cohort.name if student.cohort else "Отсутствует"
         role_display = student.role_rel.display_name if student.role_rel else "—"
+        cohorts = await NotionCacheDAO.get_user_cohorts(student.telegram_id)
+        categories = [c.cohort_value for c in cohorts if c.cohort_type == "Category"]
+        cohort_display = ", ".join(categories) if categories else "Отсутствует"
         lines.append(
             f"👤 <b>{student.name}</b> @{student.username}\n"
-            f"   • Когорта: <b>{cohort_name}</b>\n"
+            f"   • Направления: <b>{cohort_display}</b>\n"
             f"   • Роль: <b>{role_display}</b>\n"
             f"   • Состояние: <b>{student.state.value}</b>\n"
         )

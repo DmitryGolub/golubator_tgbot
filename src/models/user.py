@@ -56,8 +56,8 @@ class User(Base):
     mentor_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True,
     )
-    cohort_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("cohorts.id", ondelete="SET NULL"), nullable=True,
+    notion_page_id: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True, unique=True, index=True,
     )
 
     registered_at: Mapped[datetime] = mapped_column(
@@ -70,8 +70,9 @@ class User(Base):
     meetings: Mapped[list["Meeting"]] = relationship(
         "Meeting", secondary="meeting_users", back_populates="participants", lazy="selectin",
     )
-    cohort: Mapped[Optional["Cohort"]] = relationship(
-        "Cohort", back_populates="users", lazy="selectin",
+    cohort_cache: Mapped[list["NotionCohortCache"]] = relationship(
+        "NotionCohortCache", back_populates="user", cascade="all, delete-orphan",
+        passive_deletes=True, lazy="selectin",
     )
     mentor: Mapped[Optional["User"]] = relationship(
         "User", remote_side="User.telegram_id", back_populates="students",

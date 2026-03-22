@@ -17,7 +17,8 @@ class ToggleStateCB(CallbackData, prefix="mail_state"):
 
 
 class ToggleCohortCB(CallbackData, prefix="mail_cohort"):
-    cohort_id: int
+    cohort_type: str
+    cohort_value: str
 
 
 class ChooseRegularityCB(CallbackData, prefix="mail_reg"):

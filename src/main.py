@@ -8,6 +8,7 @@ from src.bot.handlers.common.start import router as start_router
 from src.bot.handlers.common.menu import router as menu_router
 from src.bot.handlers.cohort.create import router as cohort_create_router
 from src.bot.handlers.cohort.delete import router as cohort_delete_router
+from src.bot.handlers.cohort.edit import router as cohort_edit_router
 from src.bot.handlers.cohort.list import router as cohort_list_router
 from src.bot.handlers.user.list import router as user_router
 from src.bot.handlers.user.update_user import router as update_user_fsm_router
@@ -34,6 +35,7 @@ async def main():
         cohort_create_router,
         cohort_list_router,
         cohort_delete_router,
+        cohort_edit_router,
         user_router,
         update_user_fsm_router,
         meeting_router,

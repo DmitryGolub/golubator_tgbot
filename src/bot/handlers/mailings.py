@@ -10,6 +10,7 @@ from src.bot.keyboards.mailings import (
     mailing_type_keyboard,
     select_users_keyboard,
     select_states_keyboard,
+    select_cohort_type_keyboard,
     select_cohorts_keyboard,
     regularity_keyboard,
     delete_mailings_keyboard,
@@ -30,9 +31,10 @@ from src.bot.callbacks.rule import (
     DeleteMailingsFinishCB,
 )
 from src.bot.states.mailings import MailingFSM
+from src.core.config import settings
 from src.dao.user import UserDAO
 from src.dao.rule import RuleDAO
-from src.dao.cohort import CohortDAO
+from src.dao.notion_cache import NotionCacheDAO
 from src.models.user import State
 from src.models.rule import Regularity
 
@@ -53,14 +55,14 @@ REGULARITY_TO_OFFSET = {
 async def cb_menu_mailings(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    await callback.message.edit_text("👥 Меню Рассылок", reply_markup=mailings_menu_keyboard())
+    await callback.message.edit_text("Меню Рассылок", reply_markup=mailings_menu_keyboard())
 
 
 @router.callback_query(F.data == "mailings_menu")
 async def cb_mailings_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    await callback.message.edit_text("👥 Меню Рассылок", reply_markup=mailings_menu_keyboard())
+    await callback.message.edit_text("Меню Рассылок", reply_markup=mailings_menu_keyboard())
 
 
 @router.callback_query(F.data == "mailings_list")
@@ -96,10 +98,9 @@ async def cb_mailings_list(callback: CallbackQuery, state: FSMContext):
         parts.append("")
         parts.append("<b>По когортам:</b>")
         for rule in cohort_rules:
-            cohort_name = rule.cohort.name if rule.cohort else f"id={rule.cohort_id}"
             parts.append(
                 f"• Название: {rule.name or '—'}\n"
-                f"  Когорта: {cohort_name}\n"
+                f"  Когорта: {rule.cohort_type}: {rule.cohort_value}\n"
                 f"  Регулярность: {rule.regularity.value}\n"
                 f"  Текст: {rule.text or '—'}"
             )
@@ -169,9 +170,7 @@ async def cb_toggle_delete_user_rule(
     await callback.message.edit_text(
         "Выберите рассылки для удаления:",
         reply_markup=delete_mailings_keyboard(
-            user_rules,
-            state_rules,
-            cohort_rules,
+            user_rules, state_rules, cohort_rules,
             sel_users,
             set(data.get("del_state_rules", [])),
             set(data.get("del_cohort_rules", [])),
@@ -204,9 +203,7 @@ async def cb_toggle_delete_state_rule(
     await callback.message.edit_text(
         "Выберите рассылки для удаления:",
         reply_markup=delete_mailings_keyboard(
-            user_rules,
-            state_rules,
-            cohort_rules,
+            user_rules, state_rules, cohort_rules,
             set(data.get("del_user_rules", [])),
             sel_states,
             set(data.get("del_cohort_rules", [])),
@@ -239,9 +236,7 @@ async def cb_toggle_delete_cohort_rule(
     await callback.message.edit_text(
         "Выберите рассылки для удаления:",
         reply_markup=delete_mailings_keyboard(
-            user_rules,
-            state_rules,
-            cohort_rules,
+            user_rules, state_rules, cohort_rules,
             set(data.get("del_user_rules", [])),
             set(data.get("del_state_rules", [])),
             sel_cohorts,
@@ -310,13 +305,70 @@ async def msg_mailing_title(message: Message, state: FSMContext):
             reply_markup=select_states_keyboard(set()),
         )
     else:
-        cohorts = await CohortDAO.get_all()
+        # Cohort: first choose cohort type, then values
+        if settings.NOTION_TOKEN and settings.NOTION_DATABASE_ID:
+            from src.services.notion_client import NotionService
+            notion = NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
+            try:
+                types = await notion.get_cohort_types()
+            finally:
+                await notion.close()
+        else:
+            types = []
+
+        if not types:
+            await message.answer(
+                "Типы когорт не найдены. Настройте Notion.",
+                reply_markup=mailings_menu_keyboard(),
+            )
+            await state.clear()
+            return
+
         await state.update_data(selected_cohorts=[])
-        await state.set_state(MailingFSM.choosing_cohorts)
+        await state.set_state(MailingFSM.choosing_cohort_type)
         await message.answer(
-            "Выберите когорты (можно несколько), затем нажмите «Готово».",
-            reply_markup=select_cohorts_keyboard(cohorts, set()),
+            "Выберите тип когорты для рассылки:",
+            reply_markup=select_cohort_type_keyboard(types),
         )
+
+
+# === Cohort type selection for mailings ===
+
+@router.callback_query(
+    StateFilter(MailingFSM.choosing_cohort_type),
+    F.data.startswith("mail_ctype:"),
+)
+async def cb_choose_cohort_type(callback: CallbackQuery, state: FSMContext):
+    cohort_type = callback.data.split(":", 1)[1]
+    await state.update_data(cohort_type=cohort_type, selected_cohorts=[])
+
+    # Get available values from cache
+    values = await NotionCacheDAO.get_distinct_values(cohort_type)
+    if not values:
+        # Fallback: get from Notion schema
+        if settings.NOTION_TOKEN and settings.NOTION_DATABASE_ID:
+            from src.services.notion_client import NotionService
+            notion = NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
+            try:
+                values = await notion.get_options(cohort_type)
+            finally:
+                await notion.close()
+
+    if not values:
+        await callback.answer()
+        await callback.message.edit_text(
+            f'Нет опций для типа "{cohort_type}".',
+            reply_markup=mailings_menu_keyboard(),
+        )
+        await state.clear()
+        return
+
+    await state.set_state(MailingFSM.choosing_cohorts)
+    await callback.answer()
+    await callback.message.edit_text(
+        f"Выберите значения <b>{cohort_type}</b> (можно несколько), затем нажмите «Готово».",
+        reply_markup=select_cohorts_keyboard(cohort_type, values, set()),
+    )
 
 
 @router.callback_query(StateFilter(MailingFSM.choosing_users), ToggleUserCB.filter())
@@ -379,7 +431,6 @@ async def cb_finish_states(callback: CallbackQuery, callback_data: MailingFinish
     if not selected_names:
         await callback.answer("Нужно выбрать хотя бы один статус.", show_alert=True)
         return
-    selected_states = {State(name) for name in selected_names}
 
     await state.set_state(MailingFSM.waiting_text)
     await callback.answer()
@@ -390,25 +441,36 @@ async def cb_finish_states(callback: CallbackQuery, callback_data: MailingFinish
 async def cb_toggle_cohort(callback: CallbackQuery, callback_data: ToggleCohortCB, state: FSMContext):
     data = await state.get_data()
     selected = set(data.get("selected_cohorts", []))
-    cohort_id = callback_data.cohort_id
-    if cohort_id in selected:
-        selected.remove(cohort_id)
+    cohort_value = callback_data.cohort_value
+    if cohort_value in selected:
+        selected.remove(cohort_value)
     else:
-        selected.add(cohort_id)
+        selected.add(cohort_value)
     await state.update_data(selected_cohorts=list(selected))
 
-    cohorts = await CohortDAO.get_all()
+    cohort_type = data.get("cohort_type", callback_data.cohort_type)
+
+    # Get values from cache or Notion
+    values = await NotionCacheDAO.get_distinct_values(cohort_type)
+    if not values and settings.NOTION_TOKEN and settings.NOTION_DATABASE_ID:
+        from src.services.notion_client import NotionService
+        notion = NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
+        try:
+            values = await notion.get_options(cohort_type)
+        finally:
+            await notion.close()
+
     await callback.answer()
     await callback.message.edit_text(
-        "Выберите когорты (можно несколько), затем нажмите «Готово».",
-        reply_markup=select_cohorts_keyboard(cohorts, selected),
+        f"Выберите значения <b>{cohort_type}</b> (можно несколько), затем нажмите «Готово».",
+        reply_markup=select_cohorts_keyboard(cohort_type, values, selected),
     )
 
 
 @router.callback_query(StateFilter(MailingFSM.choosing_cohorts), MailingFinishCohortsCB.filter())
 async def cb_finish_cohorts(callback: CallbackQuery, callback_data: MailingFinishCohortsCB, state: FSMContext):
     data = await state.get_data()
-    selected: set[int] = set(data.get("selected_cohorts", set()))
+    selected: set[str] = set(data.get("selected_cohorts", set()))
     if not selected:
         await callback.answer("Нужно выбрать хотя бы одну когорту.", show_alert=True)
         return
@@ -482,9 +544,11 @@ async def cb_choose_regularity(
             reply_markup=mailings_menu_keyboard(),
         )
     else:
-        selected_cohorts = set(data.get("selected_cohorts", []))
+        cohort_type = data.get("cohort_type", "")
+        selected_values = set(data.get("selected_cohorts", []))
+        cohort_specs = [(cohort_type, val) for val in selected_values]
         await RuleDAO.create_cohort_rules(
-            cohort_ids=selected_cohorts,
+            cohort_specs=cohort_specs,
             name=title,
             text=text_body,
             regularity=regularity,

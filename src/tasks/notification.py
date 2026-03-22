@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from src.celery_app import celery_app
 from src.core.config import settings
 from src.models.notification import Notification
+from src.models.notion_cache import NotionCohortCache
 from src.models.rule import UserRule, StateRule, CohortRule, Regularity
 from src.models.user import User
 
@@ -136,15 +137,13 @@ async def _create_notifications_for_state_rules(now: datetime) -> int:
 
 
 async def _create_notifications_for_cohort_rules(now: datetime) -> int:
-    """Create notifications for rules that target cohorts."""
+    """Create notifications for rules that target cohorts (via notion_cohort_cache)."""
     created = 0
     engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
     Session = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with Session() as session:
-            result = await session.execute(
-                select(CohortRule).options(joinedload(CohortRule.cohort))
-            )
+            result = await session.execute(select(CohortRule))
             rules: Iterable[CohortRule] = result.scalars().all()
 
             for rule in rules:
@@ -155,7 +154,15 @@ async def _create_notifications_for_cohort_rules(now: datetime) -> int:
                     continue
 
                 users_result = await session.execute(
-                    select(User).where(User.cohort_id == rule.cohort_id)
+                    select(User)
+                    .join(
+                        NotionCohortCache,
+                        NotionCohortCache.user_telegram_id == User.telegram_id,
+                    )
+                    .where(
+                        NotionCohortCache.cohort_type == rule.cohort_type,
+                        NotionCohortCache.cohort_value == rule.cohort_value,
+                    )
                 )
                 users: Iterable[User] = users_result.scalars().all()
                 if not users:

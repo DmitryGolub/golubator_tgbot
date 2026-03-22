@@ -6,10 +6,9 @@ class UpdateParam(StrEnum):
     STATUS = "status"
     ROLE = "role"
     MENTOR = "mentor"
-    COHORT = "cohort"
 
 
-# выбор, ЧТО меняем (статус/роль/ментор/когорта)
+# выбор, ЧТО меняем (статус/роль/ментор)
 class ChooseParamCB(CallbackData, prefix="upd_param"):
     param: UpdateParam
 
@@ -23,11 +22,6 @@ class ChooseEnumValueCB(CallbackData, prefix="upd_enum"):
 # выбор ментора
 class ChooseMentorCB(CallbackData, prefix="upd_mentor"):
     mentor_id: int
-
-
-# выбор когорты
-class ChooseCohortCB(CallbackData, prefix="upd_cohort"):
-    cohort_id: int
 
 
 # выбор пользователя, к которому применяем изменение

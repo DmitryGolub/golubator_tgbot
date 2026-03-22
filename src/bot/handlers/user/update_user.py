@@ -1,6 +1,6 @@
 # app/bot/handlers/admin/update_user_fsm.py
 from aiogram import Router, F
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import StateFilter
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
@@ -12,20 +12,17 @@ from src.bot.keyboards.user import (
     roles_keyboard,
     statuses_keyboard,
     mentors_keyboard,
-    cohorts_keyboard,
     users_keyboard,
 )
 from src.bot.callbacks.update_user import (
     ChooseParamCB,
     ChooseEnumValueCB,
     ChooseMentorCB,
-    ChooseCohortCB,
     ChooseUserCB,
     UpdateParam,
 )
 from src.models.user import State
 from src.dao.user import UserDAO
-from src.dao.cohort import CohortDAO
 from src.dao.role import RoleDAO
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.services.auth import AuthService
@@ -119,20 +116,6 @@ async def cb_choose_param(
             reply_markup=mentors_keyboard(mentors),
         )
 
-    elif param == UpdateParam.COHORT:
-        cohorts = await CohortDAO.get_all()
-        if not cohorts:
-            await callback.message.edit_text("Когорты не найдены.")
-            await state.clear()
-            return
-
-        await state.set_state(UpdateUserFSM.choosing_value)
-        await callback.message.edit_text(
-            "Вы выбрали: обновить <b>когорту</b>.\n\n"
-            "Теперь выберите когорту:",
-            reply_markup=cohorts_keyboard(cohorts),
-        )
-
 
 @router.callback_query(
     StateFilter(UpdateUserFSM.choosing_value),
@@ -222,47 +205,6 @@ async def cb_choose_mentor(
 
 
 @router.callback_query(
-    StateFilter(UpdateUserFSM.choosing_value),
-    ChooseCohortCB.filter(),
-)
-async def cb_choose_cohort(
-    callback: CallbackQuery,
-    callback_data: ChooseCohortCB,
-    state: FSMContext,
-):
-    perms = await AuthService.get_user_permissions(callback.from_user.id)
-    if "manage_users" not in perms:
-        await callback.answer("Доступ запрещен.", show_alert=True)
-        await state.clear()
-        return
-
-    await callback.answer()
-
-    cohort_id = callback_data.cohort_id
-    await state.update_data(
-        chosen_value=cohort_id,
-        chosen_value_type="cohort",
-    )
-
-    users = await UserDAO.get_all()
-    if not users:
-        await callback.message.edit_text("Пользователи не найдены.")
-        await state.clear()
-        return
-
-    await state.set_state(UpdateUserFSM.choosing_user)
-
-    cohort = await CohortDAO.find_one_or_none(id=cohort_id)
-    cohort_text = cohort.name if cohort else f"id={cohort_id}"
-
-    await callback.message.edit_text(
-        f"Вы выбрали: обновить <b>когорту</b> на <b>{cohort_text}</b>.\n\n"
-        "Теперь выберите пользователя:",
-        reply_markup=users_keyboard(users),
-    )
-
-
-@router.callback_query(
     StateFilter(UpdateUserFSM.choosing_user),
     ChooseUserCB.filter(),
 )
@@ -296,7 +238,6 @@ async def cb_choose_user_for_update(
         UpdateParam.STATUS: "статус",
         UpdateParam.ROLE: "роль",
         UpdateParam.MENTOR: "ментор",
-        UpdateParam.COHORT: "когорта",
     }[param]
 
     if chosen_value_type == "enum":
@@ -338,13 +279,6 @@ async def cb_choose_user_for_update(
 
         if mentor and is_new_mentor:
             await notify_student_new_mentor(user, mentor)
-
-    elif chosen_value_type == "cohort":
-
-        cohort = await CohortDAO.find_one_or_none(id=chosen_value)
-        await UserDAO.update(telegram_id=user_id, cohort_id=chosen_value)
-
-        value_human = cohort.name if cohort else f"id={chosen_value}"
 
     else:
         value_human = str(chosen_value)

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     REDIS_HOST: str
     REDIS_PORT: int
     ADMIN_USERNAMES: str | None = None
+    NOTION_TOKEN: str | None = None
+    NOTION_DATABASE_ID: str | None = None
+
     YANDEX_SHEETS_TOKEN: str | None = None
     YANDEX_SHEETS_FILE_PATH: str | None = None
     YANDEX_SHEETS_SHEET_NAME: str = "feedback_export"

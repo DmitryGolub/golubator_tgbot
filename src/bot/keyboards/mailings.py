@@ -1,6 +1,7 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardMarkup
 
+from src.bot.callbacks.cohort import CohortTypeCB
 from src.bot.callbacks.rule import (
     MailingTypeCB,
     ToggleUserCB,
@@ -16,8 +17,8 @@ from src.bot.callbacks.rule import (
     DeleteMailingsFinishCB,
 )
 from src.models.user import User, State
-from src.models.cohort import Cohort
 from src.models.rule import Regularity, UserRule, StateRule, CohortRule
+from src.services.notion_client import CohortTypeInfo
 
 
 def mailings_menu_keyboard() -> InlineKeyboardMarkup:
@@ -68,13 +69,34 @@ def select_states_keyboard(selected: set[str]) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def select_cohorts_keyboard(cohorts: list[Cohort], selected: set[int]) -> InlineKeyboardMarkup:
+def select_cohort_type_keyboard(
+    types: list[CohortTypeInfo],
+) -> InlineKeyboardMarkup:
+    """Choose which cohort type to target for mailing."""
     kb = InlineKeyboardBuilder()
-    for c in cohorts:
-        mark = "✅ " if c.id in selected else ""
+    for t in types:
         kb.button(
-            text=f"{mark}{c.name}",
-            callback_data=ToggleCohortCB(cohort_id=c.id).pack(),
+            text=f"{t.name} ({len(t.options)})",
+            callback_data=f"mail_ctype:{t.name}",
+        )
+    kb.button(text="❌ Отмена", callback_data="mailings_menu")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def select_cohorts_keyboard(
+    cohort_type: str,
+    available_values: list[str],
+    selected: set[str],
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    for val in available_values:
+        mark = "✅ " if val in selected else ""
+        kb.button(
+            text=f"{mark}{val}",
+            callback_data=ToggleCohortCB(
+                cohort_type=cohort_type, cohort_value=val
+            ).pack(),
         )
     kb.button(text="Готово", callback_data=MailingFinishCohortsCB(done=True).pack())
     kb.button(text="❌ Отмена", callback_data="mailings_menu")
@@ -121,8 +143,9 @@ def delete_mailings_keyboard(
         kb.button(text="— По когортам —", callback_data="noop")
         for rule in cohort_rules:
             mark = "✅ " if rule.id in sel_cohorts else ""
+            label = rule.name or f"{rule.cohort_type}:{rule.cohort_value}"
             kb.button(
-                text=f"{mark}{rule.name or rule.text[:20]}",
+                text=f"{mark}{label}",
                 callback_data=ToggleDeleteCohortRuleCB(rule_id=rule.id).pack(),
             )
 

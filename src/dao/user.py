@@ -28,7 +28,6 @@ class UserDAO(BaseDAO):
             query = (
                 select(cls.model)
                 .options(
-                    joinedload(cls.model.cohort),
                     joinedload(cls.model.mentor),
                     joinedload(cls.model.meetings),
                     joinedload(cls.model.role_rel),

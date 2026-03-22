@@ -2,6 +2,8 @@ from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import CommandStart
 
+import logging
+
 from src.dao.user import UserDAO
 from src.dao.role import RoleDAO
 from src.models.user import State
@@ -10,6 +12,8 @@ from datetime import datetime, timezone
 from src.core.config import settings
 from src.services.auth import AuthService
 from src.utils.onboarding import schedule_onboarding_notifications
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -61,4 +65,45 @@ async def cmd_start(message: Message):
                 await UserDAO.update(telegram_id=user_id, role_id=admin_role.id)
                 await AuthService.invalidate_user(user_id)
 
+    # Link user to Notion page
+    await _link_notion_page(user.id, username)
+
     await message.answer(WELCOME_TEXT)
+
+
+async def _link_notion_page(telegram_id: int, username: str) -> None:
+    if not settings.NOTION_TOKEN or not settings.NOTION_DATABASE_ID or not username:
+        return
+
+    from src.services.notion_client import NotionService
+
+    notion = NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
+    try:
+        # Check if user already has notion_page_id
+        existing = await UserDAO.find_one_or_none(telegram_id=telegram_id)
+        if existing and existing.notion_page_id:
+            return
+
+        # Search by telegram_id first, then by username
+        page = await notion.find_page_by_telegram_id(telegram_id)
+        if not page:
+            page = await notion.find_page_by_username(username)
+
+        if page:
+            page_id = page["id"]
+            await UserDAO.update(telegram_id=telegram_id, notion_page_id=page_id)
+            # Write telegram_id to Notion page
+            await notion.update_page_properties(
+                page_id, {"Telegram ID": {"number": telegram_id}}
+            )
+        else:
+            # Create new page in Notion
+            new_page = await notion.create_page(username, telegram_id)
+            if new_page:
+                await UserDAO.update(
+                    telegram_id=telegram_id, notion_page_id=new_page["id"]
+                )
+    except Exception:
+        logger.exception("Failed to link Notion page for user %s", telegram_id)
+    finally:
+        await notion.close()

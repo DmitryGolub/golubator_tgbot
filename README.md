@@ -5,7 +5,7 @@
 ## Зависимости
 
 - Python 3.14
-- Poetry 2.x
+- uv
 - PostgreSQL 16
 - Redis
 
@@ -16,7 +16,7 @@
 3. Установите зависимости:
 
 ```bash
-poetry install
+uv sync
 ```
 
 ## Запуск проекта
@@ -24,7 +24,7 @@ poetry install
 Запуск бота:
 
 ```bash
-poetry run python -m src.main
+uv run python -m src.main
 ```
 
 Для локального запуска значения из `.env.sample` подходят как есть: `DB_HOST=localhost`, `REDIS_HOST=localhost`.
@@ -34,7 +34,7 @@ poetry run python -m src.main
 Применить миграции:
 
 ```bash
-poetry run alembic upgrade head
+uv run alembic upgrade head
 ```
 
 ## Celery
@@ -42,13 +42,13 @@ poetry run alembic upgrade head
 Запуск worker:
 
 ```bash
-poetry run python -m src.scripts.celery_worker
+uv run python -m src.scripts.celery_worker
 ```
 
 Запуск beat:
 
 ```bash
-poetry run python -m src.scripts.celery_beat
+uv run python -m src.scripts.celery_beat
 ```
 
 ## Docker Compose
@@ -68,13 +68,7 @@ docker compose up --build
 Полный прогон:
 
 ```bash
-poetry run pytest
-```
-
-Проверка editable install:
-
-```bash
-pip install -e .
+uv run pytest
 ```
 
 ## Основной сценарий

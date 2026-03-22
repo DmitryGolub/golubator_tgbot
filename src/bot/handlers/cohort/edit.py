@@ -1,9 +1,9 @@
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from src.bot.callbacks.cohort import CreateOptionCB
+from src.bot.callbacks.cohort import RenameCohortTypeCB, RenameOptionCB
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.cohort import cohort_cancel_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
@@ -12,7 +12,7 @@ from src.core.config import settings
 from src.services.notion_client import NotionService
 
 
-router = Router(name="cohort-create")
+router = Router(name="cohort-edit")
 router.message.filter(PermissionFilter("manage_cohorts"))
 router.callback_query.filter(PermissionFilter("manage_cohorts"))
 
@@ -23,72 +23,25 @@ def _get_notion() -> NotionService | None:
     return NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
 
 
-# === Create cohort type ===
+# === Rename cohort type ===
 
-@router.callback_query(F.data == "cohort_create_type")
-async def start_create_type(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await state.set_state(CohortTypeFSM.waiting_type_name)
-    await callback.message.edit_text(
-        "Введите название нового типа когорты (будет создано multi_select свойство в Notion):",
-        reply_markup=cohort_cancel_keyboard(),
-    )
-
-
-@router.message(StateFilter(CohortTypeFSM.waiting_type_name))
-async def process_type_name(message: Message, state: FSMContext):
-    name = message.text.strip() if message.text else ""
-    if not name:
-        await message.answer(
-            "Название не может быть пустым.",
-            reply_markup=cohort_cancel_keyboard(),
-        )
-        return
-
-    notion = _get_notion()
-    if not notion:
-        await state.clear()
-        await message.answer("Notion не настроен.", reply_markup=back_to_menu_keyboard())
-        return
-
-    try:
-        success = await notion.create_cohort_type(name)
-    finally:
-        await notion.close()
-
-    await state.clear()
-
-    if success:
-        await message.answer(
-            f'Тип когорты "<b>{name}</b>" создан в Notion.',
-            reply_markup=back_to_menu_keyboard(),
-        )
-    else:
-        await message.answer(
-            f'Не удалось создать тип "{name}". Проверьте логи.',
-            reply_markup=back_to_menu_keyboard(),
-        )
-
-
-# === Create option within type ===
-
-@router.callback_query(CreateOptionCB.filter())
-async def start_create_option(
-    callback: CallbackQuery, callback_data: CreateOptionCB, state: FSMContext
+@router.callback_query(RenameCohortTypeCB.filter())
+async def start_rename_type(
+    callback: CallbackQuery, callback_data: RenameCohortTypeCB, state: FSMContext
 ):
     await callback.answer()
-    await state.set_state(CohortTypeFSM.waiting_option_name)
-    await state.update_data(type_name=callback_data.type_name)
+    await state.set_state(CohortTypeFSM.waiting_rename_type)
+    await state.update_data(old_type_name=callback_data.name)
     await callback.message.edit_text(
-        f'Введите название новой опции для <b>{callback_data.type_name}</b>:',
+        f'Введите новое название для типа когорты "<b>{callback_data.name}</b>":',
         reply_markup=cohort_cancel_keyboard(),
     )
 
 
-@router.message(StateFilter(CohortTypeFSM.waiting_option_name))
-async def process_option_name(message: Message, state: FSMContext):
-    name = message.text.strip() if message.text else ""
-    if not name:
+@router.message(StateFilter(CohortTypeFSM.waiting_rename_type))
+async def process_rename_type(message: Message, state: FSMContext):
+    new_name = message.text.strip() if message.text else ""
+    if not new_name:
         await message.answer(
             "Название не может быть пустым.",
             reply_markup=cohort_cancel_keyboard(),
@@ -96,7 +49,7 @@ async def process_option_name(message: Message, state: FSMContext):
         return
 
     data = await state.get_data()
-    type_name = data.get("type_name", "")
+    old_name = data.get("old_type_name", "")
 
     notion = _get_notion()
     if not notion:
@@ -105,7 +58,7 @@ async def process_option_name(message: Message, state: FSMContext):
         return
 
     try:
-        success = await notion.add_option(type_name, name)
+        success = await notion.rename_cohort_type(old_name, new_name)
     finally:
         await notion.close()
 
@@ -113,23 +66,69 @@ async def process_option_name(message: Message, state: FSMContext):
 
     if success:
         await message.answer(
-            f'Опция "<b>{name}</b>" добавлена в <b>{type_name}</b>.',
+            f'Тип когорты переименован: "<b>{old_name}</b>" → "<b>{new_name}</b>".',
             reply_markup=back_to_menu_keyboard(),
         )
     else:
         await message.answer(
-            f'Не удалось добавить опцию "{name}". Тип может быть нередактируемым.',
+            f'Не удалось переименовать тип "{old_name}". Возможно, он защищён.',
             reply_markup=back_to_menu_keyboard(),
         )
 
 
-# === Cancel FSM ===
+# === Rename option ===
 
-@router.callback_query(F.data == "cohort_cancel_fsm")
-async def cancel_fsm(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
+@router.callback_query(RenameOptionCB.filter())
+async def start_rename_option(
+    callback: CallbackQuery, callback_data: RenameOptionCB, state: FSMContext
+):
     await callback.answer()
-    await callback.message.edit_text(
-        "Действие отменено.",
-        reply_markup=back_to_menu_keyboard(),
+    await state.set_state(CohortTypeFSM.waiting_rename_option)
+    await state.update_data(
+        rename_type_name=callback_data.type_name,
+        rename_old_option=callback_data.option_name,
     )
+    await callback.message.edit_text(
+        f'Введите новое название для опции "<b>{callback_data.option_name}</b>" '
+        f'в <b>{callback_data.type_name}</b>:',
+        reply_markup=cohort_cancel_keyboard(),
+    )
+
+
+@router.message(StateFilter(CohortTypeFSM.waiting_rename_option))
+async def process_rename_option(message: Message, state: FSMContext):
+    new_name = message.text.strip() if message.text else ""
+    if not new_name:
+        await message.answer(
+            "Название не может быть пустым.",
+            reply_markup=cohort_cancel_keyboard(),
+        )
+        return
+
+    data = await state.get_data()
+    type_name = data.get("rename_type_name", "")
+    old_option = data.get("rename_old_option", "")
+
+    notion = _get_notion()
+    if not notion:
+        await state.clear()
+        await message.answer("Notion не настроен.", reply_markup=back_to_menu_keyboard())
+        return
+
+    try:
+        success = await notion.rename_option(type_name, old_option, new_name)
+    finally:
+        await notion.close()
+
+    await state.clear()
+
+    if success:
+        await message.answer(
+            f'Опция переименована: "<b>{old_option}</b>" → "<b>{new_name}</b>" в <b>{type_name}</b>.',
+            reply_markup=back_to_menu_keyboard(),
+        )
+    else:
+        await message.answer(
+            f'Не удалось переименовать опцию "{old_option}".',
+            reply_markup=back_to_menu_keyboard(),
+        )

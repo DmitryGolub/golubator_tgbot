@@ -102,7 +102,7 @@ class RuleDAO:
     @staticmethod
     async def create_cohort_rules(
         *,
-        cohort_ids: Iterable[int],
+        cohort_specs: Iterable[tuple[str, str]],
         name: str | None,
         text: str,
         regularity: Regularity,
@@ -111,13 +111,14 @@ class RuleDAO:
         async with async_session_maker() as session:
             values = [
                 {
-                    "cohort_id": cid,
+                    "cohort_type": ctype,
+                    "cohort_value": cvalue,
                     "name": name,
                     "text": text,
                     "regularity": regularity,
                     "author_id": author_id,
                 }
-                for cid in cohort_ids
+                for ctype, cvalue in cohort_specs
             ]
             stmt = insert(CohortRule).values(values).returning(CohortRule)
             res = await session.execute(stmt)
@@ -130,7 +131,6 @@ class RuleDAO:
             query = (
                 select(CohortRule)
                 .options(joinedload(CohortRule.author))
-                .options(joinedload(CohortRule.cohort))
                 .order_by(CohortRule.id.desc())
             )
             res = await session.execute(query)
