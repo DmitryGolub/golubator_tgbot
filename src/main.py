@@ -18,6 +18,8 @@ from src.bot.handlers.mailings import router as mailings_router
 from src.bot.handlers.mentor_self_review import router as mentor_self_review_router
 from src.bot.handlers.rbac.manage_roles import router as rbac_router
 from src.bot.handlers.survey import router as survey_router
+from src.bot.handlers.survey_builder import router as survey_builder_router
+from src.bot.handlers.dynamic_survey import router as dynamic_survey_router
 
 from src.core.config import settings
 
@@ -44,6 +46,8 @@ async def main():
         mentor_self_review_router,
         rbac_router,
         survey_router,
+        survey_builder_router,
+        dynamic_survey_router,
     )
 
     await dp.start_polling(bot)
