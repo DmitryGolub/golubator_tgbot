@@ -1,20 +1,14 @@
 DC_FILE := docker-compose.yaml
 
-.PHONY: init build up up-prod down logs ps test migrate clean ssl
+.PHONY: init up up-prod down logs ps test migrate clean
 
-init: build up logs
-
-build:
-	docker compose -f $(DC_FILE) build
+init: up logs
 
 up:
-	docker compose --profile dev up -d
+	docker compose --profile dev up -d --build
 
-up-prod: ssl
-	docker compose --profile prod up -d
-
-ssl:
-	docker compose --profile prod run --rm certbot
+up-prod:
+	docker compose --profile prod up -d --build
 
 down:
 	docker compose down

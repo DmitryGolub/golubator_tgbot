@@ -116,13 +116,8 @@ services:
     container_name: tg_bot.nginx
     ports:
       - "80:80"
-      - "443:443"
     volumes:
-      - ./nginx/default.conf:/etc/nginx/templates/default.conf.template:ro
-      - certbot_data:/var/www/certbot:ro
-      - letsencrypt:/etc/letsencrypt:ro
-    environment:
-      DOMAIN: ${DOMAIN:-localhost}
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       bot:
         condition: service_healthy
@@ -130,21 +125,6 @@ services:
       - prod
     restart: unless-stopped
 
-  certbot:
-    image: certbot/certbot
-    container_name: tg_bot.certbot
-    volumes:
-      - certbot_data:/var/www/certbot
-      - letsencrypt:/etc/letsencrypt
-    profiles:
-      - prod
-    entrypoint: >
-      sh -c "certbot certonly --webroot -w /var/www/certbot
-      -d ${DOMAIN} --email ${CERTBOT_EMAIL:-admin@example.com}
-      --agree-tos --non-interactive"
-
 volumes:
   db_data:
   redis_data:
-  certbot_data:
-  letsencrypt:
