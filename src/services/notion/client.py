@@ -47,6 +47,10 @@ def _get_rate_limiter(token: str) -> _RateLimiter:
     return _rate_limiters[token]
 
 
+class NotionDatabaseUnavailableError(Exception):
+    """Raised when a Notion database is not accessible."""
+
+
 class NotionClient:
     """Base async client for Notion API with rate limiting.
 
@@ -66,9 +70,19 @@ class NotionClient:
     async def _resolve_data_source_id(self) -> str:
         if self._data_source_id is None:
             await self._rate_limiter.acquire()
-            db = await self._client.databases.retrieve(
-                database_id=self._database_id
-            )
+            try:
+                db = await self._client.databases.retrieve(
+                    database_id=self._database_id
+                )
+            except APIResponseError as e:
+                logger.warning(
+                    "Notion database %s unavailable: %s",
+                    self._database_id,
+                    e.message,
+                )
+                raise NotionDatabaseUnavailableError(
+                    f"Database {self._database_id} is not accessible"
+                ) from e
             sources = db.get("data_sources", [])
             if not sources:
                 raise RuntimeError(

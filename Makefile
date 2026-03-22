@@ -1,6 +1,6 @@
 DC_FILE := docker-compose.yaml
 
-.PHONY: init up up-prod down logs ps test migrate clean
+.PHONY: init up up-prod down logs ps test migrate reset clean
 
 init: up logs
 
@@ -25,5 +25,8 @@ test:
 migrate:
 	uv run alembic upgrade head
 
+reset:
+	docker compose --profile dev --profile prod down -v --remove-orphans
+
 clean:
-	docker compose down -v --rmi local
+	docker compose --profile dev --profile prod down -v --rmi local --remove-orphans

@@ -1,4 +1,5 @@
 x-app: &app-base
+  build: .
   image: golubator-tgbot:latest
   env_file:
     - .env
@@ -50,7 +51,6 @@ services:
 
   bot:
     <<: *app-base
-    build: .
     container_name: tg_bot.bot
     depends_on:
       migrations:

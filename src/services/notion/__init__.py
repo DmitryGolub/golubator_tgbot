@@ -1,4 +1,4 @@
-from src.services.notion.client import NotionClient
+from src.services.notion.client import NotionClient, NotionDatabaseUnavailableError
 from src.services.notion.dto import EventData, MenteeData, MentorData
 from src.services.notion.event_repo import NotionEventRepo
 from src.services.notion.mentee_repo import NotionMenteeRepo
@@ -9,6 +9,7 @@ __all__ = [
     "MenteeData",
     "MentorData",
     "NotionClient",
+    "NotionDatabaseUnavailableError",
     "NotionEventRepo",
     "NotionMenteeRepo",
     "NotionMentorRepo",
