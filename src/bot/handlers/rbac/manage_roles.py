@@ -22,6 +22,7 @@ from src.bot.keyboards.rbac import (
 from src.bot.states.rbac import CreateRoleFSM
 from src.dao.role import PermissionDAO, RoleDAO
 from src.services.auth import AuthService
+from src.utils.escape import e
 
 router = Router(name="rbac")
 router.message.filter(PermissionFilter("manage_roles"))
@@ -49,7 +50,7 @@ async def cb_role_detail(callback: CallbackQuery, callback_data: RoleDetailCB):
         return
 
     user_count = await RoleDAO.count_users(role.id)
-    perm_names = ", ".join(p.codename for p in role.permissions) or "нет"
+    perm_names = ", ".join(e(p.codename) for p in role.permissions) or "нет"
     flags = []
     if role.is_mentor:
         flags.append("менторская")
@@ -58,7 +59,7 @@ async def cb_role_detail(callback: CallbackQuery, callback_data: RoleDetailCB):
     flags_text = ", ".join(flags) or "нет"
 
     text = (
-        f"<b>Роль: {role.display_name}</b> (<code>{role.name}</code>)\n\n"
+        f"<b>Роль: {e(role.display_name)}</b> (<code>{e(role.name)}</code>)\n\n"
         f"Флаги: {flags_text}\n"
         f"Пользователей: {user_count}\n"
         f"Пермишены: {perm_names}"
@@ -82,7 +83,7 @@ async def cb_edit_perms(callback: CallbackQuery):
 
     all_perms = await PermissionDAO.get_all()
     await callback.message.edit_text(
-        f"<b>Пермишены роли {role.display_name}</b>",
+        f"<b>Пермишены роли {e(role.display_name)}</b>",
         reply_markup=permissions_keyboard(role, all_perms),
     )
 
@@ -106,7 +107,7 @@ async def cb_toggle_perm(callback: CallbackQuery, callback_data: TogglePermCB):
     role = await RoleDAO.get_with_permissions(callback_data.role_id)
     all_perms = await PermissionDAO.get_all()
     await callback.message.edit_text(
-        f"<b>Пермишены роли {role.display_name}</b>",
+        f"<b>Пермишены роли {e(role.display_name)}</b>",
         reply_markup=permissions_keyboard(role, all_perms),
     )
 
@@ -123,7 +124,7 @@ async def cb_delete_role(callback: CallbackQuery, callback_data: DeleteRoleCB):
         return
 
     await callback.message.edit_text(
-        f"Удалить роль <b>{role.display_name}</b>?",
+        f"Удалить роль <b>{e(role.display_name)}</b>?",
         reply_markup=confirm_delete_keyboard(role),
     )
 
@@ -170,7 +171,7 @@ async def msg_role_name(message: Message, state: FSMContext):
 
     existing = await RoleDAO.get_by_name(name)
     if existing:
-        await message.answer(f"Роль <code>{name}</code> уже существует. Введите другое имя.")
+        await message.answer(f"Роль <code>{e(name)}</code> уже существует. Введите другое имя.")
         return
 
     await state.update_data(name=name)
@@ -227,6 +228,6 @@ async def cb_is_student(callback: CallbackQuery, state: FSMContext):
 
     roles = await RoleDAO.get_all()
     await callback.message.edit_text(
-        f"Роль <b>{role.display_name}</b> (<code>{role.name}</code>) создана.",
+        f"Роль <b>{e(role.display_name)}</b> (<code>{e(role.name)}</code>) создана.",
         reply_markup=roles_list_keyboard(roles),
     )

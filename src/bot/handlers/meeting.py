@@ -28,6 +28,7 @@ from src.dao.user import UserDAO
 from src.models.call import CallStatus
 from src.services.auth import AuthService
 from src.utils.roles import is_mentor, is_student
+from src.utils.escape import e
 import logging
 from src.tasks.meeting import (
     notify_meeting_created,
@@ -80,10 +81,10 @@ def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:
         if not viewer_is_mentor and student and student.telegram_id != viewer_id:
             continue
 
-        mentor_text = f"Ментор: <b>{mentor.name}</b> @{mentor.username}" if mentor else "Ментор: —"
-        student_text = f"Ученик: <b>{student.name}</b> @{student.username}" if student else "Ученик: —"
-        desc = meeting.description or "—"
-        link = meeting.meeting_link or "—"
+        mentor_text = f"Ментор: <b>{e(mentor.name)}</b> @{e(mentor.username)}" if mentor else "Ментор: —"
+        student_text = f"Ученик: <b>{e(student.name)}</b> @{e(student.username)}" if student else "Ученик: —"
+        desc = e(meeting.description) if meeting.description else "—"
+        link = e(meeting.meeting_link) if meeting.meeting_link else "—"
         if meeting.scheduled_at:
             try:
                 if meeting.scheduled_at.tzinfo:

@@ -16,6 +16,7 @@ class TriggerExecutionDAO:
         event_key: str | None,
         recipient_id: int,
         scheduled_at: datetime | None = None,
+        context: dict | None = None,
     ) -> tuple[TriggerExecution, bool]:
         """Create execution record. Returns (execution, already_existed)."""
         async with async_session_maker() as session:
@@ -39,6 +40,7 @@ class TriggerExecutionDAO:
                         recipient_id=recipient_id,
                         status=ExecutionStatus.pending,
                         scheduled_at=scheduled_at,
+                        context=context,
                     )
                     session.add(execution)
             except IntegrityError:

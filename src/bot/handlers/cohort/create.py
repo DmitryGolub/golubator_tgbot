@@ -8,19 +8,13 @@ from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.cohort import cohort_cancel_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.states.cohort import CohortTypeFSM
-from src.core.config import settings
-from src.services.notion_client import NotionService
+from src.services.notion_client import get_notion_service
+from src.utils.escape import e
 
 
 router = Router(name="cohort-create")
 router.message.filter(PermissionFilter("manage_cohorts"))
 router.callback_query.filter(PermissionFilter("manage_cohorts"))
-
-
-def _get_notion() -> NotionService | None:
-    if not settings.NOTION_TOKEN or not settings.NOTION_DATABASE_ID:
-        return None
-    return NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
 
 
 # === Create cohort type ===
@@ -45,7 +39,7 @@ async def process_type_name(message: Message, state: FSMContext):
         )
         return
 
-    notion = _get_notion()
+    notion = get_notion_service()
     if not notion:
         await state.clear()
         await message.answer("Notion не настроен.", reply_markup=back_to_menu_keyboard())
@@ -60,12 +54,12 @@ async def process_type_name(message: Message, state: FSMContext):
 
     if success:
         await message.answer(
-            f'Тип когорты "<b>{name}</b>" создан в Notion.',
+            f'Тип когорты "<b>{e(name)}</b>" создан в Notion.',
             reply_markup=back_to_menu_keyboard(),
         )
     else:
         await message.answer(
-            f'Не удалось создать тип "{name}". Проверьте логи.',
+            f'Не удалось создать тип "{e(name)}". Проверьте логи.',
             reply_markup=back_to_menu_keyboard(),
         )
 
@@ -80,7 +74,7 @@ async def start_create_option(
     await state.set_state(CohortTypeFSM.waiting_option_name)
     await state.update_data(type_name=callback_data.type_name)
     await callback.message.edit_text(
-        f'Введите название новой опции для <b>{callback_data.type_name}</b>:',
+        f'Введите название новой опции для <b>{e(callback_data.type_name)}</b>:',
         reply_markup=cohort_cancel_keyboard(),
     )
 
@@ -98,7 +92,7 @@ async def process_option_name(message: Message, state: FSMContext):
     data = await state.get_data()
     type_name = data.get("type_name", "")
 
-    notion = _get_notion()
+    notion = get_notion_service()
     if not notion:
         await state.clear()
         await message.answer("Notion не настроен.", reply_markup=back_to_menu_keyboard())
@@ -113,12 +107,12 @@ async def process_option_name(message: Message, state: FSMContext):
 
     if success:
         await message.answer(
-            f'Опция "<b>{name}</b>" добавлена в <b>{type_name}</b>.',
+            f'Опция "<b>{e(name)}</b>" добавлена в <b>{e(type_name)}</b>.',
             reply_markup=back_to_menu_keyboard(),
         )
     else:
         await message.answer(
-            f'Не удалось добавить опцию "{name}". Тип может быть нередактируемым.',
+            f'Не удалось добавить опцию "{e(name)}". Тип может быть нередактируемым.',
             reply_markup=back_to_menu_keyboard(),
         )
 

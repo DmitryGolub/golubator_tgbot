@@ -39,7 +39,7 @@ class FeedbackExportDAO:
     async def get_sessions_for_meetings(
         cls,
         meeting_ids: list[int],
-    ) -> dict[str, list[SurveySession]]:
+    ) -> dict[str, SurveySession]:
         """Returns {f"{template_slug}:{meeting_id}": session} mapping."""
         if not meeting_ids:
             return {}

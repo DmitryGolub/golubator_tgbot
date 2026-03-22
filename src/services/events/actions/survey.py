@@ -6,6 +6,7 @@ from src.bot.callbacks.dynamic_survey import StartDynamicSurveyCB
 from src.models.trigger import TriggerRule
 from src.services.events.actions.base import BaseAction
 from src.services.survey_session import SurveySessionService
+from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ class SendSurveyAction(BaseAction):
         template_title = rule.action_config.get("survey_title", "Опрос")
         await bot.send_message(
             recipient_id,
-            f"<b>{template_title}</b>\n\nВам доступен новый опрос.",
+            f"<b>{e(template_title)}</b>\n\nВам доступен новый опрос.",
             reply_markup=kb.as_markup(),
             parse_mode="HTML",
         )

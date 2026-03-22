@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 
 from src.dao.call import CallDAO
@@ -6,6 +7,8 @@ from src.models.call import Call
 from src.models.meeting import Meeting
 from src.models.user import User
 from src.utils.roles import is_mentor, is_student
+
+logger = logging.getLogger(__name__)
 
 
 class CallFlowError(Exception):
@@ -160,7 +163,6 @@ class CallFlowService:
                     },
                 )
             except Exception:
-                import logging
-                logging.getLogger(__name__).exception("Failed to emit call_ended event")
+                logger.exception("Failed to emit call_ended event")
 
         return result

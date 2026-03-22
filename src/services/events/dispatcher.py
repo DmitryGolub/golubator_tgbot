@@ -73,6 +73,7 @@ class EventDispatcher:
                     rule_id=rule.id,
                     event_key=event_key,
                     recipient_id=recipient_id,
+                    context=context,
                 )
                 if already_existed:
                     continue
@@ -94,6 +95,7 @@ class EventDispatcher:
                     event_key=event_key,
                     recipient_id=recipient_id,
                     scheduled_at=eta,
+                    context=context,
                 )
                 if already_existed:
                     continue
@@ -161,10 +163,8 @@ class EventDispatcher:
                 if isinstance(scheduled_at, str):
                     scheduled_at = datetime.fromisoformat(scheduled_at)
                 if scheduled_at.tzinfo is None:
-                    # Assume MSK (UTC+3)
-                    from datetime import timezone as tz
-                    msk = tz(timedelta(hours=3))
-                    scheduled_at = scheduled_at.replace(tzinfo=msk)
+                    from src.utils.tz import MSK
+                    scheduled_at = scheduled_at.replace(tzinfo=MSK)
                 eta = scheduled_at - timedelta(seconds=rule.delay_seconds)
                 if eta > now:
                     return eta

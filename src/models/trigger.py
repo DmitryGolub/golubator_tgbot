@@ -51,11 +51,7 @@ class RecipientType(str, enum.Enum):
     specific_users = "specific_users"
 
 
-class Regularity(str, enum.Enum):
-    day = "day"
-    week = "week"
-    fortnight = "fortnight"
-    month = "month"
+from src.models.enums import Regularity
 
 
 class ExecutionStatus(str, enum.Enum):
@@ -174,6 +170,7 @@ class TriggerExecution(Base):
         DateTime(timezone=True), nullable=True
     )
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    context: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

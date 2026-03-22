@@ -9,25 +9,19 @@ from src.bot.keyboards.cohort import (
     cohort_options_select_keyboard,
 )
 from src.bot.keyboards.menu import back_to_menu_keyboard
-from src.core.config import settings
-from src.services.notion_client import NotionService
+from src.services.notion_client import get_notion_service
+from src.utils.escape import e
 
 
 router = Router(name="cohort-list")
 router.callback_query.filter(PermissionFilter("manage_cohorts"))
 
 
-def _get_notion() -> NotionService | None:
-    if not settings.NOTION_TOKEN or not settings.NOTION_DATABASE_ID:
-        return None
-    return NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
-
-
 @router.callback_query(F.data == "cohort_list")
 async def show_cohort_types(callback: CallbackQuery):
     await callback.answer()
 
-    notion = _get_notion()
+    notion = get_notion_service()
     if not notion:
         await callback.message.edit_text(
             "Notion не настроен (NOTION_TOKEN / NOTION_DATABASE_ID).",
@@ -59,7 +53,7 @@ async def show_cohort_type_detail(
 ):
     await callback.answer()
 
-    notion = _get_notion()
+    notion = get_notion_service()
     if not notion:
         return
 
@@ -71,14 +65,14 @@ async def show_cohort_type_detail(
     info = next((t for t in types if t.name == callback_data.name), None)
     if not info:
         await callback.message.edit_text(
-            f'Тип "{callback_data.name}" не найден.',
+            f'Тип "{e(callback_data.name)}" не найден.',
             reply_markup=back_to_menu_keyboard(),
         )
         return
 
-    options_text = "\n".join(f"  • {o}" for o in info.options) if info.options else "  (пусто)"
+    options_text = "\n".join(f"  • {e(o)}" for o in info.options) if info.options else "  (пусто)"
     text = (
-        f"<b>{info.name}</b> ({info.notion_type})\n\n"
+        f"<b>{e(info.name)}</b> ({e(info.notion_type)})\n\n"
         f"Опции:\n{options_text}\n\n"
         f"{'✏️ Редактируемые опции' if info.editable else '🔒 Опции не редактируются через API'}"
     )
@@ -94,7 +88,7 @@ async def show_rename_options_list(callback: CallbackQuery):
     await callback.answer()
     type_name = callback.data.split(":", 1)[1]
 
-    notion = _get_notion()
+    notion = get_notion_service()
     if not notion:
         return
 
@@ -111,7 +105,7 @@ async def show_rename_options_list(callback: CallbackQuery):
         return
 
     await callback.message.edit_text(
-        f"Выберите опцию для переименования в <b>{type_name}</b>:",
+        f"Выберите опцию для переименования в <b>{e(type_name)}</b>:",
         reply_markup=cohort_options_select_keyboard(type_name, options, "rename"),
     )
 
@@ -121,7 +115,7 @@ async def show_delete_options_list(callback: CallbackQuery):
     await callback.answer()
     type_name = callback.data.split(":", 1)[1]
 
-    notion = _get_notion()
+    notion = get_notion_service()
     if not notion:
         return
 
@@ -138,6 +132,6 @@ async def show_delete_options_list(callback: CallbackQuery):
         return
 
     await callback.message.edit_text(
-        f"Выберите опцию для удаления в <b>{type_name}</b>:",
+        f"Выберите опцию для удаления в <b>{e(type_name)}</b>:",
         reply_markup=cohort_options_select_keyboard(type_name, options, "delete"),
     )

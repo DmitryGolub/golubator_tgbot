@@ -28,6 +28,7 @@ from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.services.auth import AuthService
 from src.utils.onboarding import schedule_onboarding_for_mentor, notify_student_new_mentor
 from src.utils.roles import is_student
+from src.utils.escape import e
 
 router = Router(name="update-user-fsm")
 router.callback_query.filter(PermissionFilter(["manage_users", "update_student_status"]))
@@ -157,7 +158,7 @@ async def cb_choose_enum_value(
     human_param = "роль" if param == UpdateParam.ROLE else "статус"
 
     await callback.message.edit_text(
-        f"Вы выбрали: обновить <b>{human_param}</b> на <b>{value}</b>.\n\n"
+        f"Вы выбрали: обновить <b>{e(human_param)}</b> на <b>{e(value)}</b>.\n\n"
         f"Теперь выберите пользователя:",
         reply_markup=users_keyboard(users),
     )
@@ -198,7 +199,7 @@ async def cb_choose_mentor(
     mentor_text = mentor.name if mentor else f"id={mentor_id}"
 
     await callback.message.edit_text(
-        f"Вы выбрали: обновить <b>ментора</b> на <b>{mentor_text}</b>.\n\n"
+        f"Вы выбрали: обновить <b>ментора</b> на <b>{e(mentor_text)}</b>.\n\n"
         "Теперь выберите пользователя:",
         reply_markup=users_keyboard(students),
     )
@@ -284,8 +285,8 @@ async def cb_choose_user_for_update(
         value_human = str(chosen_value)
 
     await callback.message.edit_text(
-        f"Пользователь {user.name} @{user.username}\n"
-        f"{param_human.title()} обновлено на: {value_human}",
+        f"Пользователь {e(user.name)} @{e(user.username)}\n"
+        f"{e(param_human.title())} обновлено на: {e(value_human)}",
         reply_markup=back_to_menu_keyboard(),
     )
     await state.clear()

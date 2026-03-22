@@ -113,6 +113,11 @@ class SurveyTemplateDAO:
             return question
 
     @classmethod
+    async def get_question_by_id(cls, question_id: int) -> Optional[SurveyQuestion]:
+        async with async_session_maker() as session:
+            return await session.get(SurveyQuestion, question_id)
+
+    @classmethod
     async def delete(cls, template_id: int) -> bool:
         async with async_session_maker() as session:
             template = await session.get(SurveyTemplate, template_id)

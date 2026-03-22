@@ -35,6 +35,15 @@ class CohortTypeInfo:
     type_editable: bool = False  # can delete/rename the type itself
 
 
+def get_notion_service() -> "NotionService | None":
+    """Factory for NotionService. Returns None if Notion is not configured."""
+    from src.core.config import settings
+
+    if not settings.NOTION_TOKEN or not settings.NOTION_DATABASE_ID:
+        return None
+    return NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
+
+
 class NotionService:
     """Wrapper around Notion API for cohort management."""
 

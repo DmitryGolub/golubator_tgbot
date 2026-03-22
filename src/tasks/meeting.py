@@ -22,9 +22,8 @@ logger = logging.getLogger(__name__)
 def _format_dt(dt: Optional[datetime]) -> str:
     if not dt:
         return "—"
-    if dt.tzinfo:
-        return dt.astimezone(dt.tzinfo).strftime("%d.%m.%Y %H:%M MSK")
-    return dt.strftime("%d.%m.%Y %H:%M MSK")
+    from src.utils.tz import MSK
+    return dt.astimezone(MSK).strftime("%d.%m.%Y %H:%M MSK")
 
 
 def _split_participants(meeting: Meeting) -> tuple[Optional[User], Optional[User]]:
@@ -136,11 +135,12 @@ async def _complete_meeting_async(meeting_id: int) -> bool:
             result = await session.execute(query)
             meeting = result.scalar_one_or_none()
             if not meeting or meeting.completed_at is not None:
-                return
+                return False
 
             meeting.completed_at = datetime.now(timezone.utc)
             await session.commit()
             logger.info("Completed meeting %s via scheduled task", meeting_id)
+            return True
     finally:
         await engine.dispose()
 

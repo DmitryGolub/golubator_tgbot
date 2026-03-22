@@ -1,7 +1,7 @@
 from aiogram.filters.callback_data import CallbackData
 
 from src.models.user import State
-from src.models.rule import Regularity
+from src.models.enums import Regularity
 
 
 class MailingTypeCB(CallbackData, prefix="mail_type"):

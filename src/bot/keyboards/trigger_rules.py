@@ -44,7 +44,7 @@ def trigger_menu_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="Создать правило", callback_data=TriggerActionCB(action="create"))
     builder.button(text="Список правил", callback_data=TriggerActionCB(action="list"))
     builder.button(text="Отправить вручную", callback_data=TriggerActionCB(action="manual_send"))
-    builder.button(text="Назад", callback_data="menu_back")
+    builder.button(text="Назад", callback_data="back_to_menu")
     builder.adjust(1)
     return builder.as_markup()
 

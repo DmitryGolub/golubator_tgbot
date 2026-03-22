@@ -23,7 +23,7 @@ def survey_builder_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="Создать опрос", callback_data=SurveyBuilderActionCB(action="create"))
     builder.button(text="Список опросов", callback_data=SurveyBuilderActionCB(action="list"))
-    builder.button(text="Назад", callback_data="menu_back")
+    builder.button(text="Назад", callback_data="back_to_menu")
     builder.adjust(1)
     return builder.as_markup()
 

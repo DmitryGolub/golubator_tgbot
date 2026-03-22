@@ -34,6 +34,7 @@ from src.bot.states.trigger_rules import TriggerRuleBuilderFSM
 from src.dao.trigger_rule import TriggerRuleDAO
 from src.services.events.dispatcher import EventDispatcher
 from src.services.survey_template import SurveyTemplateService
+from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
 
@@ -77,16 +78,16 @@ async def cb_rule_detail(callback: CallbackQuery, callback_data: TriggerRuleDeta
     status = "Активно" if rule.is_active else "Отключено"
 
     text = (
-        f"<b>{rule.name}</b>\n\n"
-        f"Триггер: {trigger_label}\n"
-        f"Действие: {action_label}\n"
-        f"Получатели: {recipient_label}\n"
-        f"Задержка: {rule.delay_seconds} сек ({rule.delay_mode.value})\n"
+        f"<b>{e(rule.name)}</b>\n\n"
+        f"Триггер: {e(trigger_label)}\n"
+        f"Действие: {e(action_label)}\n"
+        f"Получатели: {e(recipient_label)}\n"
+        f"Задержка: {rule.delay_seconds} сек ({e(rule.delay_mode.value)})\n"
         f"Статус: {status}"
     )
 
     if rule.cron_expression:
-        text += f"\nCron: <code>{rule.cron_expression}</code>"
+        text += f"\nCron: <code>{e(rule.cron_expression)}</code>"
 
     await callback.answer()
     await callback.message.edit_text(text, reply_markup=rule_detail_keyboard(rule))
@@ -102,7 +103,7 @@ async def cb_toggle_rule(callback: CallbackQuery, callback_data: TriggerRuleTogg
     status = "включено" if rule.is_active else "выключено"
     await callback.answer(f"Правило {status}")
     await callback.message.edit_text(
-        f"Правило <b>{rule.name}</b> — {status}.",
+        f"Правило <b>{e(rule.name)}</b> — {status}.",
         reply_markup=rule_detail_keyboard(rule),
     )
 
@@ -153,7 +154,7 @@ async def cb_send_now(callback: CallbackQuery, callback_data: TriggerRuleSendCB)
     )
 
     await callback.message.edit_text(
-        f"Правило <b>{rule.name}</b> выполнено.\n"
+        f"Правило <b>{e(rule.name)}</b> выполнено.\n"
         f"Отправлено: {count} получателям.",
         reply_markup=trigger_menu_keyboard(),
     )
@@ -274,7 +275,11 @@ async def msg_recipient_config(message: Message, state: FSMContext):
     elif rt == "by_state":
         config = {"state": text}
     elif rt == "by_tag":
-        config = {"tag_id": int(text)}
+        try:
+            config = {"tag_id": int(text)}
+        except ValueError:
+            await message.answer("Введите числовой ID тега.")
+            return
     elif rt == "by_cohort":
         config = {"cohort_value": text}
     elif rt == "specific_users":
@@ -319,9 +324,9 @@ async def msg_delay(message: Message, state: FSMContext):
     action_label = ACTION_TYPE_LABELS.get(rule.action_type.value, rule.action_type.value)
 
     await message.answer(
-        f"Правило <b>{rule.name}</b> создано.\n\n"
-        f"Триггер: {trigger_label}\n"
-        f"Действие: {action_label}\n"
+        f"Правило <b>{e(rule.name)}</b> создано.\n\n"
+        f"Триггер: {e(trigger_label)}\n"
+        f"Действие: {e(action_label)}\n"
         f"Задержка: {delay} сек",
         reply_markup=trigger_menu_keyboard(),
     )

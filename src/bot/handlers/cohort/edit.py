@@ -8,19 +8,13 @@ from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.cohort import cohort_cancel_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.states.cohort import CohortTypeFSM
-from src.core.config import settings
-from src.services.notion_client import NotionService
+from src.services.notion_client import get_notion_service
+from src.utils.escape import e
 
 
 router = Router(name="cohort-edit")
 router.message.filter(PermissionFilter("manage_cohorts"))
 router.callback_query.filter(PermissionFilter("manage_cohorts"))
-
-
-def _get_notion() -> NotionService | None:
-    if not settings.NOTION_TOKEN or not settings.NOTION_DATABASE_ID:
-        return None
-    return NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
 
 
 # === Rename cohort type ===
@@ -33,7 +27,7 @@ async def start_rename_type(
     await state.set_state(CohortTypeFSM.waiting_rename_type)
     await state.update_data(old_type_name=callback_data.name)
     await callback.message.edit_text(
-        f'Введите новое название для типа когорты "<b>{callback_data.name}</b>":',
+        f'Введите новое название для типа когорты "<b>{e(callback_data.name)}</b>":',
         reply_markup=cohort_cancel_keyboard(),
     )
 
@@ -51,7 +45,7 @@ async def process_rename_type(message: Message, state: FSMContext):
     data = await state.get_data()
     old_name = data.get("old_type_name", "")
 
-    notion = _get_notion()
+    notion = get_notion_service()
     if not notion:
         await state.clear()
         await message.answer("Notion не настроен.", reply_markup=back_to_menu_keyboard())
@@ -66,12 +60,12 @@ async def process_rename_type(message: Message, state: FSMContext):
 
     if success:
         await message.answer(
-            f'Тип когорты переименован: "<b>{old_name}</b>" → "<b>{new_name}</b>".',
+            f'Тип когорты переименован: "<b>{e(old_name)}</b>" → "<b>{e(new_name)}</b>".',
             reply_markup=back_to_menu_keyboard(),
         )
     else:
         await message.answer(
-            f'Не удалось переименовать тип "{old_name}". Возможно, он защищён.',
+            f'Не удалось переименовать тип "{e(old_name)}". Возможно, он защищён.',
             reply_markup=back_to_menu_keyboard(),
         )
 
@@ -89,8 +83,8 @@ async def start_rename_option(
         rename_old_option=callback_data.option_name,
     )
     await callback.message.edit_text(
-        f'Введите новое название для опции "<b>{callback_data.option_name}</b>" '
-        f'в <b>{callback_data.type_name}</b>:',
+        f'Введите новое название для опции "<b>{e(callback_data.option_name)}</b>" '
+        f'в <b>{e(callback_data.type_name)}</b>:',
         reply_markup=cohort_cancel_keyboard(),
     )
 
@@ -109,7 +103,7 @@ async def process_rename_option(message: Message, state: FSMContext):
     type_name = data.get("rename_type_name", "")
     old_option = data.get("rename_old_option", "")
 
-    notion = _get_notion()
+    notion = get_notion_service()
     if not notion:
         await state.clear()
         await message.answer("Notion не настроен.", reply_markup=back_to_menu_keyboard())
@@ -124,11 +118,11 @@ async def process_rename_option(message: Message, state: FSMContext):
 
     if success:
         await message.answer(
-            f'Опция переименована: "<b>{old_option}</b>" → "<b>{new_name}</b>" в <b>{type_name}</b>.',
+            f'Опция переименована: "<b>{e(old_option)}</b>" → "<b>{e(new_name)}</b>" в <b>{e(type_name)}</b>.',
             reply_markup=back_to_menu_keyboard(),
         )
     else:
         await message.answer(
-            f'Не удалось переименовать опцию "{old_option}".',
+            f'Не удалось переименовать опцию "{e(old_option)}".',
             reply_markup=back_to_menu_keyboard(),
         )

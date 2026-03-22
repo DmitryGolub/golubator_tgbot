@@ -46,11 +46,12 @@ class RoleDAO(BaseDAO):
     @classmethod
     async def count_users(cls, role_id: int) -> int:
         from src.models.user import User
+        from sqlalchemy import func
 
         async with async_session_maker() as session:
-            query = select(User.telegram_id).where(User.role_id == role_id)
+            query = select(func.count()).select_from(User).where(User.role_id == role_id)
             result = await session.execute(query)
-            return len(result.all())
+            return result.scalar() or 0
 
 
 class PermissionDAO(BaseDAO):

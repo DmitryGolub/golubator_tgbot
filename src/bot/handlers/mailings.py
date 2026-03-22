@@ -36,7 +36,8 @@ from src.dao.user import UserDAO
 from src.dao.rule import RuleDAO
 from src.dao.notion_cache import NotionCacheDAO
 from src.models.user import State
-from src.models.rule import Regularity
+from src.models.enums import Regularity
+from src.utils.escape import e
 
 router = Router(name="mailings")
 router.message.filter(PermissionFilter("manage_mailings"))
@@ -79,30 +80,30 @@ async def cb_mailings_list(callback: CallbackQuery, state: FSMContext):
         parts.append("<b>Индивидуальные:</b>")
         for rule in user_rules:
             parts.append(
-                f"• Название: {rule.name or '—'}\n"
-                f"  Пользователь: @{rule.user.username} ({rule.user.name})\n"
-                f"  Регулярность: {rule.regularity.value}\n"
-                f"  Текст: {rule.text or '—'}"
+                f"• Название: {e(rule.name) or '—'}\n"
+                f"  Пользователь: @{e(rule.user.username)} ({e(rule.user.name)})\n"
+                f"  Регулярность: {e(rule.regularity.value)}\n"
+                f"  Текст: {e(rule.text) or '—'}"
             )
     if state_rules:
         parts.append("")
         parts.append("<b>По статусам:</b>")
         for rule in state_rules:
             parts.append(
-                f"• Название: {rule.name or '—'}\n"
-                f"  Статус: {rule.user_state.value}\n"
-                f"  Регулярность: {rule.regularity.value}\n"
-                f"  Текст: {rule.text or '—'}"
+                f"• Название: {e(rule.name) or '—'}\n"
+                f"  Статус: {e(rule.user_state.value)}\n"
+                f"  Регулярность: {e(rule.regularity.value)}\n"
+                f"  Текст: {e(rule.text) or '—'}"
             )
     if cohort_rules:
         parts.append("")
         parts.append("<b>По когортам:</b>")
         for rule in cohort_rules:
             parts.append(
-                f"• Название: {rule.name or '—'}\n"
-                f"  Когорта: {rule.cohort_type}: {rule.cohort_value}\n"
-                f"  Регулярность: {rule.regularity.value}\n"
-                f"  Текст: {rule.text or '—'}"
+                f"• Название: {e(rule.name) or '—'}\n"
+                f"  Когорта: {e(rule.cohort_type)}: {e(rule.cohort_value)}\n"
+                f"  Регулярность: {e(rule.regularity.value)}\n"
+                f"  Текст: {e(rule.text) or '—'}"
             )
 
     if not user_rules and not state_rules and not cohort_rules:
@@ -366,7 +367,7 @@ async def cb_choose_cohort_type(callback: CallbackQuery, state: FSMContext):
     await state.set_state(MailingFSM.choosing_cohorts)
     await callback.answer()
     await callback.message.edit_text(
-        f"Выберите значения <b>{cohort_type}</b> (можно несколько), затем нажмите «Готово».",
+        f"Выберите значения <b>{e(cohort_type)}</b> (можно несколько), затем нажмите «Готово».",
         reply_markup=select_cohorts_keyboard(cohort_type, values, set()),
     )
 
@@ -462,7 +463,7 @@ async def cb_toggle_cohort(callback: CallbackQuery, callback_data: ToggleCohortC
 
     await callback.answer()
     await callback.message.edit_text(
-        f"Выберите значения <b>{cohort_type}</b> (можно несколько), затем нажмите «Готово».",
+        f"Выберите значения <b>{e(cohort_type)}</b> (можно несколько), затем нажмите «Готово».",
         reply_markup=select_cohorts_keyboard(cohort_type, values, selected),
     )
 

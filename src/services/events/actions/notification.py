@@ -1,4 +1,5 @@
 import logging
+from string import Template
 
 from src.models.trigger import TriggerRule
 from src.services.events.actions.base import BaseAction
@@ -20,10 +21,10 @@ class SendNotificationAction(BaseAction):
             logger.warning("TriggerRule %s has empty notification text", rule.id)
             return
 
-        # Simple template substitution from context
+        # Safe template substitution — no attribute access possible
         try:
-            text = text.format(**context)
-        except (KeyError, IndexError):
+            text = Template(text).safe_substitute(context)
+        except (ValueError, TypeError):
             pass
 
         await bot.send_message(recipient_id, text, parse_mode="HTML")

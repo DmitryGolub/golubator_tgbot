@@ -27,6 +27,23 @@ class NotionCacheDAO:
             return list(result.scalars().all())
 
     @staticmethod
+    async def get_cohorts_batch(user_ids: list[int]) -> dict[int, list["NotionCohortCache"]]:
+        """Load cohorts for multiple users in one query."""
+        if not user_ids:
+            return {}
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(NotionCohortCache).where(
+                    NotionCohortCache.user_telegram_id.in_(user_ids)
+                )
+            )
+            rows = result.scalars().all()
+            mapping: dict[int, list[NotionCohortCache]] = {}
+            for row in rows:
+                mapping.setdefault(row.user_telegram_id, []).append(row)
+            return mapping
+
+    @staticmethod
     async def get_distinct_types() -> list[str]:
         async with async_session_maker() as session:
             result = await session.execute(

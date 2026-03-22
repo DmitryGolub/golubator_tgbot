@@ -4,7 +4,8 @@ from sqlalchemy import insert, select
 from sqlalchemy.orm import joinedload
 
 from src.core.database import async_session_maker
-from src.models.rule import UserRule, StateRule, CohortRule, Regularity
+from src.models.enums import Regularity
+from src.models.rule import UserRule, StateRule, CohortRule
 from src.models.user import State
 
 

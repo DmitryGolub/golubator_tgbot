@@ -5,7 +5,6 @@ Revises: None
 Create Date: 2026-03-22 00:00:00.000000
 """
 
-import json
 from typing import Sequence, Union
 
 from alembic import op
@@ -116,7 +115,6 @@ def upgrade() -> None:
         "meeting_users",
         sa.Column("meeting_id", sa.Integer, sa.ForeignKey("meetings.id", ondelete="CASCADE"), primary_key=True),
         sa.Column("user_id", sa.BigInteger, sa.ForeignKey("users.telegram_id", ondelete="CASCADE"), primary_key=True),
-        sa.UniqueConstraint("meeting_id", "user_id", name="uq_meeting_user"),
     )
     op.create_table(
         "calls",
@@ -304,6 +302,46 @@ def upgrade() -> None:
         {"codename": c, "description": d} for c, d in PERMISSIONS
     ]))
 
+    # ── 10b. Seed: roles ─────────────────────────────────────────────────
+    ROLES = [
+        {"name": "admin", "display_name": "Админ", "is_mentor": False, "is_student": False},
+        {"name": "mentor", "display_name": "Ментор", "is_mentor": True, "is_student": False},
+        {"name": "student", "display_name": "Студент", "is_mentor": False, "is_student": True},
+    ]
+    for role in ROLES:
+        conn.execute(roles_t.insert().values(**role))
+
+    # ── 10c. Seed: role_permissions (admin gets all_permissions) ─────────
+    admin_role_id = conn.execute(
+        sa.text("SELECT id FROM roles WHERE name = 'admin'")
+    ).scalar_one()
+    all_perms_id = conn.execute(
+        sa.text("SELECT id FROM permissions WHERE codename = 'all_permissions'")
+    ).scalar_one()
+    conn.execute(role_perms_t.insert().values(role_id=admin_role_id, permission_id=all_perms_id))
+
+    # Mentor default permissions
+    mentor_role_id = conn.execute(
+        sa.text("SELECT id FROM roles WHERE name = 'mentor'")
+    ).scalar_one()
+    mentor_perms = ["view_students", "manage_meetings", "view_own_meetings", "view_own_info", "end_call", "fill_survey", "fill_self_review"]
+    for codename in mentor_perms:
+        perm_id = conn.execute(
+            sa.text("SELECT id FROM permissions WHERE codename = :c"), {"c": codename}
+        ).scalar_one()
+        conn.execute(role_perms_t.insert().values(role_id=mentor_role_id, permission_id=perm_id))
+
+    # Student default permissions
+    student_role_id = conn.execute(
+        sa.text("SELECT id FROM roles WHERE name = 'student'")
+    ).scalar_one()
+    student_perms = ["view_own_meetings", "view_own_info", "fill_survey"]
+    for codename in student_perms:
+        perm_id = conn.execute(
+            sa.text("SELECT id FROM permissions WHERE codename = :c"), {"c": codename}
+        ).scalar_one()
+        conn.execute(role_perms_t.insert().values(role_id=student_role_id, permission_id=perm_id))
+
     # ── 11. Seed: survey templates ───────────────────────────────────────
     TEMPLATES = [
         {
@@ -365,11 +403,11 @@ def upgrade() -> None:
     REMINDER_TEXT = "<b>Напоминание о созвоне через ~5 минут.</b>\nПодготовьтесь к встрече."
 
     seed_rules = [
-        {"name": "Уведомление о созвоне", "trigger_type": "meeting_created", "action_type": "send_notification", "is_active": True, "delay_seconds": 0, "delay_mode": "after_trigger", "recipient_type": "event_student", "action_config": json.dumps({"text": NOTIFY_TEXT})},
-        {"name": "Напоминание за 5 минут", "trigger_type": "meeting_created", "action_type": "send_notification", "is_active": True, "delay_seconds": 300, "delay_mode": "before_scheduled", "recipient_type": "event_student", "action_config": json.dumps({"text": REMINDER_TEXT})},
-        {"name": "Опрос ученика после созвона", "trigger_type": "call_ended", "action_type": "send_survey", "is_active": True, "delay_seconds": 0, "delay_mode": "after_trigger", "recipient_type": "event_student", "action_config": json.dumps({"survey_template_id": template_ids["post_call_student"], "survey_title": "Опрос ученика после созвона"})},
-        {"name": "Фидбек ментора после созвона", "trigger_type": "call_ended", "action_type": "send_survey", "is_active": True, "delay_seconds": 0, "delay_mode": "after_trigger", "recipient_type": "event_mentor", "action_config": json.dumps({"survey_template_id": template_ids["mentor_feedback"], "survey_title": "Фидбек ментора после созвона"})},
-        {"name": "Ежемесячная самооценка ментора", "trigger_type": "periodic_cron", "action_type": "send_survey", "is_active": True, "cron_expression": "0 9 1 * *", "delay_seconds": 0, "delay_mode": "after_trigger", "recipient_type": "by_role", "recipient_config": json.dumps({"role_name": "mentor"}), "action_config": json.dumps({"survey_template_id": template_ids["mentor_self_review"], "survey_title": "Ежемесячная самооценка ментора"})},
+        {"name": "Уведомление о созвоне", "trigger_type": "meeting_created", "action_type": "send_notification", "is_active": True, "delay_seconds": 0, "delay_mode": "after_trigger", "recipient_type": "event_student", "action_config": {"text": NOTIFY_TEXT}},
+        {"name": "Напоминание за 5 минут", "trigger_type": "meeting_created", "action_type": "send_notification", "is_active": True, "delay_seconds": 300, "delay_mode": "before_scheduled", "recipient_type": "event_student", "action_config": {"text": REMINDER_TEXT}},
+        {"name": "Опрос ученика после созвона", "trigger_type": "call_ended", "action_type": "send_survey", "is_active": True, "delay_seconds": 0, "delay_mode": "after_trigger", "recipient_type": "event_student", "action_config": {"survey_template_id": template_ids["post_call_student"], "survey_title": "Опрос ученика после созвона"}},
+        {"name": "Фидбек ментора после созвона", "trigger_type": "call_ended", "action_type": "send_survey", "is_active": True, "delay_seconds": 0, "delay_mode": "after_trigger", "recipient_type": "event_mentor", "action_config": {"survey_template_id": template_ids["mentor_feedback"], "survey_title": "Фидбек ментора после созвона"}},
+        {"name": "Ежемесячная самооценка ментора", "trigger_type": "periodic_cron", "action_type": "send_survey", "is_active": True, "cron_expression": "0 9 1 * *", "delay_seconds": 0, "delay_mode": "after_trigger", "recipient_type": "by_role", "recipient_config": {"role_name": "mentor"}, "action_config": {"survey_template_id": template_ids["mentor_self_review"], "survey_title": "Ежемесячная самооценка ментора"}},
     ]
     for rule in seed_rules:
         conn.execute(rules_t.insert().values(**rule))

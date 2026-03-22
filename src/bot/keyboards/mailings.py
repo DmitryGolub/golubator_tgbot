@@ -17,7 +17,8 @@ from src.bot.callbacks.rule import (
     DeleteMailingsFinishCB,
 )
 from src.models.user import User, State
-from src.models.rule import Regularity, UserRule, StateRule, CohortRule
+from src.models.enums import Regularity
+from src.models.rule import UserRule, StateRule, CohortRule
 from src.services.notion_client import CohortTypeInfo
 
 

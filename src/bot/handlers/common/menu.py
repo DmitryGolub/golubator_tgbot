@@ -15,6 +15,7 @@ from src.dao.user import UserDAO
 from src.dao.notion_cache import NotionCacheDAO
 
 from src.services.call_flow import ActiveCallNotFoundError, CallFlowService
+from src.utils.escape import e
 
 router = Router(name="menu")
 
@@ -173,10 +174,10 @@ async def cb_mentor_students_list(callback: CallbackQuery):
         categories = [c.cohort_value for c in cohorts if c.cohort_type == "Category"]
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
         lines.append(
-            f"👤 <b>{student.name}</b> @{student.username}\n"
-            f"   • Направления: <b>{cohort_display}</b>\n"
-            f"   • Роль: <b>{role_display}</b>\n"
-            f"   • Состояние: <b>{student.state.value}</b>\n"
+            f"👤 <b>{e(student.name)}</b> @{e(student.username)}\n"
+            f"   • Направления: <b>{e(cohort_display)}</b>\n"
+            f"   • Роль: <b>{e(role_display)}</b>\n"
+            f"   • Состояние: <b>{e(student.state.value)}</b>\n"
         )
 
     try:
@@ -236,10 +237,10 @@ async def cb_mentor_me_info(callback: CallbackQuery):
     role_display = mentor.role_rel.display_name if mentor.role_rel else "—"
     text = (
         "<b>Моя информация:</b>\n\n"
-        f"Имя: <b>{mentor.name}</b>\n"
-        f"Юзернейм: @{mentor.username}\n"
-        f"Роль: <b>{role_display}</b>\n"
-        f"Состояние: <b>{mentor.state.value}</b>\n"
+        f"Имя: <b>{e(mentor.name)}</b>\n"
+        f"Юзернейм: @{e(mentor.username)}\n"
+        f"Роль: <b>{e(role_display)}</b>\n"
+        f"Состояние: <b>{e(mentor.state.value)}</b>\n"
     )
 
     try:
@@ -268,11 +269,11 @@ async def cb_student_me_info(callback: CallbackQuery):
 
     text = (
         "<b>Моя информация:</b>\n\n"
-        f"Имя: <b>{student.name}</b>\n"
-        f"Юзернейм: @{student.username}\n"
-        f"Роль: <b>{role_display}</b>\n"
-        f"Мой ментор: <b>{mentor_name}</b> {mentor_username}\n"
-        f"Состояние: <b>{student.state.value}</b>\n"
+        f"Имя: <b>{e(student.name)}</b>\n"
+        f"Юзернейм: @{e(student.username)}\n"
+        f"Роль: <b>{e(role_display)}</b>\n"
+        f"Мой ментор: <b>{e(mentor_name)}</b> {e(mentor_username)}\n"
+        f"Состояние: <b>{e(student.state.value)}</b>\n"
     )
 
     try:

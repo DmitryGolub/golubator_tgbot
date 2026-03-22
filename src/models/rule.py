@@ -1,4 +1,3 @@
-import enum
 from typing import Optional
 from datetime import datetime
 from sqlalchemy import Integer, Text, DateTime, ForeignKey, Enum, func, BigInteger, String
@@ -6,13 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.user import State, User
 from src.core.database import Base
-
-
-class Regularity(enum.Enum):
-    day = "day"
-    week = "week"
-    fortnight = "fortnight"
-    month = "month"
+from src.models.enums import Regularity
 
 
 class UserRule(Base):
@@ -45,15 +38,15 @@ class UserRule(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    author_id: Mapped[int] = mapped_column(
-        ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=False,
+    author_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True,
     )
 
     user: Mapped["User"] = relationship(
         "User", foreign_keys=[user_id], back_populates="user_rules"
     )
 
-    author: Mapped["User"] = relationship(
+    author: Mapped[Optional["User"]] = relationship(
         "User", foreign_keys=[author_id], back_populates="authored_rules"
     )
 
@@ -77,14 +70,14 @@ class StateRule(Base):
     regularity: Mapped[Regularity] = mapped_column(
         Enum(Regularity, name="regularity_enum"), nullable=False,
     )
-    author_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=False,
+    author_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True,
     )
     offset_days: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
     )
 
-    author: Mapped["User"] = relationship("User")
+    author: Mapped[Optional["User"]] = relationship("User")
 
 
 class CohortRule(Base):
@@ -109,8 +102,8 @@ class CohortRule(Base):
     regularity: Mapped[Regularity] = mapped_column(
         Enum(Regularity, name="regularity_enum"), nullable=False,
     )
-    author_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=False,
+    author_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True,
     )
 
-    author: Mapped["User"] = relationship("User")
+    author: Mapped[Optional["User"]] = relationship("User")

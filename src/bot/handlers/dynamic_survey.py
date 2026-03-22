@@ -26,14 +26,17 @@ async def cb_start_survey(callback: CallbackQuery, callback_data: StartDynamicSu
     try:
         session = await service.start_session(callback_data.session_id)
     except SessionNotFoundError:
+        await state.clear()
         await callback.answer("Опрос не найден")
         return
     except SessionAlreadyCompletedError:
+        await state.clear()
         await callback.answer("Вы уже заполнили этот опрос")
         return
 
     questions = await service.get_questions(session.id)
     if not questions:
+        await state.clear()
         await callback.answer("В опросе нет вопросов")
         return
 
@@ -176,15 +179,12 @@ def _build_keyboard_from_dict(question: dict):
 
 
 async def _load_question(question_id: int):
-    from sqlalchemy import select
-    from src.core.database import async_session_maker
-    from src.models.survey_template import SurveyQuestion
+    from src.dao.survey_template import SurveyTemplateDAO
 
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(SurveyQuestion).where(SurveyQuestion.id == question_id)
-        )
-        return result.scalar_one()
+    question = await SurveyTemplateDAO.get_question_by_id(question_id)
+    if question is None:
+        raise ValueError(f"Question {question_id} not found")
+    return question
 
 
 async def _show_question(message, state: FSMContext, idx: int, questions: list[dict], title: str):

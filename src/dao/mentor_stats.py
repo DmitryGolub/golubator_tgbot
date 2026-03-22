@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import String, func, select
+from sqlalchemy.sql.expression import cast
 
 from src.core.database import async_session_maker
 from src.models.meeting import Meeting, MeetingUser
@@ -40,15 +41,25 @@ class MentorStatsDAO:
             )
             total_calls = (await session.execute(calls_query)).scalar() or 0
 
-            # Count completed survey sessions for these meetings
+            # Survey filter: join through Meeting to filter by mentor
+            survey_meeting_filter = [
+                SurveyTemplate.slug == "post_call_student",
+                SurveySession.context_type == "meeting",
+                SurveySession.status == "completed",
+                MeetingUser.user_id == mentor_id,
+            ]
+            if date_from is not None:
+                survey_meeting_filter.append(Meeting.completed_at >= date_from)
+            if date_to is not None:
+                survey_meeting_filter.append(Meeting.completed_at <= date_to)
+
+            # Count completed survey sessions for this mentor's meetings
             survey_count_query = (
                 select(func.count(SurveySession.id))
                 .join(SurveyTemplate, SurveySession.template_id == SurveyTemplate.id)
-                .where(
-                    SurveyTemplate.slug == "post_call_student",
-                    SurveySession.context_type == "meeting",
-                    SurveySession.status == "completed",
-                )
+                .join(Meeting, cast(Meeting.id, String) == SurveySession.context_id)
+                .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
+                .where(*survey_meeting_filter)
             )
             total_surveys = (await session.execute(survey_count_query)).scalar() or 0
 
@@ -63,12 +74,15 @@ class MentorStatsDAO:
                 .join(SurveySession, SurveyAnswer.session_id == SurveySession.id)
                 .join(SurveyQuestion, SurveyAnswer.question_id == SurveyQuestion.id)
                 .join(SurveyTemplate, SurveySession.template_id == SurveyTemplate.id)
+                .join(Meeting, cast(Meeting.id, String) == SurveySession.context_id)
+                .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
                 .where(
                     SurveyTemplate.slug == "post_call_student",
                     SurveySession.context_type == "meeting",
                     SurveySession.status == "completed",
                     SurveyQuestion.question_type == "rating",
                     SurveyAnswer.value_int.isnot(None),
+                    MeetingUser.user_id == mentor_id,
                 )
                 .group_by(SurveyQuestion.sort_order)
             )
