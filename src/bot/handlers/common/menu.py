@@ -220,7 +220,7 @@ async def cb_mentor_students_list(callback: CallbackQuery):
             f"👤 <b>{e(student.name)}</b> @{e(student.username)}\n"
             f"   • Направления: <b>{e(cohort_display)}</b>\n"
             f"   • Роль: <b>{e(role_display)}</b>\n"
-            f"   • Состояние: <b>{e(student.state.value)}</b>\n"
+            f"   • Состояние: <b>{e(student.state.value if student.state else '—')}</b>\n"
         )
 
     try:

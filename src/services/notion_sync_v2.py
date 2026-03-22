@@ -317,6 +317,9 @@ class NotionSyncServiceV2:
         user = result.scalar_one_or_none()
 
         now = datetime.now(timezone.utc)
+        resolved_mentor_id = await _resolve_mentor_id(
+            session, getattr(data, "mentor_name", None)
+        )
 
         if user:
             if (
@@ -330,6 +333,8 @@ class NotionSyncServiceV2:
             user.name = data.doc_name or user.name
             if data.status:
                 user.state = _NOTION_TO_STATE.get(data.status, user.state)
+            if resolved_mentor_id is not None:
+                user.mentor_id = resolved_mentor_id
             user.notion_page_id = page_id
             user.notion_source_db = "mentee"
             user.synced_at = now
@@ -341,6 +346,7 @@ class NotionSyncServiceV2:
                     username=data.doc_name or str(data.telegram_id),
                     name=data.doc_name or "",
                     state=state,
+                    mentor_id=resolved_mentor_id,
                     notion_page_id=page_id,
                     notion_source_db="mentee",
                     synced_at=now,

@@ -5,6 +5,7 @@ from src.dao.user import UserDAO
 from src.dao.notion_cache import NotionCacheDAO
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.models.user import Role
 from src.utils.escape import e
 from src.utils.telegram import split_message
 
@@ -36,12 +37,16 @@ async def cb_user_list(callback: CallbackQuery):
         categories = [c.cohort_value for c in cohorts if c.cohort_type == "Category"]
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
 
+        state_line = ""
+        if user.role == Role.student and user.state:
+            state_line = f"   • Состояние: <b>{e(user.state.value)}</b>\n"
+
         answer += (
             f"👤 <b>{e(user.name)}</b> @{e(user.username)}\n"
             f"   • Ментор: <b>{e(mentor_name)}</b> {e(mentor_username)}\n"
             f"   • Направления: <b>{e(cohort_display)}</b>\n"
             f"   • Роль: <b>{e(role_display)}</b>\n"
-            f"   • Состояние: <b>{e(user.state.value)}</b>\n"
+            f"{state_line}"
             f"   • Дата регистрации: {user.registered_at:%d.%m.%Y %H:%M}\n\n"
         )
 
