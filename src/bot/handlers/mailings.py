@@ -4,7 +4,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 
-from src.bot.filters.role import RoleFilter
+from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.mailings import (
     mailings_menu_keyboard,
     mailing_type_keyboard,
@@ -33,12 +33,12 @@ from src.bot.states.mailings import MailingFSM
 from src.dao.user import UserDAO
 from src.dao.rule import RuleDAO
 from src.dao.cohort import CohortDAO
-from src.models.user import Role, State
+from src.models.user import State
 from src.models.rule import Regularity
 
 router = Router(name="mailings")
-router.message.filter(RoleFilter([Role.admin]))
-router.callback_query.filter(RoleFilter([Role.admin]))
+router.message.filter(PermissionFilter("manage_mailings"))
+router.callback_query.filter(PermissionFilter("manage_mailings"))
 
 
 REGULARITY_TO_OFFSET = {
@@ -49,21 +49,21 @@ REGULARITY_TO_OFFSET = {
 }
 
 
-@router.callback_query(RoleFilter([Role.admin]), F.data == "menu_mailings")
+@router.callback_query(F.data == "menu_mailings")
 async def cb_menu_mailings(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     await callback.message.edit_text("👥 Меню Рассылок", reply_markup=mailings_menu_keyboard())
 
 
-@router.callback_query(RoleFilter([Role.admin]), F.data == "mailings_menu")
+@router.callback_query(F.data == "mailings_menu")
 async def cb_mailings_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     await callback.message.edit_text("👥 Меню Рассылок", reply_markup=mailings_menu_keyboard())
 
 
-@router.callback_query(RoleFilter([Role.admin]), F.data == "mailings_list")
+@router.callback_query(F.data == "mailings_list")
 async def cb_mailings_list(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
@@ -110,7 +110,7 @@ async def cb_mailings_list(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("\n".join(parts), reply_markup=mailings_menu_keyboard())
 
 
-@router.callback_query(RoleFilter([Role.admin]), F.data == "mailings_add")
+@router.callback_query(F.data == "mailings_add")
 async def cb_mailings_add(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.set_state(MailingFSM.choosing_type)
@@ -118,7 +118,7 @@ async def cb_mailings_add(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Выберите тип рассылки:", reply_markup=mailing_type_keyboard())
 
 
-@router.callback_query(RoleFilter([Role.admin]), MailingTypeCB.filter())
+@router.callback_query(MailingTypeCB.filter())
 async def cb_choose_type(callback: CallbackQuery, callback_data: MailingTypeCB, state: FSMContext):
     kind = callback_data.kind
     await state.update_data(kind=kind)
@@ -127,7 +127,7 @@ async def cb_choose_type(callback: CallbackQuery, callback_data: MailingTypeCB, 
     await callback.message.edit_text("Введите название рассылки:")
 
 
-@router.callback_query(RoleFilter([Role.admin]), F.data == "mailings_delete")
+@router.callback_query(F.data == "mailings_delete")
 async def cb_mailings_delete(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.set_state(MailingFSM.deleting_rules)
@@ -145,7 +145,6 @@ async def cb_mailings_delete(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(
-    RoleFilter([Role.admin]),
     StateFilter(MailingFSM.deleting_rules),
     ToggleDeleteUserRuleCB.filter(),
 )
@@ -181,7 +180,6 @@ async def cb_toggle_delete_user_rule(
 
 
 @router.callback_query(
-    RoleFilter([Role.admin]),
     StateFilter(MailingFSM.deleting_rules),
     ToggleDeleteStateRuleCB.filter(),
 )
@@ -217,7 +215,6 @@ async def cb_toggle_delete_state_rule(
 
 
 @router.callback_query(
-    RoleFilter([Role.admin]),
     StateFilter(MailingFSM.deleting_rules),
     ToggleDeleteCohortRuleCB.filter(),
 )
@@ -253,7 +250,6 @@ async def cb_toggle_delete_cohort_rule(
 
 
 @router.callback_query(
-    RoleFilter([Role.admin]),
     StateFilter(MailingFSM.deleting_rules),
     DeleteMailingsFinishCB.filter(),
 )
@@ -286,7 +282,7 @@ async def cb_delete_mailings_finish(
     )
 
 
-@router.message(RoleFilter([Role.admin]), StateFilter(MailingFSM.waiting_title))
+@router.message(StateFilter(MailingFSM.waiting_title))
 async def msg_mailing_title(message: Message, state: FSMContext):
     title = (message.text or "").strip()
     if not title:
@@ -323,7 +319,7 @@ async def msg_mailing_title(message: Message, state: FSMContext):
         )
 
 
-@router.callback_query(RoleFilter([Role.admin]), StateFilter(MailingFSM.choosing_users), ToggleUserCB.filter())
+@router.callback_query(StateFilter(MailingFSM.choosing_users), ToggleUserCB.filter())
 async def cb_toggle_user(callback: CallbackQuery, callback_data: ToggleUserCB, state: FSMContext):
     data = await state.get_data()
     selected = set(data.get("selected_users", []))
@@ -341,7 +337,7 @@ async def cb_toggle_user(callback: CallbackQuery, callback_data: ToggleUserCB, s
     )
 
 
-@router.callback_query(RoleFilter([Role.admin]), StateFilter(MailingFSM.choosing_users), MailingFinishUsersCB.filter())
+@router.callback_query(StateFilter(MailingFSM.choosing_users), MailingFinishUsersCB.filter())
 async def cb_finish_users(callback: CallbackQuery, callback_data: MailingFinishUsersCB, state: FSMContext):
     data = await state.get_data()
     selected: set[int] = set(data.get("selected_users", set()))
@@ -354,7 +350,7 @@ async def cb_finish_users(callback: CallbackQuery, callback_data: MailingFinishU
     await callback.message.edit_text("Введите текст рассылки:")
 
 
-@router.callback_query(RoleFilter([Role.admin]), StateFilter(MailingFSM.choosing_states), ToggleStateCB.filter())
+@router.callback_query(StateFilter(MailingFSM.choosing_states), ToggleStateCB.filter())
 async def cb_toggle_state(callback: CallbackQuery, callback_data: ToggleStateCB, state: FSMContext):
     data = await state.get_data()
     selected = set(data.get("selected_states", []))
@@ -376,7 +372,7 @@ async def cb_toggle_state(callback: CallbackQuery, callback_data: ToggleStateCB,
             raise
 
 
-@router.callback_query(RoleFilter([Role.admin]), StateFilter(MailingFSM.choosing_states), MailingFinishStatesCB.filter())
+@router.callback_query(StateFilter(MailingFSM.choosing_states), MailingFinishStatesCB.filter())
 async def cb_finish_states(callback: CallbackQuery, callback_data: MailingFinishStatesCB, state: FSMContext):
     data = await state.get_data()
     selected_names = set(data.get("selected_states", []))
@@ -390,7 +386,7 @@ async def cb_finish_states(callback: CallbackQuery, callback_data: MailingFinish
     await callback.message.edit_text("Введите текст рассылки:")
 
 
-@router.callback_query(RoleFilter([Role.admin]), StateFilter(MailingFSM.choosing_cohorts), ToggleCohortCB.filter())
+@router.callback_query(StateFilter(MailingFSM.choosing_cohorts), ToggleCohortCB.filter())
 async def cb_toggle_cohort(callback: CallbackQuery, callback_data: ToggleCohortCB, state: FSMContext):
     data = await state.get_data()
     selected = set(data.get("selected_cohorts", []))
@@ -409,7 +405,7 @@ async def cb_toggle_cohort(callback: CallbackQuery, callback_data: ToggleCohortC
     )
 
 
-@router.callback_query(RoleFilter([Role.admin]), StateFilter(MailingFSM.choosing_cohorts), MailingFinishCohortsCB.filter())
+@router.callback_query(StateFilter(MailingFSM.choosing_cohorts), MailingFinishCohortsCB.filter())
 async def cb_finish_cohorts(callback: CallbackQuery, callback_data: MailingFinishCohortsCB, state: FSMContext):
     data = await state.get_data()
     selected: set[int] = set(data.get("selected_cohorts", set()))
@@ -422,7 +418,7 @@ async def cb_finish_cohorts(callback: CallbackQuery, callback_data: MailingFinis
     await callback.message.edit_text("Введите текст рассылки:")
 
 
-@router.message(RoleFilter([Role.admin]), StateFilter(MailingFSM.waiting_text))
+@router.message(StateFilter(MailingFSM.waiting_text))
 async def msg_mailing_text(message: Message, state: FSMContext):
     text = (message.text or "").strip()
     if not text:
@@ -438,7 +434,7 @@ async def msg_mailing_text(message: Message, state: FSMContext):
     )
 
 
-@router.callback_query(RoleFilter([Role.admin]), StateFilter(MailingFSM.choosing_regularity), ChooseRegularityCB.filter())
+@router.callback_query(StateFilter(MailingFSM.choosing_regularity), ChooseRegularityCB.filter())
 async def cb_choose_regularity(
     callback: CallbackQuery,
     callback_data: ChooseRegularityCB,
@@ -501,7 +497,7 @@ async def cb_choose_regularity(
         )
 
 
-@router.callback_query(RoleFilter([Role.admin]), F.data == "back_to_menu")
+@router.callback_query(F.data == "back_to_menu")
 async def cb_back_to_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()

@@ -1,3 +1,4 @@
+from src.models.role import Permission, RoleModel, role_permissions
 from src.models.user import User
 from src.models.cohort import Cohort
 from src.models.notification import Notification

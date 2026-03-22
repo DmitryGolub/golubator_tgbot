@@ -11,7 +11,7 @@ from src.bot.callbacks.update_user import (
     ChooseCohortCB,
     ChooseUserCB,
 )
-from src.models.user import Role, State, User
+from src.models.user import State, User
 from src.models.cohort import Cohort
 
 
@@ -68,19 +68,20 @@ def update_param_keyboard_for_mentor() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-# 4.2. Клавиатура выбора роли (enum)
-def roles_keyboard() -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
+# 4.2. Клавиатура выбора роли (from DB)
+async def roles_keyboard() -> InlineKeyboardMarkup:
+    from src.dao.role import RoleDAO
 
-    for role in Role:
+    roles = await RoleDAO.get_all()
+    kb = InlineKeyboardBuilder()
+    for role in roles:
         kb.button(
-            text=role.value,  # или красивый текст, если нужно
+            text=role.display_name,
             callback_data=ChooseEnumValueCB(
                 param=UpdateParam.ROLE,
                 value=role.name,
             ).pack(),
         )
-
     kb.adjust(1)
     return kb.as_markup()
 

@@ -3,7 +3,8 @@ from sqlalchemy.exc import IntegrityError
 
 from src.core.database import async_session_maker
 from src.models.mentor_self_review import MentorSelfReview
-from src.models.user import Role, User
+from src.models.role import RoleModel
+from src.models.user import User
 
 
 class MentorSelfReviewDAO:
@@ -73,8 +74,9 @@ class MentorSelfReviewDAO:
         async with async_session_maker() as session:
             query = (
                 select(User)
+                .join(RoleModel, User.role_id == RoleModel.id)
                 .where(
-                    User.role == Role.mentor,
+                    RoleModel.is_mentor.is_(True),
                     ~exists().where(
                         MentorSelfReview.mentor_id == User.telegram_id,
                         MentorSelfReview.period == period,

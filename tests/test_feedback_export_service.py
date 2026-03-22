@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.models.user import Role
 from src.services.feedback_export import (
     FEEDBACK_EXPORT_HEADERS,
     FeedbackExportDataset,
@@ -19,11 +18,17 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-def _user(user_id: int, name: str, role: Role) -> SimpleNamespace:
+def _role(name: str, *, is_mentor: bool = False, is_student: bool = False) -> SimpleNamespace:
+    return SimpleNamespace(name=name, display_name=name.capitalize(), is_mentor=is_mentor, is_student=is_student)
+
+
+def _user(user_id: int, name: str, role_name: str) -> SimpleNamespace:
+    is_mentor = role_name == "mentor"
+    is_student = role_name == "student"
     return SimpleNamespace(
         telegram_id=user_id,
         name=name,
-        role=role,
+        role_rel=_role(role_name, is_mentor=is_mentor, is_student=is_student),
     )
 
 
@@ -135,8 +140,8 @@ class FakeWriter:
 
 @pytest.mark.anyio
 async def test_build_dataset_deduplicates_call_ids_and_maps_feedback_fields() -> None:
-    mentor = _user(1001, "Ментор", Role.mentor)
-    student = _user(2002, "Ученик", Role.student)
+    mentor = _user(1001, "Ментор", "mentor")
+    student = _user(2002, "Ученик", "student")
     survey_response = _survey_response(call_id=101, student_id=student.telegram_id)
     meeting = _meeting(
         meeting_id=101,
@@ -200,8 +205,8 @@ async def test_run_export_dry_run_does_not_call_writer_and_passes_date_filters()
 
 @pytest.mark.anyio
 async def test_run_export_calls_writer_with_headers_and_rows() -> None:
-    mentor = _user(1001, "Ментор", Role.mentor)
-    student = _user(2002, "Ученик", Role.student)
+    mentor = _user(1001, "Ментор", "mentor")
+    student = _user(2002, "Ученик", "student")
     dao = FakeExportDAO(
         meetings=[
             _meeting(
@@ -236,7 +241,7 @@ async def test_build_dataset_keeps_partial_row_for_incomplete_data() -> None:
     dao = FakeExportDAO(
         meetings=[meeting],
         mentor_feedback_map={202: _mentor_feedback(call_id=202, mentor_id=1001)},
-        fallback_users={1001: _user(1001, "Ментор", Role.mentor)},
+        fallback_users={1001: _user(1001, "Ментор", "mentor")},
     )
 
     service = FeedbackExportService(export_dao=dao)

@@ -4,7 +4,8 @@ from src.dao.call import CallDAO
 from src.dao.meeting import MeetingDAO
 from src.models.call import Call
 from src.models.meeting import Meeting
-from src.models.user import Role, User
+from src.models.user import User
+from src.utils.roles import is_mentor, is_student
 
 
 class CallFlowError(Exception):
@@ -55,7 +56,7 @@ def _resolve_mentor(meeting: Meeting, mentor_id: int) -> User | None:
         (
             participant
             for participant in meeting.participants
-            if participant.telegram_id == mentor_id and participant.role == Role.mentor
+            if participant.telegram_id == mentor_id and is_mentor(participant)
         ),
         None,
     )
@@ -66,14 +67,14 @@ def _resolve_student(meeting: Meeting) -> User | None:
         (
             participant
             for participant in meeting.participants
-            if participant.role == Role.student
+            if is_student(participant)
         ),
         None,
     )
     if student:
         return student
 
-    mentor = next((participant for participant in meeting.participants if participant.role == Role.mentor), None)
+    mentor = next((participant for participant in meeting.participants if is_mentor(participant)), None)
     if mentor:
         return next(
             (

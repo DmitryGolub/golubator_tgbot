@@ -5,6 +5,11 @@ from typing import List, Optional
 from sqlalchemy import String, DateTime, func, Enum, ForeignKey, Integer, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.models.role import RoleModel
+
 from src.core.database import Base
 
 
@@ -37,6 +42,12 @@ class User(Base):
 
     role: Mapped[Role] = mapped_column(
         Enum(Role, name="role_enum"), nullable=False, default=Role.student
+    )
+    role_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("roles.id"), nullable=True
+    )
+    role_rel: Mapped["RoleModel | None"] = relationship(
+        "RoleModel", back_populates="users", lazy="selectin"
     )
     state: Mapped[Optional[State]] = mapped_column(
         Enum(State, name="state_enum"), nullable=True, default=State.greeting, server_default="greeting",

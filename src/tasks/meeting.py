@@ -14,7 +14,8 @@ from src.bot.keyboards.survey import survey_start_keyboard
 from src.celery_app import celery_app
 from src.core.config import settings
 from src.models.meeting import Meeting
-from src.models.user import Role, User
+from src.models.user import User
+from src.utils.roles import is_mentor, is_student
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
@@ -31,8 +32,8 @@ def _format_dt(dt: Optional[datetime]) -> str:
 
 
 def _split_participants(meeting: Meeting) -> tuple[Optional[User], Optional[User]]:
-    mentor = next((p for p in meeting.participants if p.role == Role.mentor), None)
-    student = next((p for p in meeting.participants if p.role == Role.student), None)
+    mentor = next((p for p in meeting.participants if is_mentor(p)), None)
+    student = next((p for p in meeting.participants if is_student(p)), None)
     if not student and mentor:
         student = next(
             (p for p in meeting.participants if p.telegram_id != mentor.telegram_id),
@@ -82,7 +83,9 @@ async def _load_meeting(meeting_id: int) -> Optional[Meeting]:
             query = (
                 select(Meeting)
                 .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants))
+                .options(
+                    joinedload(Meeting.participants).joinedload(User.role_rel),
+                )
             )
             res = await session.execute(query)
             res = res.unique()

@@ -12,7 +12,7 @@ from src.bot.callbacks.survey import (
     SurveyDurationCB,
     SurveyRatingCB,
 )
-from src.bot.filters.role import RoleFilter
+from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import menu_keyboard
 from src.bot.keyboards.survey import (
     survey_comment_keyboard,
@@ -20,7 +20,7 @@ from src.bot.keyboards.survey import (
     survey_rating_keyboard,
 )
 from src.bot.states.survey import SurveyFSM
-from src.models.user import Role
+from src.services.auth import AuthService
 from src.services.survey import (
     CallNotFoundError,
     SurveyAccessDeniedError,
@@ -32,12 +32,17 @@ from src.survey.constants import DURATION_OPTION_LABELS, DurationOption
 from src.survey.schemas import SurveyStatus, SurveySubmitRequest
 
 router = Router(name="survey")
-router.message.filter(RoleFilter([Role.student]))
-router.callback_query.filter(RoleFilter([Role.student]))
+router.message.filter(PermissionFilter("fill_survey"))
+router.callback_query.filter(PermissionFilter("fill_survey"))
 
 QUESTION_MENTOR = "mentor"
 QUESTION_KNOWLEDGE = "knowledge"
 QUESTION_UNDERSTANDING = "understanding"
+
+
+async def _menu_kb(user_id: int):
+    perms = await AuthService.get_user_permissions(user_id)
+    return menu_keyboard(perms)
 
 
 def _duration_label(value: str) -> str:
@@ -156,7 +161,7 @@ async def _submit_survey(
         await _send_message(
             message,
             "Сессия опроса устарела. Запустите заново: /survey <id_созвона>.",
-            reply_markup=menu_keyboard(Role.student),
+            reply_markup=await _menu_kb(student_id),
             edit=edit,
         )
         return
@@ -174,7 +179,7 @@ async def _submit_survey(
         await _send_message(
             message,
             "Не удалось разобрать данные опроса. Запустите заново: /survey <id_созвона>.",
-            reply_markup=menu_keyboard(Role.student),
+            reply_markup=await _menu_kb(student_id),
             edit=edit,
         )
         return
@@ -220,7 +225,7 @@ async def _submit_survey(
     await _send_message(
         message,
         text,
-        reply_markup=menu_keyboard(Role.student),
+        reply_markup=await _menu_kb(student_id),
         edit=edit,
     )
 
@@ -423,5 +428,5 @@ async def cb_survey_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
         "Опрос отменён.",
-        reply_markup=menu_keyboard(Role.student),
+        reply_markup=await _menu_kb(callback.from_user.id),
     )

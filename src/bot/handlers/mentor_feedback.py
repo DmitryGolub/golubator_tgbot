@@ -11,18 +11,19 @@ from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from src.bot.filters.role import RoleFilter
+from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import menu_keyboard
 from src.dao.meeting import MeetingDAO
 from src.dao.mentor_feedback import MentorFeedbackDAO
 from src.models.meeting import Meeting
-from src.models.user import Role
+from src.services.auth import AuthService
+from src.utils.roles import is_student, is_mentor
 
 
 logger = logging.getLogger(__name__)
 router = Router(name="mentor-feedback")
-router.message.filter(RoleFilter([Role.mentor]))
-router.callback_query.filter(RoleFilter([Role.mentor]))
+router.message.filter(PermissionFilter("give_feedback"))
+router.callback_query.filter(PermissionFilter("give_feedback"))
 
 
 class MentorFeedbackStatus(StrEnum):
@@ -75,12 +76,17 @@ DURATION_LABELS = {
 }
 
 
+async def _menu_kb(user_id: int):
+    perms = await AuthService.get_user_permissions(user_id)
+    return menu_keyboard(perms)
+
+
 def _meeting_title(meeting: Meeting) -> str:
     student = next(
         (
             participant
             for participant in meeting.participants
-            if participant.role == Role.student
+            if is_student(participant)
         ),
         None,
     )
@@ -211,7 +217,7 @@ async def _submit_feedback(
         (
             participant
             for participant in meeting.participants
-            if participant.telegram_id == mentor_id and participant.role == Role.mentor
+            if participant.telegram_id == mentor_id and is_mentor(participant)
         ),
         None,
     )
@@ -249,7 +255,7 @@ async def _submit_feedback(
     return text
 
 
-@router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_feedback_start")
+@router.callback_query(F.data == "mentor_feedback_start")
 async def cb_mentor_feedback_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
@@ -258,7 +264,7 @@ async def cb_mentor_feedback_start(callback: CallbackQuery, state: FSMContext):
     if not meetings:
         await callback.message.edit_text(
             "Нет завершенных созвонов без фидбека.",
-            reply_markup=menu_keyboard(Role.mentor),
+            reply_markup=await _menu_kb(callback.from_user.id),
         )
         return
 
@@ -270,7 +276,6 @@ async def cb_mentor_feedback_start(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(
-    RoleFilter([Role.mentor]),
     StateFilter(MentorFeedbackFSM.choosing_meeting),
     ChooseFeedbackMeetingCB.filter(),
 )
@@ -290,7 +295,6 @@ async def cb_choose_feedback_meeting(
 
 
 @router.callback_query(
-    RoleFilter([Role.mentor]),
     StateFilter(MentorFeedbackFSM.choosing_status),
     ChooseFeedbackStatusCB.filter(),
 )
@@ -306,7 +310,7 @@ async def cb_choose_feedback_status(
     except ValueError:
         await callback.message.edit_text(
             "Не удалось распознать статус. Начните заново.",
-            reply_markup=menu_keyboard(Role.mentor),
+            reply_markup=await _menu_kb(callback.from_user.id),
         )
         await state.clear()
         return
@@ -321,7 +325,6 @@ async def cb_choose_feedback_status(
 
 
 @router.callback_query(
-    RoleFilter([Role.mentor]),
     StateFilter(MentorFeedbackFSM.choosing_duration),
     ChooseFeedbackDurationCB.filter(),
 )
@@ -337,7 +340,7 @@ async def cb_choose_feedback_duration(
     except ValueError:
         await callback.message.edit_text(
             "Не удалось распознать длительность. Начните заново.",
-            reply_markup=menu_keyboard(Role.mentor),
+            reply_markup=await _menu_kb(callback.from_user.id),
         )
         await state.clear()
         return
@@ -351,7 +354,7 @@ async def cb_choose_feedback_duration(
     )
 
 
-@router.message(RoleFilter([Role.mentor]), StateFilter(MentorFeedbackFSM.waiting_motivation))
+@router.message(StateFilter(MentorFeedbackFSM.waiting_motivation))
 async def msg_feedback_motivation(message: Message, state: FSMContext):
     motivation = _parse_score(message.text, min_value=1, max_value=5)
     if motivation is None:
@@ -370,7 +373,6 @@ async def msg_feedback_motivation(message: Message, state: FSMContext):
 
 
 @router.message(
-    RoleFilter([Role.mentor]),
     StateFilter(MentorFeedbackFSM.waiting_neuromutation_stage),
 )
 async def msg_feedback_neuromutation_stage(message: Message, state: FSMContext):
@@ -390,7 +392,7 @@ async def msg_feedback_neuromutation_stage(message: Message, state: FSMContext):
     )
 
 
-@router.message(RoleFilter([Role.mentor]), StateFilter(MentorFeedbackFSM.waiting_comment))
+@router.message(StateFilter(MentorFeedbackFSM.waiting_comment))
 async def msg_feedback_comment(message: Message, state: FSMContext):
     if not message.text:
         await message.answer(
@@ -404,11 +406,10 @@ async def msg_feedback_comment(message: Message, state: FSMContext):
         state=state,
         comment=message.text.strip() or None,
     )
-    await message.answer(text, reply_markup=menu_keyboard(Role.mentor))
+    await message.answer(text, reply_markup=await _menu_kb(message.from_user.id))
 
 
 @router.callback_query(
-    RoleFilter([Role.mentor]),
     StateFilter(MentorFeedbackFSM.waiting_comment),
     F.data == "mentor_feedback_skip_comment",
 )
@@ -419,11 +420,10 @@ async def cb_feedback_skip_comment(callback: CallbackQuery, state: FSMContext):
         state=state,
         comment=None,
     )
-    await callback.message.edit_text(text, reply_markup=menu_keyboard(Role.mentor))
+    await callback.message.edit_text(text, reply_markup=await _menu_kb(callback.from_user.id))
 
 
 @router.callback_query(
-    RoleFilter([Role.mentor]),
     StateFilter(
         MentorFeedbackFSM.choosing_meeting,
         MentorFeedbackFSM.choosing_status,
@@ -439,5 +439,5 @@ async def cb_feedback_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text(
         "Заполнение фидбека отменено.",
-        reply_markup=menu_keyboard(Role.mentor),
+        reply_markup=await _menu_kb(callback.from_user.id),
     )

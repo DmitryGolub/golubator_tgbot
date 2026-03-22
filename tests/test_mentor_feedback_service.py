@@ -11,7 +11,6 @@ from src.mentor_feedback.errors import (
     MentorFeedbackAlreadyExistsError,
     MentorNotInCallError,
 )
-from src.models.user import Role
 from src.services import mentor_feedback as mentor_feedback_module
 from src.services.mentor_feedback import MentorFeedbackService
 
@@ -35,10 +34,12 @@ def _payload(**overrides) -> MentorFeedbackCreateData:
 
 @pytest.mark.anyio
 async def test_create_feedback_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    mentor_role = SimpleNamespace(name="mentor", display_name="Ментор", is_mentor=True, is_student=False)
+    student_role = SimpleNamespace(name="student", display_name="Студент", is_mentor=False, is_student=True)
     meeting = SimpleNamespace(
         participants=[
-            SimpleNamespace(telegram_id=9001, role=Role.mentor),
-            SimpleNamespace(telegram_id=9002, role=Role.student),
+            SimpleNamespace(telegram_id=9001, role_rel=mentor_role),
+            SimpleNamespace(telegram_id=9002, role_rel=student_role),
         ]
     )
     created_feedback = SimpleNamespace(id=1, call_id=101)
@@ -95,8 +96,9 @@ async def test_create_feedback_success(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_create_feedback_duplicate_rejected_before_insert(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    mentor_role = SimpleNamespace(name="mentor", display_name="Ментор", is_mentor=True, is_student=False)
     meeting = SimpleNamespace(
-        participants=[SimpleNamespace(telegram_id=9001, role=Role.mentor)]
+        participants=[SimpleNamespace(telegram_id=9001, role_rel=mentor_role)]
     )
 
     async def fake_get_with_participants(call_id: int):
@@ -130,8 +132,9 @@ async def test_create_feedback_duplicate_rejected_before_insert(
 async def test_create_feedback_rejects_mentor_outside_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    student_role = SimpleNamespace(name="student", display_name="Студент", is_mentor=False, is_student=True)
     meeting = SimpleNamespace(
-        participants=[SimpleNamespace(telegram_id=9002, role=Role.student)]
+        participants=[SimpleNamespace(telegram_id=9002, role_rel=student_role)]
     )
 
     async def fake_get_with_participants(call_id: int):

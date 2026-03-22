@@ -9,7 +9,7 @@ from src.mentor_feedback.errors import (
 )
 from src.mentor_feedback.dto import MentorFeedbackCreateData
 from src.models.mentor_feedback import MentorFeedback
-from src.models.user import Role
+from src.utils.roles import is_mentor
 
 
 class MentorFeedbackService:
@@ -28,7 +28,7 @@ class MentorFeedbackService:
             (
                 participant
                 for participant in meeting.participants
-                if participant.telegram_id == mentor_id and participant.role == Role.mentor
+                if participant.telegram_id == mentor_id and is_mentor(participant)
             ),
             None,
         )

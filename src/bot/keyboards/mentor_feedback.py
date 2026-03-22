@@ -7,7 +7,7 @@ from src.bot.callbacks.mentor_feedback import (
     ChooseFeedbackStatusCB,
 )
 from src.models.meeting import Meeting
-from src.models.user import Role
+from src.utils.roles import is_student
 from src.mentor_feedback.constants import (
     MentorFeedbackDuration,
     MentorFeedbackStatus,
@@ -34,7 +34,7 @@ def _meeting_title(meeting: Meeting) -> str:
         (
             participant
             for participant in meeting.participants
-            if participant.role == Role.student
+            if is_student(participant)
         ),
         None,
     )

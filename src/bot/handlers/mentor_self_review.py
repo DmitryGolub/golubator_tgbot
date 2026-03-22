@@ -6,14 +6,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from src.bot.filters.role import RoleFilter
+from src.bot.filters.permission import PermissionFilter
 from src.bot.states.mentor_self_review import MentorSelfReviewFSM
 from src.dao.mentor_self_review import MentorSelfReviewDAO
-from src.models.user import Role
 
 router = Router(name="mentor-self-review")
-router.message.filter(RoleFilter([Role.mentor]))
-router.callback_query.filter(RoleFilter([Role.mentor]))
+router.message.filter(PermissionFilter("fill_self_review"))
+router.callback_query.filter(PermissionFilter("fill_self_review"))
 
 
 def _current_period() -> str:

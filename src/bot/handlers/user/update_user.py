@@ -4,7 +4,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
-from src.bot.filters.role import RoleFilter
+from src.bot.filters.permission import PermissionFilter
 from src.bot.states.update_user import UpdateUserFSM
 from src.bot.keyboards.user import (
     update_param_keyboard,
@@ -23,27 +23,29 @@ from src.bot.callbacks.update_user import (
     ChooseUserCB,
     UpdateParam,
 )
-from src.models.user import Role, State
+from src.models.user import State
 from src.dao.user import UserDAO
 from src.dao.cohort import CohortDAO
+from src.dao.role import RoleDAO
 from src.bot.keyboards.menu import back_to_menu_keyboard
-from src.utils.auth import get_user_role
+from src.services.auth import AuthService
 from src.utils.onboarding import schedule_onboarding_for_mentor, notify_student_new_mentor
+from src.utils.roles import is_student
 
 router = Router(name="update-user-fsm")
-router.callback_query.filter(RoleFilter([Role.admin, Role.mentor]))
+router.callback_query.filter(PermissionFilter(["manage_users", "update_student_status"]))
 
 
 @router.callback_query(F.data == "user_update_menu")
 async def cmd_start_update_user(callback: CallbackQuery, state: FSMContext):
-    role = await get_user_role(callback.from_user.id)
-    if role not in (Role.admin, Role.mentor):
+    perms = await AuthService.get_user_permissions(callback.from_user.id)
+    if not perms:
         await callback.answer("Доступ запрещен.", show_alert=True)
         return
 
     keyboard = (
         update_param_keyboard()
-        if role == Role.admin
+        if "manage_users" in perms
         else update_param_keyboard_for_mentor()
     )
 
@@ -68,13 +70,13 @@ async def cb_choose_param(
     callback_data: ChooseParamCB,
     state: FSMContext,
 ):
-    role = await get_user_role(callback.from_user.id)
-    if role not in (Role.admin, Role.mentor):
+    perms = await AuthService.get_user_permissions(callback.from_user.id)
+    if not perms:
         await callback.answer("Доступ запрещен.", show_alert=True)
         await state.clear()
         return
 
-    if role == Role.mentor and callback_data.param != UpdateParam.STATUS:
+    if "manage_users" not in perms and callback_data.param != UpdateParam.STATUS:
         await callback.message.edit_text(
             "Ментору доступно только обновление статуса ученика.",
             reply_markup=back_to_menu_keyboard(),
@@ -92,7 +94,7 @@ async def cb_choose_param(
         await callback.message.edit_text(
             "Вы выбрали: обновить <b>роль</b>.\n\n"
             "Теперь выберите новую роль:",
-            reply_markup=roles_keyboard(),
+            reply_markup=await roles_keyboard(),
         )
 
     elif param == UpdateParam.STATUS:
@@ -104,7 +106,7 @@ async def cb_choose_param(
         )
 
     elif param == UpdateParam.MENTOR:
-        mentors = await UserDAO.get_all(role=Role.mentor)
+        mentors = await UserDAO.get_all(role_name="mentor")
         if not mentors:
             await callback.message.edit_text("Менторы не найдены.")
             await state.clear()
@@ -141,16 +143,16 @@ async def cb_choose_enum_value(
     callback_data: ChooseEnumValueCB,
     state: FSMContext,
 ):
-    role = await get_user_role(callback.from_user.id)
-    if role not in (Role.admin, Role.mentor):
+    perms = await AuthService.get_user_permissions(callback.from_user.id)
+    if not perms:
         await callback.answer("Доступ запрещен.", show_alert=True)
         await state.clear()
         return
 
     await callback.answer()
 
-    param = callback_data.param      # ROLE или STATUS
-    value = callback_data.value      # строка value enum'а
+    param = callback_data.param      # ROLE or STATUS
+    value = callback_data.value      # string value
 
     await state.update_data(
         chosen_value=value,
@@ -159,7 +161,7 @@ async def cb_choose_enum_value(
 
     users = (
         await UserDAO.get_all()
-        if role == Role.admin
+        if "manage_users" in perms
         else await UserDAO.get_all(mentor_id=callback.from_user.id)
     )
     if not users:
@@ -187,8 +189,8 @@ async def cb_choose_mentor(
     callback_data: ChooseMentorCB,
     state: FSMContext,
 ):
-    role = await get_user_role(callback.from_user.id)
-    if role != Role.admin:
+    perms = await AuthService.get_user_permissions(callback.from_user.id)
+    if "manage_users" not in perms:
         await callback.answer("Доступ запрещен.", show_alert=True)
         await state.clear()
         return
@@ -201,7 +203,7 @@ async def cb_choose_mentor(
         chosen_value_type="mentor",
     )
 
-    students = await UserDAO.get_all(role=Role.student)
+    students = await UserDAO.get_all(role_name="student")
     if not students:
         await callback.message.edit_text("Пользователи не найдены.")
         await state.clear()
@@ -209,7 +211,6 @@ async def cb_choose_mentor(
 
     await state.set_state(UpdateUserFSM.choosing_user)
 
-    # Можно дополнительно подтянуть имя ментора для текста
     mentor = await UserDAO.find_one_or_none(telegram_id=mentor_id)
     mentor_text = mentor.name if mentor else f"id={mentor_id}"
 
@@ -229,8 +230,8 @@ async def cb_choose_cohort(
     callback_data: ChooseCohortCB,
     state: FSMContext,
 ):
-    role = await get_user_role(callback.from_user.id)
-    if role != Role.admin:
+    perms = await AuthService.get_user_permissions(callback.from_user.id)
+    if "manage_users" not in perms:
         await callback.answer("Доступ запрещен.", show_alert=True)
         await state.clear()
         return
@@ -272,8 +273,8 @@ async def cb_choose_user_for_update(
 ):
     await callback.answer()
 
-    role = await get_user_role(callback.from_user.id)
-    if role not in (Role.admin, Role.mentor):
+    perms = await AuthService.get_user_permissions(callback.from_user.id)
+    if not perms:
         await callback.answer("Доступ запрещен.", show_alert=True)
         await state.clear()
         return
@@ -291,7 +292,6 @@ async def cb_choose_user_for_update(
         await state.clear()
         return
 
-    # человекочитаемое название параметра
     param_human = {
         UpdateParam.STATUS: "статус",
         UpdateParam.ROLE: "роль",
@@ -299,15 +299,18 @@ async def cb_choose_user_for_update(
         UpdateParam.COHORT: "когорта",
     }[param]
 
-    # человекочитаемое значение
     if chosen_value_type == "enum":
         if param == UpdateParam.ROLE:
-            value_human = Role[chosen_value].value
-
-            await UserDAO.update(telegram_id=user_id, role=Role[chosen_value])
+            role_obj = await RoleDAO.get_by_name(chosen_value)
+            if role_obj:
+                await UserDAO.update(telegram_id=user_id, role_id=role_obj.id)
+                await AuthService.invalidate_user(user_id)
+                value_human = role_obj.display_name
+            else:
+                value_human = chosen_value
 
         elif param == UpdateParam.STATUS:
-            if role == Role.mentor and user.mentor_id != callback.from_user.id:
+            if "manage_users" not in perms and user.mentor_id != callback.from_user.id:
                 await callback.message.edit_text(
                     "Можно обновлять только своих учеников.",
                     reply_markup=back_to_menu_keyboard(),
@@ -330,7 +333,7 @@ async def cb_choose_user_for_update(
 
         value_human = mentor.name if mentor else f"id={chosen_value}"
 
-        if user.role == Role.student and user.state == State.greeting and mentor:
+        if is_student(user) and user.state == State.greeting and mentor:
             await schedule_onboarding_for_mentor(user, mentor.telegram_id)
 
         if mentor and is_new_mentor:

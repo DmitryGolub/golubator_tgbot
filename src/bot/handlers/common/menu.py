@@ -4,25 +4,23 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from src.bot.filters.role import RoleFilter
+from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import menu_keyboard
 from src.bot.keyboards.mailings import mailings_menu_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.keyboards.user import user_actions_keyboard
 from src.bot.keyboards.cohort import cohort_actions_keyboard
-from src.models.user import Role
-from src.utils.auth import get_user_role
+from src.services.auth import AuthService
 from src.dao.user import UserDAO
+
 from src.services.call_flow import ActiveCallNotFoundError, CallFlowService
 
 router = Router(name="menu")
-router.message.filter(RoleFilter([Role.admin, Role.mentor, Role.student]))
-router.callback_query.filter(RoleFilter([Role.admin, Role.mentor, Role.student]))
 
 
-async def _render_menu(message_or_callback, role: Role):
+async def _render_menu(message_or_callback, permissions: set[str]):
     text = "Список доступных команд"
-    markup = menu_keyboard(role)
+    markup = menu_keyboard(permissions)
 
     if isinstance(message_or_callback, Message):
         await message_or_callback.answer(text=text, reply_markup=markup)
@@ -36,28 +34,28 @@ async def _render_menu(message_or_callback, role: Role):
 
 @router.message(Command("menu"))
 async def cmd_menu(message: Message):
-    role = await get_user_role(message.from_user.id)
-    if not role:
+    permissions = await AuthService.get_user_permissions(message.from_user.id)
+    if not permissions:
         await message.answer("Доступ запрещен.")
         return
 
-    await _render_menu(message, role)
+    await _render_menu(message, permissions)
 
 
 @router.callback_query(F.data == "back_to_menu")
 async def cb_menu(callback: CallbackQuery):
     await callback.answer()
 
-    role = await get_user_role(callback.from_user.id)
-    if not role:
+    permissions = await AuthService.get_user_permissions(callback.from_user.id)
+    if not permissions:
         await callback.message.edit_text("Доступ запрещен.")
         return
 
-    await _render_menu(callback, role)
+    await _render_menu(callback, permissions)
 
 
 # ==== ADMIN ====
-@router.callback_query(RoleFilter([Role.admin]), F.data == "menu_users")
+@router.callback_query(PermissionFilter("manage_users"), F.data == "menu_users")
 async def cb_menu_users(callback: CallbackQuery):
     await callback.answer()
     try:
@@ -69,7 +67,7 @@ async def cb_menu_users(callback: CallbackQuery):
             raise
 
 
-@router.callback_query(RoleFilter([Role.admin]), F.data == "menu_cohorts")
+@router.callback_query(PermissionFilter("manage_cohorts"), F.data == "menu_cohorts")
 async def cb_menu_cohorts(callback: CallbackQuery):
     await callback.answer()
     try:
@@ -81,7 +79,7 @@ async def cb_menu_cohorts(callback: CallbackQuery):
             raise
 
 
-@router.callback_query(RoleFilter([Role.admin]), F.data == "menu_mailings")
+@router.callback_query(PermissionFilter("manage_mailings"), F.data == "menu_mailings")
 async def cb_menu_mailings(callback: CallbackQuery):
     await callback.answer()
     try:
@@ -138,7 +136,7 @@ async def _finish_active_call_text(mentor_id: int) -> str:
     )
 
 
-@router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_students_menu")
+@router.callback_query(PermissionFilter("view_students"), F.data == "mentor_students_menu")
 async def cb_mentor_students_menu(callback: CallbackQuery):
     await callback.answer()
     try:
@@ -151,7 +149,7 @@ async def cb_mentor_students_menu(callback: CallbackQuery):
             raise
 
 
-@router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_students_list")
+@router.callback_query(PermissionFilter("view_students"), F.data == "mentor_students_list")
 async def cb_mentor_students_list(callback: CallbackQuery):
     await callback.answer()
 
@@ -170,10 +168,11 @@ async def cb_mentor_students_list(callback: CallbackQuery):
     lines = ["<b>Мои ученики:</b>", ""]
     for student in students:
         cohort_name = student.cohort.name if student.cohort else "Отсутствует"
+        role_display = student.role_rel.display_name if student.role_rel else "—"
         lines.append(
             f"👤 <b>{student.name}</b> @{student.username}\n"
             f"   • Когорта: <b>{cohort_name}</b>\n"
-            f"   • Роль: <b>{student.role.value}</b>\n"
+            f"   • Роль: <b>{role_display}</b>\n"
             f"   • Состояние: <b>{student.state.value}</b>\n"
         )
 
@@ -187,16 +186,17 @@ async def cb_mentor_students_list(callback: CallbackQuery):
             raise
 
 
-@router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_students_add")
+@router.callback_query(PermissionFilter("view_students"), F.data == "mentor_students_add")
 async def cb_mentor_students_add(callback: CallbackQuery):
     await callback.answer()
+    permissions = await AuthService.get_user_permissions(callback.from_user.id)
     await callback.message.edit_text(
         "Выберите ученика для изменения статуса.",
-        reply_markup=menu_keyboard(Role.mentor),
+        reply_markup=menu_keyboard(permissions),
     )
 
 
-@router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_meetings_menu")
+@router.callback_query(PermissionFilter("manage_meetings"), F.data == "mentor_meetings_menu")
 async def cb_mentor_meetings_menu(callback: CallbackQuery):
     await callback.answer()
     await callback.message.edit_text(
@@ -205,20 +205,20 @@ async def cb_mentor_meetings_menu(callback: CallbackQuery):
     )
 
 
-@router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_end_call")
+@router.callback_query(PermissionFilter("end_call"), F.data == "mentor_end_call")
 async def cb_mentor_end_call(callback: CallbackQuery):
     await callback.answer()
     text = await _finish_active_call_text(callback.from_user.id)
     await callback.message.edit_text(text, reply_markup=_mentor_meetings_menu_kb())
 
 
-@router.message(RoleFilter([Role.mentor]), Command("end_call"))
+@router.message(PermissionFilter("end_call"), Command("end_call"))
 async def cmd_end_call(message: Message):
     text = await _finish_active_call_text(message.from_user.id)
     await message.answer(text, reply_markup=_mentor_meetings_menu_kb())
 
 
-@router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_me_info")
+@router.callback_query(PermissionFilter("view_own_info"), F.data == "mentor_me_info")
 async def cb_mentor_me_info(callback: CallbackQuery):
     await callback.answer()
 
@@ -230,11 +230,12 @@ async def cb_mentor_me_info(callback: CallbackQuery):
         )
         return
 
+    role_display = mentor.role_rel.display_name if mentor.role_rel else "—"
     text = (
         "<b>Моя информация:</b>\n\n"
         f"Имя: <b>{mentor.name}</b>\n"
         f"Юзернейм: @{mentor.username}\n"
-        f"Роль: <b>{mentor.role.value}</b>\n"
+        f"Роль: <b>{role_display}</b>\n"
         f"Состояние: <b>{mentor.state.value}</b>\n"
     )
 
@@ -246,7 +247,7 @@ async def cb_mentor_me_info(callback: CallbackQuery):
 
 
 # ==== STUDENT ====
-@router.callback_query(RoleFilter([Role.student]), F.data == "student_me_info")
+@router.callback_query(PermissionFilter("view_own_info"), F.data == "student_me_info")
 async def cb_student_me_info(callback: CallbackQuery):
     await callback.answer()
 
@@ -260,12 +261,13 @@ async def cb_student_me_info(callback: CallbackQuery):
 
     mentor_name = student.mentor.name if student.mentor else "Отсутствует"
     mentor_username = f"@{student.mentor.username}" if student.mentor else ""
+    role_display = student.role_rel.display_name if student.role_rel else "—"
 
     text = (
         "<b>Моя информация:</b>\n\n"
         f"Имя: <b>{student.name}</b>\n"
         f"Юзернейм: @{student.username}\n"
-        f"Роль: <b>{student.role.value}</b>\n"
+        f"Роль: <b>{role_display}</b>\n"
         f"Мой ментор: <b>{mentor_name}</b> {mentor_username}\n"
         f"Состояние: <b>{student.state.value}</b>\n"
     )

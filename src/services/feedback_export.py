@@ -7,7 +7,7 @@ from src.dao.feedback_export import FeedbackExportDAO
 from src.models.meeting import Meeting
 from src.models.mentor_feedback import MentorFeedback
 from src.models.survey import SurveyResponse
-from src.models.user import Role, User
+from src.models.user import User
 from src.services.yandex_sheets import CellValue, YandexSheetTarget, YandexSheetsWriter
 
 logger = logging.getLogger(__name__)
@@ -37,14 +37,10 @@ FEEDBACK_EXPORT_HEADERS: tuple[str, ...] = (
 def _role_name(user: User | Any | None) -> str | None:
     if user is None:
         return None
-    role = getattr(user, "role", None)
-    if role is None:
-        return None
-    if role == Role.mentor:
-        return "mentor"
-    if role == Role.student:
-        return "student"
-    return getattr(role, "name", None)
+    role_rel = getattr(user, "role_rel", None)
+    if role_rel is not None:
+        return role_rel.name
+    return None
 
 
 def _normalize_datetime(value: Optional[datetime]) -> Optional[datetime]:

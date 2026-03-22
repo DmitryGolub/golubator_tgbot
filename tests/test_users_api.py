@@ -16,7 +16,7 @@ os.environ.setdefault("REDIS_HOST", "localhost")
 os.environ.setdefault("REDIS_PORT", "6379")
 
 from src.api.main import app
-from src.models.user import Role, State
+from src.models.user import State
 
 
 @pytest.fixture
@@ -48,11 +48,12 @@ async def test_create_tag(client: httpx.AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_assign_tag_to_user(client: httpx.AsyncClient) -> None:
+    student_role = SimpleNamespace(name="student", display_name="Студент", is_mentor=False, is_student=True)
     user = SimpleNamespace(
         telegram_id=1001,
         username="user1",
         name="User One",
-        role=Role.student,
+        role_rel=student_role,
         state=State.greeting,
         registered_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
         tags=[SimpleNamespace(id=1, name="vip")],
@@ -72,11 +73,12 @@ async def test_assign_tag_to_user(client: httpx.AsyncClient) -> None:
 
 @pytest.mark.anyio
 async def test_list_users_with_filters(client: httpx.AsyncClient) -> None:
+    student_role = SimpleNamespace(name="student", display_name="Студент", is_mentor=False, is_student=True)
     user = SimpleNamespace(
         telegram_id=1001,
         username="user1",
         name="User One",
-        role=Role.student,
+        role_rel=student_role,
         state=State.study,
         registered_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
         tags=[SimpleNamespace(id=2, name="active")],
@@ -101,7 +103,7 @@ async def test_list_users_with_filters(client: httpx.AsyncClient) -> None:
     assert len(response.json()) == 1
     mock_get_all.assert_awaited_once()
     kwargs = mock_get_all.call_args.kwargs
-    assert kwargs["role"] == Role.student
+    assert kwargs["role_name"] == "student"
     assert kwargs["state"] == State.study
     assert kwargs["tag_id"] == 2
 

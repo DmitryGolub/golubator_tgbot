@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from src.api.schemas.user import TagCreateRequest, TagResponse, UserResponse
 from src.dao.tag import TagDAO
 from src.dao.user import UserDAO
-from src.models.user import Role, State
+from src.models.user import State
 
 router = APIRouter(tags=["users"])
 
@@ -60,7 +60,7 @@ async def assign_tag_to_user(telegram_id: int, tag_id: int) -> UserResponse:
         telegram_id=user.telegram_id,
         username=user.username,
         name=user.name,
-        role=user.role.name,
+        role=user.role_rel.name if user.role_rel else None,
         state=user.state.name if user.state else None,
         registered_at=user.registered_at,
         tags=[TagResponse(id=tag.id, name=tag.name) for tag in user.tags],
@@ -79,7 +79,7 @@ async def unassign_tag_from_user(telegram_id: int, tag_id: int) -> UserResponse:
         telegram_id=user.telegram_id,
         username=user.username,
         name=user.name,
-        role=user.role.name,
+        role=user.role_rel.name if user.role_rel else None,
         state=user.state.name if user.state else None,
         registered_at=user.registered_at,
         tags=[TagResponse(id=tag.id, name=tag.name) for tag in user.tags],
@@ -101,7 +101,7 @@ async def list_users(
         )
 
     users = await UserDAO.get_all(
-        role=_parse_enum_value(role, Role),
+        role_name=role,
         state=_parse_enum_value(state, State),
         tag_id=tag_id,
         registered_from=registered_from,
@@ -112,7 +112,7 @@ async def list_users(
             telegram_id=user.telegram_id,
             username=user.username,
             name=user.name,
-            role=user.role.name,
+            role=user.role_rel.name if user.role_rel else None,
             state=user.state.name if user.state else None,
             registered_at=user.registered_at,
             tags=[TagResponse(id=tag.id, name=tag.name) for tag in user.tags],

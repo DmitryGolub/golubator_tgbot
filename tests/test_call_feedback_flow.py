@@ -25,7 +25,6 @@ from src.bot.handlers import mentor_feedback as mentor_feedback_handler
 from src.bot.handlers.common import menu as menu_handler
 from src.bot.keyboards.meeting import mentor_meetings_keyboard
 from src.models.call import CallStatus
-from src.models.user import Role
 from src.services.call_flow import (
     ActiveCallAlreadyExistsError,
     ActiveCallNotFoundError,
@@ -38,10 +37,16 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-def _participant(user_id: int, role: Role) -> SimpleNamespace:
+def _role(name: str, *, is_mentor: bool = False, is_student: bool = False) -> SimpleNamespace:
+    return SimpleNamespace(name=name, display_name=name.capitalize(), is_mentor=is_mentor, is_student=is_student)
+
+
+def _participant(user_id: int, role_name: str, **role_flags) -> SimpleNamespace:
+    defaults = {"is_mentor": role_name == "mentor", "is_student": role_name == "student"}
+    defaults.update(role_flags)
     return SimpleNamespace(
         telegram_id=user_id,
-        role=role,
+        role_rel=_role(role_name, **defaults),
         name=f"user-{user_id}",
         username=f"user_{user_id}",
     )
@@ -55,8 +60,8 @@ async def test_start_call_creates_active_call_for_meeting(
         id=101,
         completed_at=None,
         participants=[
-            _participant(1001, Role.mentor),
-            _participant(2002, Role.student),
+            _participant(1001, "mentor"),
+            _participant(2002, "student"),
         ],
     )
     created_call = SimpleNamespace(id=77, meeting_id=101)
@@ -118,8 +123,8 @@ async def test_start_call_rejects_existing_active_call(
         id=101,
         completed_at=None,
         participants=[
-            _participant(1001, Role.mentor),
-            _participant(2002, Role.student),
+            _participant(1001, "mentor"),
+            _participant(2002, "student"),
         ],
     )
     active_call = SimpleNamespace(id=77, meeting_id=999)

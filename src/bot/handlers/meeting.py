@@ -13,7 +13,7 @@ from src.bot.callbacks.meeting import (
     NavigateMeetingMonthCB,
     ChooseMeetingTimeCB,
 )
-from src.bot.filters.role import RoleFilter
+from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.meeting import (
     mentor_meetings_keyboard,
     meeting_cancel_keyboard,
@@ -26,7 +26,8 @@ from src.bot.states.meeting import CreateMeetingFSM
 from src.dao.meeting import MeetingDAO
 from src.dao.user import UserDAO
 from src.models.call import CallStatus
-from src.models.user import Role
+from src.services.auth import AuthService
+from src.utils.roles import is_mentor, is_student
 import logging
 from src.tasks.meeting import (
     notify_meeting_created,
@@ -45,20 +46,25 @@ from src.services.call_flow import (
 logger = logging.getLogger(__name__)
 MOSCOW_TZ = timezone(timedelta(hours=3))
 router = Router(name="meetings")
-router.message.filter(RoleFilter([Role.mentor, Role.student]))
-router.callback_query.filter(RoleFilter([Role.mentor, Role.student]))
+router.message.filter(PermissionFilter(["manage_meetings", "view_own_meetings"]))
+router.callback_query.filter(PermissionFilter(["manage_meetings", "view_own_meetings"]))
 
 
-def _format_meetings(meetings, viewer_id: int, role: Role) -> str:
+async def _menu_kb(user_id: int):
+    perms = await AuthService.get_user_permissions(user_id)
+    return menu_keyboard(perms)
+
+
+def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:
     if not meetings:
         return "Список созвонов пуст."
 
     lines = ["<b>Мои созвоны:</b>", ""]
     for meeting in meetings:
-        mentor = next((p for p in meeting.participants if p.role == Role.mentor), None)
-        student = next((p for p in meeting.participants if p.role == Role.student), None)
+        mentor = next((p for p in meeting.participants if is_mentor(p)), None)
+        student = next((p for p in meeting.participants if is_student(p)), None)
 
-        # fallback: если роль не подтянулась, берем второго участника не равного ментору
+        # fallback: if role not loaded, pick the other participant
         if not student:
             student = next(
                 (
@@ -69,9 +75,9 @@ def _format_meetings(meetings, viewer_id: int, role: Role) -> str:
                 None,
             )
 
-        if role == Role.mentor and mentor and mentor.telegram_id != viewer_id:
+        if viewer_is_mentor and mentor and mentor.telegram_id != viewer_id:
             continue
-        if role == Role.student and student and student.telegram_id != viewer_id:
+        if not viewer_is_mentor and student and student.telegram_id != viewer_id:
             continue
 
         mentor_text = f"Ментор: <b>{mentor.name}</b> @{mentor.username}" if mentor else "Ментор: —"
@@ -80,7 +86,6 @@ def _format_meetings(meetings, viewer_id: int, role: Role) -> str:
         link = meeting.meeting_link or "—"
         if meeting.scheduled_at:
             try:
-                # отображаем как записано (локальное время встречи)
                 if meeting.scheduled_at.tzinfo:
                     date_str = meeting.scheduled_at.astimezone(meeting.scheduled_at.tzinfo).strftime(
                         "%d.%m.%Y %H:%M MSK"
@@ -103,29 +108,29 @@ def _format_meetings(meetings, viewer_id: int, role: Role) -> str:
     return "\n".join(lines)
 
 
-@router.callback_query(RoleFilter([Role.mentor]), F.data == "mentor_meetings_list")
+@router.callback_query(PermissionFilter("manage_meetings"), F.data == "mentor_meetings_list")
 async def cb_mentor_meetings(callback: CallbackQuery):
     await callback.answer()
     meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
 
-    text = _format_meetings(meetings, callback.from_user.id, Role.mentor)
+    text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=True)
     await callback.message.edit_text(text, reply_markup=mentor_meetings_keyboard(meetings))
 
 
-@router.callback_query(RoleFilter([Role.student]), F.data == "student_meetings")
+@router.callback_query(PermissionFilter("view_own_meetings"), F.data == "student_meetings")
 async def cb_student_meetings(callback: CallbackQuery):
     await callback.answer()
     meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
 
-    text = _format_meetings(meetings, callback.from_user.id, Role.student)
+    text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=False)
     try:
-        await callback.message.edit_text(text, reply_markup=menu_keyboard(Role.student))
+        await callback.message.edit_text(text, reply_markup=await _menu_kb(callback.from_user.id))
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
 
 
-@router.callback_query(RoleFilter([Role.mentor]), StartMeetingCallCB.filter())
+@router.callback_query(PermissionFilter("manage_meetings"), StartMeetingCallCB.filter())
 async def cb_start_meeting_call(
     callback: CallbackQuery,
     callback_data: StartMeetingCallCB,
@@ -175,7 +180,7 @@ async def cb_start_meeting_call(
     )
 
 
-@router.callback_query(RoleFilter([Role.mentor]), F.data == "meeting_create")
+@router.callback_query(PermissionFilter("manage_meetings"), F.data == "meeting_create")
 async def cb_meeting_create(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
@@ -183,7 +188,7 @@ async def cb_meeting_create(callback: CallbackQuery, state: FSMContext):
     if not students:
         await callback.message.edit_text(
             "У вас пока нет учеников.",
-            reply_markup=menu_keyboard(Role.mentor),
+            reply_markup=await _menu_kb(callback.from_user.id),
         )
         return
 
@@ -195,7 +200,7 @@ async def cb_meeting_create(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(
-    RoleFilter([Role.mentor]),
+    PermissionFilter("manage_meetings"),
     StateFilter(CreateMeetingFSM.choosing_student),
     ChooseMeetingStudentCB.filter(),
 )
@@ -215,7 +220,7 @@ async def cb_choose_meeting_student(
     )
 
 
-@router.message(RoleFilter([Role.mentor]), StateFilter(CreateMeetingFSM.waiting_description))
+@router.message(PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_description))
 async def msg_meeting_description(message: Message, state: FSMContext):
     description = message.text.strip() if message.text else ""
     await state.update_data(description=description)
@@ -228,7 +233,7 @@ async def msg_meeting_description(message: Message, state: FSMContext):
 
 
 @router.callback_query(
-    RoleFilter([Role.mentor]),
+    PermissionFilter("manage_meetings"),
     StateFilter(CreateMeetingFSM.waiting_date),
     NavigateMeetingMonthCB.filter(),
 )
@@ -252,7 +257,7 @@ async def cb_meeting_nav_month(
 
 
 @router.callback_query(
-    RoleFilter([Role.mentor]),
+    PermissionFilter("manage_meetings"),
     StateFilter(CreateMeetingFSM.waiting_date),
     ChooseMeetingDateCB.filter(),
 )
@@ -281,7 +286,7 @@ def _parse_time(value: str) -> str | None:
     return None
 
 
-@router.message(RoleFilter([Role.mentor]), StateFilter(CreateMeetingFSM.waiting_time))
+@router.message(PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_time))
 async def msg_meeting_time(message: Message, state: FSMContext):
     parsed = _parse_time(message.text)
     if not parsed:
@@ -295,7 +300,10 @@ async def msg_meeting_time(message: Message, state: FSMContext):
     chosen_date = data.get("chosen_date")
     if not chosen_date:
         await state.clear()
-        await message.answer("Дата не выбрана, начните заново.", reply_markup=menu_keyboard(Role.mentor))
+        await message.answer(
+            "Дата не выбрана, начните заново.",
+            reply_markup=await _menu_kb(message.from_user.id),
+        )
         return
 
     scheduled_iso = f"{chosen_date} {parsed}"
@@ -309,7 +317,7 @@ async def msg_meeting_time(message: Message, state: FSMContext):
 
 
 @router.callback_query(
-    RoleFilter([Role.mentor]),
+    PermissionFilter("manage_meetings"),
     StateFilter(CreateMeetingFSM.waiting_time),
     ChooseMeetingTimeCB.filter(),
 )
@@ -323,7 +331,10 @@ async def cb_meeting_choose_time(
     chosen_date = data.get("chosen_date")
     if not chosen_date:
         await state.clear()
-        await callback.message.edit_text("Дата не выбрана, начните заново.", reply_markup=menu_keyboard(Role.mentor))
+        await callback.message.edit_text(
+            "Дата не выбрана, начните заново.",
+            reply_markup=await _menu_kb(callback.from_user.id),
+        )
         return
 
     hhmm = callback_data.t
@@ -348,12 +359,12 @@ def _parse_datetime(value: str) -> datetime | None:
     for fmt in formats:
         try:
             dt = datetime.strptime(value, fmt)
-            return dt  # хранится как введено (локальное время)
+            return dt
         except Exception:
             continue
     try:
         dt = datetime.fromisoformat(value)
-        return dt  # не трогаем tz, если есть, иначе оставляем naive
+        return dt
     except Exception:
         return None
 
@@ -385,7 +396,7 @@ def _schedule_meeting_tasks(meeting) -> None:
             logger.info("Scheduled reminder for meeting %s at %s", meeting_id, reminder_eta)
 
 
-@router.message(RoleFilter([Role.mentor]), StateFilter(CreateMeetingFSM.waiting_link))
+@router.message(PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_link))
 async def msg_meeting_link(message: Message, state: FSMContext):
     link = message.text.strip() if message.text else ""
     data = await state.get_data()
@@ -400,7 +411,7 @@ async def msg_meeting_link(message: Message, state: FSMContext):
     if not scheduled_at:
         await message.answer(
             "Не удалось сохранить дату/время. Попробуйте создать созвон заново.",
-            reply_markup=menu_keyboard(Role.mentor),
+            reply_markup=await _menu_kb(message.from_user.id),
         )
         await state.clear()
         return
@@ -417,11 +428,11 @@ async def msg_meeting_link(message: Message, state: FSMContext):
 
     await message.answer(
         "Созвон успешно создан.",
-        reply_markup=menu_keyboard(Role.mentor),
+        reply_markup=await _menu_kb(message.from_user.id),
     )
 
 
-@router.callback_query(RoleFilter([Role.mentor]), DeleteMeetingCB.filter())
+@router.callback_query(PermissionFilter("manage_meetings"), DeleteMeetingCB.filter())
 async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetingCB):
     await callback.answer()
 
@@ -438,7 +449,7 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
         return
 
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
-    text = _format_meetings(meetings, callback.from_user.id, Role.mentor)
+    text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=True)
     await callback.message.edit_text(
         f"Созвон #{callback_data.meeting_id} удалён.\n\n{text}",
         reply_markup=mentor_meetings_keyboard(meetings),
@@ -446,7 +457,7 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
 
 
 @router.callback_query(
-    RoleFilter([Role.mentor]),
+    PermissionFilter("manage_meetings"),
     StateFilter(
         CreateMeetingFSM.choosing_student,
         CreateMeetingFSM.waiting_description,
@@ -461,5 +472,5 @@ async def cb_meeting_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
         "Создание созвона отменено.",
-        reply_markup=menu_keyboard(Role.mentor),
+        reply_markup=await _menu_kb(callback.from_user.id),
     )
