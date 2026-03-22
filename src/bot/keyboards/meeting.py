@@ -19,7 +19,7 @@ def mentor_meetings_keyboard(meetings: list[Meeting] | None = None) -> InlineKey
     kb = InlineKeyboardBuilder()
     kb.button(text="Добавить созвон", callback_data="meeting_create")
     kb.button(text="Завершить активный созвон", callback_data="mentor_end_call")
-    kb.button(text="Заполнить фидбек", callback_data="mentor_feedback_start")
+    kb.button(text="Заполнить фидбек", callback_data="menu_surveys")
 
     if meetings:
         for meeting in meetings:

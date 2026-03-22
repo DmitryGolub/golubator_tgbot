@@ -10,15 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import joinedload
 
-from src.bot.keyboards.survey import survey_start_keyboard
 from src.celery_app import celery_app
 from src.core.config import settings
 from src.models.meeting import Meeting
 from src.models.user import User
 from src.utils.roles import is_mentor, is_student
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from sqlalchemy import select
-from sqlalchemy.orm import joinedload
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +128,6 @@ async def _notify_reminder_async(meeting_id: int) -> None:
 
 
 async def _complete_meeting_async(meeting_id: int) -> bool:
-    now = datetime.now(timezone.utc)
     engine = create_async_engine(settings.DATABASE_URL)
     Session = async_sessionmaker(engine, expire_on_commit=False)
     try:
@@ -175,12 +170,6 @@ async def _cleanup_stale_async() -> None:
     finally:
         await engine.dispose()
 
-    for student_id, call_id in survey_notifications:
-        await _send_to_user(
-            student_id,
-            _survey_notification_text(call_id),
-            reply_markup=survey_start_keyboard(call_id),
-        )
 
 
 @celery_app.task(name="meeting.notify_created")

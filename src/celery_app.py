@@ -10,8 +10,6 @@ celery_app = Celery(
     backend=settings.REDIS_URL,
     include=[
         "src.tasks.meeting",
-        "src.tasks.notification",
-        "src.tasks.mentor_self_review",
         "src.tasks.notion_sync",
         "src.tasks.trigger",
     ],
@@ -21,14 +19,6 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
-        "notifications.tick": {
-            "task": "notifications.tick",
-            "schedule": crontab(minute="*"),
-        },
-        "mentor_self_review.trigger_monthly": {
-            "task": "mentor_self_review.trigger_monthly",
-            "schedule": crontab(day_of_month="1", hour="9", minute="0"),
-        },
         "notion.sync_cohorts": {
             "task": "notion.sync_cohorts",
             "schedule": crontab(minute="*/5"),

@@ -1,70 +1,81 @@
 from fastapi import APIRouter, HTTPException, status
 
-from src.api.schemas.survey import SurveyStateResponse, SurveySubmitResponse
-from src.services.survey import (
-    CallNotFoundError,
-    SurveyNotAvailableError,
-    SurveyService,
-)
-from src.survey.schemas import (
-    SurveyAnswer,
-    SurveyQuestion,
-    SurveyStatus,
-    SurveySubmitRequest,
+from src.dao.survey_template import SurveyTemplateDAO
+from src.services.survey_session import (
+    SessionNotFoundError,
+    SurveySessionService,
 )
 
 router = APIRouter(prefix="/survey", tags=["survey"])
 
 
-@router.get("/questions", response_model=list[SurveyQuestion])
-async def get_survey_questions() -> list[SurveyQuestion]:
-    service = SurveyService()
-    return service.build_questions()
+@router.get("/templates")
+async def list_templates():
+    templates = await SurveyTemplateDAO.get_all_active()
+    return [
+        {
+            "id": t.id,
+            "title": t.title,
+            "slug": t.slug,
+            "description": t.description,
+            "questions_count": len(t.questions) if t.questions else 0,
+        }
+        for t in templates
+    ]
 
 
-@router.get("/{call_id}", response_model=SurveyStateResponse)
-async def get_survey_state(call_id: int) -> SurveyStateResponse:
-    service = SurveyService()
+@router.get("/templates/{slug}")
+async def get_template(slug: str):
+    template = await SurveyTemplateDAO.get_by_slug(slug)
+    if not template:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    return {
+        "id": template.id,
+        "title": template.title,
+        "slug": template.slug,
+        "description": template.description,
+        "questions": [
+            {
+                "id": q.id,
+                "sort_order": q.sort_order,
+                "title": q.title,
+                "question_type": q.question_type.value,
+                "is_required": q.is_required,
+                "config": q.config,
+                "options": [
+                    {"value": o.value, "label": o.label} for o in q.options
+                ],
+            }
+            for q in template.questions
+        ],
+    }
+
+
+@router.get("/sessions/{session_id}")
+async def get_session(session_id: int):
+    service = SurveySessionService()
     try:
-        survey_status, response = await service.get_survey_state(call_id)
-    except CallNotFoundError as exc:
+        session = await service.get_session(session_id)
+    except SessionNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Созвон не найден",
+            detail="Session not found",
         ) from exc
 
-    answer = SurveyAnswer.model_validate(response) if response else None
-    questions = service.build_questions() if survey_status == SurveyStatus.available else None
-    return SurveyStateResponse(
-        status=survey_status,
-        response=answer,
-        questions=questions,
-    )
-
-
-@router.post("/{call_id}", response_model=SurveySubmitResponse)
-async def submit_survey(
-    call_id: int,
-    payload: SurveySubmitRequest,
-) -> SurveySubmitResponse:
-    service = SurveyService()
-    try:
-        response, already_submitted = await service.submit_survey(
-            call_id=call_id,
-            payload=payload,
-        )
-    except CallNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Созвон не найден",
-        ) from exc
-    except SurveyNotAvailableError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Опрос пока недоступен",
-        ) from exc
-
-    return SurveySubmitResponse(
-        already_submitted=already_submitted,
-        response=SurveyAnswer.model_validate(response),
-    )
+    return {
+        "id": session.id,
+        "template_id": session.template_id,
+        "respondent_id": session.respondent_id,
+        "context_type": session.context_type,
+        "context_id": session.context_id,
+        "status": session.status.value,
+        "answers": [
+            {
+                "question_id": a.question_id,
+                "value_text": a.value_text,
+                "value_int": a.value_int,
+                "value_choice": a.value_choice,
+            }
+            for a in session.answers
+        ],
+    }

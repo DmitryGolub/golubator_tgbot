@@ -5,7 +5,8 @@ from sqlalchemy import func, select
 
 from src.core.database import async_session_maker
 from src.models.meeting import Meeting, MeetingUser
-from src.models.survey import SurveyResponse
+from src.models.survey_session import SurveyAnswer, SurveySession
+from src.models.survey_template import SurveyQuestion, SurveyTemplate
 
 
 class MentorStatsDAO:
@@ -16,14 +17,12 @@ class MentorStatsDAO:
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
     ) -> dict:
-        """
-        Return aggregated survey statistics for a mentor.
+        """Return aggregated survey statistics for a mentor.
 
         Counts completed meetings where the mentor was a participant.
-        Calculates averages only from meetings that have survey responses.
+        Calculates averages from completed survey sessions (post_call_student template).
         """
         async with async_session_maker() as session:
-            # Base filter: meetings where this mentor participated and completed
             base_filter = [
                 MeetingUser.user_id == mentor_id,
                 Meeting.completed_at.isnot(None),
@@ -41,51 +40,51 @@ class MentorStatsDAO:
             )
             total_calls = (await session.execute(calls_query)).scalar() or 0
 
-            # Aggregate survey metrics
-            stats_query = (
-                select(
-                    func.count(SurveyResponse.id).label("total_surveys"),
-                    func.avg(SurveyResponse.mentor_style).label("avg_mentor_style"),
-                    func.avg(SurveyResponse.knowledge_depth).label("avg_knowledge_depth"),
-                    func.avg(SurveyResponse.understanding).label("avg_understanding"),
-                    func.avg(
-                        (
-                            SurveyResponse.mentor_style
-                            + SurveyResponse.knowledge_depth
-                            + SurveyResponse.understanding
-                        )
-                        / 3.0
-                    ).label("avg_satisfaction"),
+            # Count completed survey sessions for these meetings
+            survey_count_query = (
+                select(func.count(SurveySession.id))
+                .join(SurveyTemplate, SurveySession.template_id == SurveyTemplate.id)
+                .where(
+                    SurveyTemplate.slug == "post_call_student",
+                    SurveySession.context_type == "meeting",
+                    SurveySession.status == "completed",
                 )
-                .select_from(Meeting)
-                .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
-                .join(SurveyResponse, SurveyResponse.call_id == Meeting.id)
-                .where(*base_filter)
             )
-            row = (await session.execute(stats_query)).one()
+            total_surveys = (await session.execute(survey_count_query)).scalar() or 0
+
+            # Calculate averages from rating answers
+            # Rating questions in post_call_student: sort_order 2,3,4
+            avg_query = (
+                select(
+                    SurveyQuestion.sort_order,
+                    func.avg(SurveyAnswer.value_int).label("avg_value"),
+                )
+                .select_from(SurveyAnswer)
+                .join(SurveySession, SurveyAnswer.session_id == SurveySession.id)
+                .join(SurveyQuestion, SurveyAnswer.question_id == SurveyQuestion.id)
+                .join(SurveyTemplate, SurveySession.template_id == SurveyTemplate.id)
+                .where(
+                    SurveyTemplate.slug == "post_call_student",
+                    SurveySession.context_type == "meeting",
+                    SurveySession.status == "completed",
+                    SurveyQuestion.question_type == "rating",
+                    SurveyAnswer.value_int.isnot(None),
+                )
+                .group_by(SurveyQuestion.sort_order)
+            )
+            avg_rows = (await session.execute(avg_query)).fetchall()
+            avgs = {row.sort_order: round(float(row.avg_value), 2) for row in avg_rows}
 
             return {
                 "mentor_id": mentor_id,
                 "total_calls": total_calls,
-                "total_surveys": row.total_surveys or 0,
-                "avg_mentor_style": (
-                    round(float(row.avg_mentor_style), 2)
-                    if row.avg_mentor_style is not None
-                    else None
-                ),
-                "avg_knowledge_depth": (
-                    round(float(row.avg_knowledge_depth), 2)
-                    if row.avg_knowledge_depth is not None
-                    else None
-                ),
-                "avg_understanding": (
-                    round(float(row.avg_understanding), 2)
-                    if row.avg_understanding is not None
-                    else None
-                ),
+                "total_surveys": total_surveys,
+                "avg_mentor_style": avgs.get(2),
+                "avg_knowledge_depth": avgs.get(3),
+                "avg_understanding": avgs.get(4),
                 "avg_satisfaction": (
-                    round(float(row.avg_satisfaction), 2)
-                    if row.avg_satisfaction is not None
+                    round(sum(v for v in [avgs.get(2), avgs.get(3), avgs.get(4)] if v) / max(sum(1 for v in [avgs.get(2), avgs.get(3), avgs.get(4)] if v), 1), 2)
+                    if any(avgs.get(i) for i in (2, 3, 4))
                     else None
                 ),
             }

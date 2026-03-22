@@ -2,15 +2,19 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from src.survey.schemas import SurveyAnswer, SurveyQuestion, SurveyStatus
+
+class SurveyTemplateResponse(BaseModel):
+    id: int
+    title: str
+    slug: str
+    description: Optional[str] = None
+    questions_count: int
 
 
-class SurveyStateResponse(BaseModel):
-    status: SurveyStatus
-    response: Optional[SurveyAnswer] = None
-    questions: list[SurveyQuestion] | None = None
-
-
-class SurveySubmitResponse(BaseModel):
-    already_submitted: bool
-    response: SurveyAnswer
+class SurveySessionResponse(BaseModel):
+    id: int
+    template_id: int
+    respondent_id: int
+    context_type: Optional[str] = None
+    context_id: Optional[str] = None
+    status: str
