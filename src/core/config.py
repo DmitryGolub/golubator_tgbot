@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     REDIS_HOST: str
     REDIS_PORT: int
-    ADMIN_USERNAMES: str | None = None
+    ADMIN_IDS: str | None = None
     NOTION_TOKEN: str | None = None
     NOTION_DATABASE_ID: str | None = None
 
@@ -41,13 +41,13 @@ class Settings(BaseSettings):
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
     @property
-    def admin_usernames(self) -> set[str]:
-        if not self.ADMIN_USERNAMES:
+    def admin_ids(self) -> set[int]:
+        if not self.ADMIN_IDS:
             return set()
         return {
-            name.strip().lower()
-            for name in self.ADMIN_USERNAMES.split(",")
-            if name.strip()
+            int(id_.strip())
+            for id_ in self.ADMIN_IDS.split(",")
+            if id_.strip().isdigit()
         }
 
 

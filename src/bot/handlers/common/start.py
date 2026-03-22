@@ -35,12 +35,12 @@ async def cmd_start(message: Message):
     username = (user.username or "").strip()
     reg_time = datetime.now(timezone.utc)
 
-    is_admin_username = username.lower() in settings.admin_usernames if username else False
+    is_admin = user_id in settings.admin_ids
 
     existing_user = await UserDAO.find_one_or_none(telegram_id=user_id)
 
     if not existing_user:
-        if is_admin_username:
+        if is_admin:
             role_obj = await RoleDAO.get_by_name("admin")
         else:
             role_obj = await RoleDAO.get_by_name("student")
@@ -57,7 +57,7 @@ async def cmd_start(message: Message):
             await schedule_onboarding_notifications(created_user, base_time=reg_time)
     else:
         # keep admin role in sync with env setting
-        if is_admin_username and (
+        if is_admin and (
             existing_user.role_rel is None or existing_user.role_rel.name != "admin"
         ):
             admin_role = await RoleDAO.get_by_name("admin")
