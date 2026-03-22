@@ -6,7 +6,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import menu_keyboard
-from src.bot.keyboards.mailings import mailings_menu_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.keyboards.user import user_actions_keyboard
 from src.bot.keyboards.cohort import cohort_actions_keyboard
@@ -85,9 +84,11 @@ async def cb_menu_cohorts(callback: CallbackQuery):
 @router.callback_query(PermissionFilter("manage_mailings"), F.data == "menu_mailings")
 async def cb_menu_mailings(callback: CallbackQuery):
     await callback.answer()
-    text = await UiTextService.get("menu.mailings.title")
+    text = "Рассылки перенесены в систему триггеров. Используйте меню триггеров."
     try:
-        await callback.message.edit_text(text, reply_markup=mailings_menu_keyboard())
+        await callback.message.edit_text(
+            text, reply_markup=back_to_menu_keyboard()
+        )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise

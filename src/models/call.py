@@ -59,6 +59,12 @@ class Call(Base):
         default=CallStatus.ongoing,
         server_default=text("'идёт'"),
     )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=True,
+    )
 
     meeting: Mapped["Meeting"] = relationship("Meeting", back_populates="call")
     mentor: Mapped["User"] = relationship(

@@ -210,6 +210,7 @@ def upgrade() -> None:
         sa.Column(
             "notion_page_id", sa.String(50), nullable=True, unique=True, index=True
         ),
+        sa.Column("notion_source_db", sa.String(10), nullable=True),
         sa.Column(
             "registered_at",
             sa.DateTime(timezone=True),
@@ -217,6 +218,13 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("state_changed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("synced_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=True,
+        ),
     )
 
     # ── 4. Tags ───────────────────────────────────────────────────────────
@@ -224,6 +232,13 @@ def upgrade() -> None:
         "tags",
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("name", sa.String(255), unique=True, nullable=False, index=True),
+        sa.Column("synced_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=True,
+        ),
     )
     op.create_table(
         "user_tags",
@@ -255,6 +270,29 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "notion_page_id", sa.String(50), nullable=True, unique=True, index=True
+        ),
+        sa.Column("event_type", sa.String(100), nullable=True),
+        sa.Column("topic", sa.String(512), nullable=True),
+        sa.Column(
+            "mentor_telegram_id",
+            sa.BigInteger,
+            sa.ForeignKey("users.telegram_id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column("mentee_telegram_tag", sa.String(255), nullable=True),
+        sa.Column("recording_link", sa.String(512), nullable=True),
+        sa.Column("summary", sa.Text, nullable=True),
+        sa.Column("action_items", sa.Text, nullable=True),
+        sa.Column("project", sa.String(255), nullable=True),
+        sa.Column("synced_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=True,
+        ),
     )
     op.create_table(
         "meeting_users",
@@ -306,87 +344,15 @@ def upgrade() -> None:
         sa.Column(
             "status", call_status_enum, nullable=False, server_default=sa.text("'идёт'")
         ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=True,
+        ),
     )
 
-    # ── 6. Notifications & Rules (legacy mailings) ───────────────────────
-    op.create_table(
-        "notifications",
-        sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column(
-            "user_id",
-            sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("text", sa.Text, nullable=False),
-        sa.Column("scheduled_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
-        ),
-    )
-    op.create_table(
-        "user_rules",
-        sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column(
-            "user_id",
-            sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("name", sa.String(255), nullable=True),
-        sa.Column("text", sa.Text, nullable=False),
-        sa.Column("regularity", regularity_enum, nullable=False),
-        sa.Column("last_sent_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
-        ),
-        sa.Column("start_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("end_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "author_id",
-            sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-    )
-    op.create_table(
-        "state_rules",
-        sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("user_state", state_enum, nullable=False),
-        sa.Column("last_sent_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("name", sa.String(255), nullable=True),
-        sa.Column("text", sa.Text, nullable=False),
-        sa.Column("regularity", regularity_enum, nullable=False),
-        sa.Column(
-            "author_id",
-            sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column("offset_days", sa.Integer, nullable=True),
-    )
-    op.create_table(
-        "cohort_rules",
-        sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("cohort_type", sa.String(100), nullable=False),
-        sa.Column("cohort_value", sa.String(255), nullable=False),
-        sa.Column("last_sent_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("name", sa.String(255), nullable=True),
-        sa.Column("text", sa.Text, nullable=False),
-        sa.Column("regularity", regularity_enum, nullable=False),
-        sa.Column(
-            "author_id",
-            sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-    )
+    # ── 6. (Legacy notifications & rules removed) ───────────────────────
 
     # ── 7. Notion cohort cache ───────────────────────────────────────────
     op.create_table(
@@ -1170,10 +1136,6 @@ def downgrade() -> None:
         "survey_questions",
         "survey_templates",
         "notion_cohort_cache",
-        "cohort_rules",
-        "state_rules",
-        "user_rules",
-        "notifications",
         "calls",
         "meeting_users",
         "meetings",

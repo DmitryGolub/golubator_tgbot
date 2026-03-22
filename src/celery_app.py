@@ -28,10 +28,25 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
+        # Legacy cohort sync (kept until full migration to v2)
         "notion.sync_cohorts": {
             "task": "notion.sync_cohorts",
             "schedule": crontab(minute="*/5"),
         },
+        # Bidirectional Notion sync
+        "notion.push_changes": {
+            "task": "notion.push_changes",
+            "schedule": settings.NOTION_PUSH_INTERVAL,
+        },
+        "notion.backup_pull_users": {
+            "task": "notion.backup_pull_users",
+            "schedule": settings.NOTION_BACKUP_POLL_USERS_INTERVAL,
+        },
+        "notion.backup_pull_events": {
+            "task": "notion.backup_pull_events",
+            "schedule": settings.NOTION_BACKUP_POLL_EVENTS_INTERVAL,
+        },
+        # Triggers
         "triggers.tick_periodic": {
             "task": "triggers.tick_periodic",
             "schedule": crontab(minute="*"),

@@ -21,6 +21,16 @@ class Settings(BaseSettings):
     NOTION_TOKEN: str | None = None
     NOTION_DATABASE_ID: str | None = None
 
+    # Notion multi-database sync
+    NOTION_MENTOR_DB_ID: str | None = None
+    NOTION_MENTEE_DB_ID: str | None = None
+    NOTION_EVENT_DB_ID: str | None = None
+    # Push interval: PostgreSQL → Notion (seconds)
+    NOTION_PUSH_INTERVAL: int = 30
+    # Backup polling intervals: Notion → PostgreSQL (seconds)
+    NOTION_BACKUP_POLL_USERS_INTERVAL: int = 1800
+    NOTION_BACKUP_POLL_EVENTS_INTERVAL: int = 600
+
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "dev"  # "dev" | "json"
 

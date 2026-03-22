@@ -36,6 +36,34 @@ class Meeting(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Notion sync fields
+    notion_page_id: Mapped[Optional[str]] = mapped_column(
+        String(50), unique=True, index=True, nullable=True
+    )
+    event_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    topic: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    mentor_telegram_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("users.telegram_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    mentee_telegram_tag: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
+    recording_link: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    action_items: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    project: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    synced_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=True,
+    )
+
     participants: Mapped[list["User"]] = relationship(
         "User",
         secondary="meeting_users",

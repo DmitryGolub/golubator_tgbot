@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+
+
+@dataclass
+class MentorData:
+    page_id: str
+    name: str | None = None
+    telegram_id: int | None = None
+    role: str | None = None
+    email: str | None = None
+    about: str | None = None
+    membership_type: str | None = None
+    last_edited_time: datetime | None = None
+
+
+@dataclass
+class MenteeData:
+    page_id: str
+    doc_name: str | None = None
+    telegram_id: int | None = None
+    status: str | None = None
+    categories: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    mentor_name: str | None = None
+    contract: bool = False
+    intern: str | None = None
+    contract_version: float | None = None
+    contract_expires: str | None = None
+    student_score: float | None = None
+    last_edited_time: datetime | None = None
+
+
+@dataclass
+class EventData:
+    page_id: str
+    topic: str | None = None
+    date: str | None = None
+    event_type: str | None = None
+    status: str | None = None
+    mentee_tg_tag: str | None = None
+    mentor_name: str | None = None
+    link: str | None = None
+    recording: str | None = None
+    summary: str | None = None
+    action_items: str | None = None
+    project: str | None = None
+    last_edited_time: datetime | None = None

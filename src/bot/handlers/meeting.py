@@ -460,12 +460,18 @@ async def msg_meeting_link(message: Message, state: FSMContext):
         await state.clear()
         return
 
+    # Resolve student username for Notion sync
+    student = await UserDAO.find_one_or_none(telegram_id=student_id)
+    mentee_tag = f"@{student.username}" if student and student.username else None
+
     meeting = await MeetingDAO.create_with_participants(
         description=description,
         meeting_link=link,
         scheduled_at=scheduled_at,
         mentor_id=message.from_user.id,
         student_id=student_id,
+        topic=description,
+        mentee_telegram_tag=mentee_tag,
     )
     await _schedule_meeting_tasks(
         meeting, mentor_id=message.from_user.id, student_id=student_id

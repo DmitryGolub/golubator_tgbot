@@ -84,38 +84,61 @@ async def cmd_help(message: Message):
 
 
 async def _link_notion_page(telegram_id: int, username: str) -> None:
-    if not settings.NOTION_TOKEN or not settings.NOTION_DATABASE_ID or not username:
+    if not settings.NOTION_TOKEN:
         return
 
-    from src.services.notion_client import NotionService
+    existing = await UserDAO.find_one_or_none(telegram_id=telegram_id)
+    if existing and existing.notion_page_id:
+        return
 
-    notion = NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
     try:
-        # Check if user already has notion_page_id
-        existing = await UserDAO.find_one_or_none(telegram_id=telegram_id)
-        if existing and existing.notion_page_id:
-            return
+        from src.services.notion import NotionClient, NotionMenteeRepo, NotionMentorRepo
 
-        # Search by telegram_id first, then by username
-        page = await notion.find_page_by_telegram_id(telegram_id)
-        if not page:
-            page = await notion.find_page_by_username(username)
-
-        if page:
-            page_id = page["id"]
-            await UserDAO.update(telegram_id=telegram_id, notion_page_id=page_id)
-            # Write telegram_id to Notion page
-            await notion.update_page_properties(
-                page_id, {"Telegram ID": {"number": telegram_id}}
-            )
-        else:
-            # Create new page in Notion
-            new_page = await notion.create_page(username, telegram_id)
-            if new_page:
+        # 1. Search in Менторская база
+        if settings.NOTION_MENTOR_DB_ID:
+            mentor_client = NotionClient(settings.NOTION_TOKEN, settings.NOTION_MENTOR_DB_ID)
+            mentor_repo = NotionMentorRepo(mentor_client)
+            mentor = await mentor_repo.find_by_telegram_id(telegram_id)
+            if mentor:
                 await UserDAO.update(
-                    telegram_id=telegram_id, notion_page_id=new_page["id"]
+                    telegram_id=telegram_id,
+                    notion_page_id=mentor.page_id,
+                    notion_source_db="mentor",
                 )
+                await mentor_repo.update_telegram_id(mentor.page_id, telegram_id)
+                await mentor_client.close()
+                return
+            await mentor_client.close()
+
+        # 2. Search in Голубиная база
+        mentee_db_id = settings.NOTION_MENTEE_DB_ID or settings.NOTION_DATABASE_ID
+        if mentee_db_id:
+            mentee_client = NotionClient(settings.NOTION_TOKEN, mentee_db_id)
+            mentee_repo = NotionMenteeRepo(mentee_client)
+
+            mentee = await mentee_repo.find_by_telegram_id(telegram_id)
+            if not mentee and username:
+                mentee = await mentee_repo.find_by_username(username)
+
+            if mentee:
+                await UserDAO.update(
+                    telegram_id=telegram_id,
+                    notion_page_id=mentee.page_id,
+                    notion_source_db="mentee",
+                )
+                await mentee_repo.update_telegram_id(mentee.page_id, telegram_id)
+                await mentee_client.close()
+                return
+
+            # 3. Not found anywhere — create in Голубиная база
+            if username:
+                page_id = await mentee_repo.create_page(username, telegram_id)
+                if page_id:
+                    await UserDAO.update(
+                        telegram_id=telegram_id,
+                        notion_page_id=page_id,
+                        notion_source_db="mentee",
+                    )
+            await mentee_client.close()
     except Exception:
         logger.exception("Failed to link Notion page for user %s", telegram_id)
-    finally:
-        await notion.close()

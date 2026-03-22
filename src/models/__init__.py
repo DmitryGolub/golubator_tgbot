@@ -4,14 +4,8 @@ from src.models.role import (
     role_permissions as role_permissions,
 )
 from src.models.user import User as User
-from src.models.notification import Notification as Notification
 from src.models.meeting import Meeting as Meeting, MeetingUser as MeetingUser
 from src.models.call import Call as Call
-from src.models.rule import (
-    UserRule as UserRule,
-    StateRule as StateRule,
-    CohortRule as CohortRule,
-)
 from src.models.notion_cache import NotionCohortCache as NotionCohortCache
 from src.models.survey_template import (
     QuestionType as QuestionType,

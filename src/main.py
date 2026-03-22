@@ -15,7 +15,6 @@ from src.bot.handlers.cohort.list import router as cohort_list_router
 from src.bot.handlers.user.list import router as user_router
 from src.bot.handlers.user.update_user import router as update_user_fsm_router
 from src.bot.handlers.meeting import router as meeting_router
-from src.bot.handlers.mailings import router as mailings_router
 from src.bot.handlers.rbac.manage_roles import router as rbac_router
 from src.bot.handlers.survey_builder import router as survey_builder_router
 from src.bot.handlers.dynamic_survey import router as dynamic_survey_router
@@ -26,6 +25,7 @@ from src.bot.handlers.tags import router as tags_router
 
 from src.bot.middlewares.logging_middleware import LoggingMiddleware
 from src.core.config import settings
+from src.core.healthcheck import start_health_server
 from src.core.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,6 @@ async def main():
         user_router,
         update_user_fsm_router,
         meeting_router,
-        mailings_router,
         rbac_router,
         survey_builder_router,
         dynamic_survey_router,
@@ -67,8 +66,13 @@ async def main():
         tags_router,
     )
 
+    health_runner = await start_health_server()
+
     dp.startup.register(_set_bot_commands)
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await health_runner.cleanup()
 
 
 async def _set_bot_commands(bot: Bot) -> None:

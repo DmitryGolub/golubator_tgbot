@@ -12,10 +12,8 @@ from src.core.database import Base
 if TYPE_CHECKING:
     from src.models.call import Call
     from src.models.meeting import Meeting
-    from src.models.notification import Notification
     from src.models.notion_cache import NotionCohortCache
     from src.models.role import RoleModel
-    from src.models.rule import UserRule
     from src.models.tag import Tag
 
 
@@ -80,6 +78,9 @@ class User(Base):
         index=True,
     )
 
+    notion_source_db: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True
+    )
     registered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -87,6 +88,15 @@ class User(Base):
     )
     state_changed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=True,
     )
 
     meetings: Mapped[list["Meeting"]] = relationship(
@@ -112,25 +122,6 @@ class User(Base):
         back_populates="mentor",
         cascade="all",
         passive_deletes=True,
-    )
-    notifications: Mapped[list["Notification"]] = relationship(
-        "Notification",
-        back_populates="user",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        lazy="selectin",
-    )
-    user_rules: Mapped[list["UserRule"]] = relationship(
-        "UserRule",
-        back_populates="user",
-        foreign_keys="UserRule.user_id",
-        cascade="all, delete-orphan",
-    )
-
-    authored_rules: Mapped[list["UserRule"]] = relationship(
-        "UserRule",
-        back_populates="author",
-        foreign_keys="UserRule.author_id",
     )
     mentor_calls: Mapped[list["Call"]] = relationship(
         "Call",

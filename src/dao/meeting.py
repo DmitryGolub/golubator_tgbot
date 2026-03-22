@@ -21,6 +21,9 @@ class MeetingDAO(BaseDAO):
         scheduled_at: datetime | None,
         mentor_id: int,
         student_id: int,
+        topic: str | None = None,
+        event_type: str | None = None,
+        mentee_telegram_tag: str | None = None,
     ) -> Meeting:
         async with async_session_maker() as session:
             meeting_stmt = (
@@ -29,6 +32,10 @@ class MeetingDAO(BaseDAO):
                     description=description,
                     meeting_link=meeting_link,
                     scheduled_at=scheduled_at,
+                    topic=topic or description,
+                    event_type=event_type,
+                    mentor_telegram_id=mentor_id,
+                    mentee_telegram_tag=mentee_telegram_tag,
                 )
                 .returning(Meeting)
             )
@@ -118,6 +125,32 @@ class MeetingDAO(BaseDAO):
             res = await session.execute(stmt)
             await session.commit()
             return res.rowcount or 0
+
+    @classmethod
+    async def get_unsynced(cls) -> list[Meeting]:
+        async with async_session_maker() as session:
+            query = select(Meeting).where(
+                (Meeting.synced_at.is_(None))
+                | (
+                    Meeting.updated_at.isnot(None)
+                    & (Meeting.updated_at > Meeting.synced_at)
+                ),
+            )
+            result = await session.execute(query)
+            return result.scalars().all()
+
+    @classmethod
+    async def mark_synced(
+        cls, meeting_id: int, notion_page_id: str | None = None
+    ) -> None:
+        async with async_session_maker() as session:
+            values: dict = {"synced_at": datetime.now(timezone.utc)}
+            if notion_page_id:
+                values["notion_page_id"] = notion_page_id
+            await session.execute(
+                update(Meeting).where(Meeting.id == meeting_id).values(**values)
+            )
+            await session.commit()
 
     @classmethod
     async def complete(
