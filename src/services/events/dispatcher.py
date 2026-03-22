@@ -29,11 +29,13 @@ class EventDispatcher:
         if not rules:
             return
 
+        logger.info("Event %s: %d rule(s) matched", trigger_type.value, len(rules))
+
         for rule in rules:
             try:
                 await cls._process_rule(rule, context, bot)
-            except Exception:
-                logger.exception("Error processing TriggerRule %s", rule.id)
+            except Exception as exc:
+                logger.error("Error processing TriggerRule %s: %s", rule.id, exc)
 
     @classmethod
     async def execute_rule_manually(
@@ -64,6 +66,8 @@ class EventDispatcher:
         if not recipients:
             return
 
+        logger.info("Rule %s (%s): %d recipient(s)", rule.id, rule.action_type.value, len(recipients))
+
         event_key = cls._build_event_key(rule, context)
 
         for recipient_id in recipients:
@@ -81,12 +85,14 @@ class EventDispatcher:
                 try:
                     await cls._execute_action(rule, recipient_id, context, bot)
                     await TriggerExecutionDAO.mark_sent(execution.id)
+                    logger.info("Rule %s executed for user %s", rule.id, recipient_id)
                 except Exception as exc:
                     await TriggerExecutionDAO.mark_failed(execution.id, str(exc))
-                    logger.exception(
-                        "Failed to execute rule %s for user %s",
+                    logger.error(
+                        "Failed to execute rule %s for user %s: %s",
                         rule.id,
                         recipient_id,
+                        exc,
                     )
             else:
                 # Delayed execution via Celery

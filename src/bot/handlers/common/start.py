@@ -47,6 +47,7 @@ async def cmd_start(message: Message):
             registered_at=reg_time,
         )
         if created_user:
+            logger.info("New user registered: tg=%s role=%s", user_id, "admin" if is_admin else "student")
             await schedule_onboarding_notifications(created_user, base_time=reg_time)
     else:
         # keep admin role in sync with env setting
@@ -112,6 +113,7 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                         notion_source_db="mentor",
                     )
                     await mentor_repo.update_telegram_id(mentor.page_id, telegram_id)
+                    logger.info("Notion page linked: user=%s page=%s db=mentor", telegram_id, mentor.page_id)
                     return
             except NotionDatabaseUnavailableError:
                 logger.warning("Mentor DB unavailable, skipping for user %s", telegram_id)
@@ -136,6 +138,7 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                         notion_source_db="mentee",
                     )
                     await mentee_repo.update_telegram_id(mentee.page_id, telegram_id)
+                    logger.info("Notion page linked: user=%s page=%s db=mentee", telegram_id, mentee.page_id)
                     return
 
                 # 3. Not found anywhere — create in Голубиная база
@@ -147,9 +150,10 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                             notion_page_id=page_id,
                             notion_source_db="mentee",
                         )
+                        logger.info("Notion page linked: user=%s page=%s db=mentee", telegram_id, page_id)
             except NotionDatabaseUnavailableError:
                 logger.warning("Mentee DB unavailable, skipping for user %s", telegram_id)
             finally:
                 await mentee_client.close()
-    except Exception:
-        logger.exception("Failed to link Notion page for user %s", telegram_id)
+    except Exception as exc:
+        logger.error("Failed to link Notion page for user %s: %s", telegram_id, exc)

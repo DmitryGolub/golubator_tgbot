@@ -3,6 +3,7 @@ import logging
 
 from src.celery_app import celery_app
 from src.core.config import settings
+from src.services.notion.client import NotionDatabaseUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,10 @@ def push_changes() -> None:
         if users or events:
             logger.info("Push complete: %d users, %d events", users, events)
 
-    _run(_push())
+    try:
+        _run(_push())
+    except NotionDatabaseUnavailableError as exc:
+        logger.warning("push_changes skipped: %s", exc)
 
 
 @celery_app.task(name="notion.backup_pull_users")
@@ -78,7 +82,10 @@ def backup_pull_users() -> None:
     sync = _get_sync_v2()
     if not sync:
         return
-    _run(sync.backup_pull_users())
+    try:
+        _run(sync.backup_pull_users())
+    except NotionDatabaseUnavailableError as exc:
+        logger.warning("backup_pull_users skipped: %s", exc)
 
 
 @celery_app.task(name="notion.backup_pull_events")
@@ -86,6 +93,9 @@ def backup_pull_events() -> None:
     sync = _get_sync_v2()
     if not sync:
         return
-    _run(sync.backup_pull_events())
+    try:
+        _run(sync.backup_pull_events())
+    except NotionDatabaseUnavailableError as exc:
+        logger.warning("backup_pull_events skipped: %s", exc)
 
 

@@ -45,8 +45,8 @@ async def cb_export_feedback(callback: CallbackQuery):
             text, reply_markup=await back_to_menu_keyboard()
         )
         return
-    except YandexSheetsUploadError:
-        logger.exception("Feedback export upload failed")
+    except YandexSheetsUploadError as exc:
+        logger.error("Feedback export upload failed: %s", exc)
         text = await UiTextService.get("export.upload_error")
         await callback.message.edit_text(
             text, reply_markup=await back_to_menu_keyboard()

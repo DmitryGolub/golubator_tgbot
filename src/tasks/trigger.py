@@ -71,9 +71,15 @@ async def _execute_action_async(execution_id: int) -> None:
                     bot=bot,
                 )
                 await TriggerExecutionDAO.mark_sent(execution_id)
+                logger.info(
+                    "Trigger execution %s completed: rule=%s user=%s",
+                    execution_id,
+                    exec_obj.rule_id,
+                    exec_obj.recipient_id,
+                )
             except Exception as exc:
                 await TriggerExecutionDAO.mark_failed(execution_id, str(exc))
-                logger.exception("Failed trigger execution %s", execution_id)
+                logger.error("Failed trigger execution %s: %s", execution_id, exc)
         finally:
             await bot.session.close()
 
@@ -91,6 +97,7 @@ async def _tick_periodic_async() -> None:
             )
             now = datetime.now(timezone.utc)
 
+            fired = 0
             for rule in rules:
                 if _should_fire_now(rule, now):
                     try:
@@ -99,8 +106,12 @@ async def _tick_periodic_async() -> None:
                             {"rule_id": rule.id},
                             bot=bot,
                         )
-                    except Exception:
-                        logger.exception("Error firing periodic rule %s", rule.id)
+                        fired += 1
+                    except Exception as exc:
+                        logger.error("Error firing periodic rule %s: %s", rule.id, exc)
+
+            if fired:
+                logger.info("Periodic triggers: %d/%d fired", fired, len(rules))
         finally:
             await bot.session.close()
 
@@ -114,6 +125,8 @@ async def _process_pending_async() -> None:
             from src.services.events.dispatcher import EventDispatcher
 
             pending = await TriggerExecutionDAO.get_pending_due()
+            if pending:
+                logger.info("Processing %d pending execution(s)", len(pending))
             for execution in pending:
                 rule = await TriggerRuleDAO.get_by_id(execution.rule_id)
                 if not rule:
@@ -132,7 +145,7 @@ async def _process_pending_async() -> None:
                     await TriggerExecutionDAO.mark_sent(execution.id)
                 except Exception as exc:
                     await TriggerExecutionDAO.mark_failed(execution.id, str(exc))
-                    logger.exception("Failed pending execution %s", execution.id)
+                    logger.error("Failed pending execution %s: %s", execution.id, exc)
         finally:
             await bot.session.close()
 

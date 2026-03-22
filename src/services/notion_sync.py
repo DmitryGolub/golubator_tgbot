@@ -62,9 +62,9 @@ class NotionSyncService:
                     try:
                         await self._process_page(session, page, cohort_props, now)
                         result.synced_users += 1
-                    except Exception:
-                        logger.exception(
-                            "Error processing Notion page %s", page.get("id")
+                    except Exception as exc:
+                        logger.error(
+                            "Error processing Notion page %s: %s", page.get("id"), exc
                         )
                         result.errors += 1
 

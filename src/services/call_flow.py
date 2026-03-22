@@ -180,7 +180,7 @@ class CallFlowService:
                         "student_id": finished_call.student_id,
                     },
                 )
-            except Exception:
-                logger.exception("Failed to emit call_ended event")
+            except Exception as exc:
+                logger.error("Failed to emit call_ended event: %s", exc)
 
         return result

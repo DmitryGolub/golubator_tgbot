@@ -432,9 +432,9 @@ async def _schedule_meeting_tasks(meeting, mentor_id: int, student_id: int) -> N
                 "scheduled_at": scheduled_utc.isoformat() if scheduled_utc else None,
             },
         )
-    except Exception:
-        logger.exception(
-            "Failed to emit meeting_created event for meeting %s", meeting_id
+    except Exception as exc:
+        logger.error(
+            "Failed to emit meeting_created event for meeting %s: %s", meeting_id, exc
         )
 
 

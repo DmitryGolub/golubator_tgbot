@@ -21,35 +21,42 @@ class LoggingMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         user_id = None
-        chat_id = None
         update_type = event.event_type
 
         inner = event.event
         if hasattr(inner, "from_user") and inner.from_user:
             user_id = inner.from_user.id
-        if hasattr(inner, "chat") and inner.chat:
-            chat_id = inner.chat.id
+
+        # Extract action description
+        if update_type == "message" and hasattr(inner, "text") and inner.text:
+            action = inner.text.split()[0] if inner.text.startswith("/") else "text"
+        elif update_type == "callback_query" and hasattr(inner, "data"):
+            action = inner.data or ""
+        elif update_type == "message":
+            action = getattr(inner, "content_type", "")
+        else:
+            action = update_type
 
         token = ctx_telegram_id.set(user_id)
         start = time.perf_counter()
         try:
-            logger.info(
-                "Update %s: type=%s user=%s chat=%s",
-                event.update_id,
-                update_type,
-                user_id,
-                chat_id,
-            )
             result = await handler(event, data)
             elapsed = (time.perf_counter() - start) * 1000
-            logger.debug("Update %s handled in %.1fms", event.update_id, elapsed)
-            return result
-        except Exception:
-            logger.exception(
-                "Update %s failed: type=%s user=%s",
+            logger.info(
+                "Update %s: %s user=%s [%.0fms]",
                 event.update_id,
-                update_type,
+                action,
                 user_id,
+                elapsed,
+            )
+            return result
+        except Exception as exc:
+            logger.error(
+                "Update %s FAILED: %s user=%s error=%s",
+                event.update_id,
+                action,
+                user_id,
+                exc,
             )
             raise
         finally:

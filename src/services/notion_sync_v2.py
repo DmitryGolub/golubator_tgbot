@@ -444,10 +444,11 @@ class NotionSyncServiceV2:
                             .values(synced_at=now)
                         )
                         pushed += 1
-                    except Exception:
-                        logger.exception(
-                            "Failed to push user %s to Notion",
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to push user %s to Notion: %s",
                             user.telegram_id,
+                            exc,
                         )
 
                 await session.commit()
@@ -538,10 +539,11 @@ class NotionSyncServiceV2:
                             meeting.synced_at = now
 
                         pushed += 1
-                    except Exception:
-                        logger.exception(
-                            "Failed to push meeting %s to Notion",
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to push meeting %s to Notion: %s",
                             meeting.id,
+                            exc,
                         )
 
                 await session.commit()
@@ -665,9 +667,9 @@ class NotionSyncServiceV2:
                             )
 
                         count += 1
-                    except Exception:
-                        logger.exception(
-                            "Error syncing event %s", ev.page_id
+                    except Exception as exc:
+                        logger.error(
+                            "Error syncing event %s: %s", ev.page_id, exc
                         )
 
                 await session.commit()

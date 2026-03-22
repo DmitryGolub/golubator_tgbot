@@ -36,8 +36,8 @@ async def _handle_automation(
             await sync.handle_automation_user(payload, source_db)
         elif source_db == "event":
             await sync.handle_automation_event(payload)
-    except Exception:
-        logger.exception("Error handling automation webhook (source=%s)", source_db)
+    except Exception as exc:
+        logger.error("Error handling automation webhook (source=%s): %s", source_db, exc)
         return web.json_response({"error": "processing failed"}, status=500)
 
     return web.json_response({"status": "ok"})

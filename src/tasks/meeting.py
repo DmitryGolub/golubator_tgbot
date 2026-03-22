@@ -93,6 +93,7 @@ async def _load_meeting(meeting_id: int) -> Optional[Meeting]:
 async def _notify_created_async(meeting_id: int) -> None:
     meeting = await _load_meeting(meeting_id)
     if not meeting:
+        logger.warning("Meeting %s not found for notification", meeting_id)
         return
 
     mentor, student = _split_participants(meeting)
@@ -110,6 +111,8 @@ async def _notify_created_async(meeting_id: int) -> None:
         f"Ссылка: {meeting.meeting_link or '—'}"
     )
     await _send_to_student(student, text)
+    if student:
+        logger.info("Meeting %s: created notification sent to user %s", meeting_id, student.telegram_id)
 
 
 async def _notify_reminder_async(meeting_id: int) -> None:
@@ -173,25 +176,39 @@ async def _cleanup_stale_async() -> None:
 
 @celery_app.task(name="meeting.notify_created")
 def notify_meeting_created(meeting_id: int) -> None:
-    asyncio.run(_notify_created_async(meeting_id))
+    try:
+        asyncio.run(_notify_created_async(meeting_id))
+    except Exception as exc:
+        logger.error("notify_meeting_created failed for meeting %s: %s", meeting_id, exc)
 
 
 @celery_app.task(name="meeting.notify_reminder")
 def notify_meeting_reminder(meeting_id: int) -> None:
-    asyncio.run(_notify_reminder_async(meeting_id))
+    try:
+        asyncio.run(_notify_reminder_async(meeting_id))
+    except Exception as exc:
+        logger.error("notify_meeting_reminder failed for meeting %s: %s", meeting_id, exc)
 
 
 @celery_app.task(name="meeting.complete")
 def complete_meeting(meeting_id: int) -> None:
-    asyncio.run(_complete_meeting_async(meeting_id))
+    try:
+        asyncio.run(_complete_meeting_async(meeting_id))
+    except Exception as exc:
+        logger.error("complete_meeting failed for meeting %s: %s", meeting_id, exc)
 
 
 @celery_app.task(name="meeting.delete")
 def delete_meeting(meeting_id: int) -> None:
-    # Backward-compatibility alias for already planned tasks.
-    asyncio.run(_complete_meeting_async(meeting_id))
+    try:
+        asyncio.run(_complete_meeting_async(meeting_id))
+    except Exception as exc:
+        logger.error("delete_meeting failed for meeting %s: %s", meeting_id, exc)
 
 
 @celery_app.task(name="meeting.cleanup_stale")
 def cleanup_stale_meetings() -> None:
-    asyncio.run(_cleanup_stale_async())
+    try:
+        asyncio.run(_cleanup_stale_async())
+    except Exception as exc:
+        logger.error("cleanup_stale_meetings failed: %s", exc)

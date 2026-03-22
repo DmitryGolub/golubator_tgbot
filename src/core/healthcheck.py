@@ -17,16 +17,16 @@ async def _health_handler(_request: web.Request) -> web.Response:
     try:
         async with async_session_maker() as session:
             await session.execute(text("SELECT 1"))
-    except Exception:
-        logger.exception("Health check: database unreachable")
+    except Exception as exc:
+        logger.warning("Health check: database unreachable: %s", exc)
         errors.append("database")
 
     try:
         redis = get_redis()
         await redis.ping()
         await redis.aclose()
-    except Exception:
-        logger.exception("Health check: redis unreachable")
+    except Exception as exc:
+        logger.warning("Health check: redis unreachable: %s", exc)
         errors.append("redis")
 
     if errors:
@@ -42,7 +42,7 @@ async def start_health_server() -> web.AppRunner:
     app = web.Application()
     app.router.add_get("/health", _health_handler)
     setup_webhook_routes(app)
-    runner = web.AppRunner(app)
+    runner = web.AppRunner(app, access_log=None)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", HEALTH_PORT)
     await site.start()

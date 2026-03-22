@@ -159,7 +159,6 @@ class NotionService:
             ds_id = await self._resolve_data_source_id()
             db = await self._client.data_sources.retrieve(data_source_id=ds_id)
             properties = db.get("properties", {})
-            logger.debug("Notion raw schema properties: %s", properties)
             return properties
         except APIResponseError as e:
             logger.error("Notion get_database_schema failed: %s", e)
@@ -206,7 +205,6 @@ class NotionService:
                             if opt.get("name"):
                                 names.append(opt["name"])
 
-            logger.debug("Status prop_config: %s, extracted: %s", prop_config, names)
             return names
 
         return []
