@@ -1,0 +1,14 @@
+services:
+  bot:
+    volumes:
+      - ./src:/app/src
+  celery_worker:
+    volumes:
+      - ./src:/app/src
+  celery_beat:
+    volumes:
+      - ./src:/app/src
+  migrations:
+    volumes:
+      - ./src:/app/src
+      - ./migrations:/app/migrations

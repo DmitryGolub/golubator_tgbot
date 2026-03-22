@@ -1,7 +1,6 @@
 DC_FILE := docker-compose.yaml
-BOT_SERVICE := tg_bot
 
-.PHONY: init build up logs down ps test
+.PHONY: init build up up-prod down logs ps test migrate clean
 
 init: build up logs
 
@@ -9,19 +8,25 @@ build:
 	docker compose -f $(DC_FILE) build
 
 up:
+	docker compose up -d
+
+up-prod:
 	docker compose -f $(DC_FILE) up -d
 
-logs:
-	docker compose -f $(DC_FILE) logs -f
-
 down:
-	docker compose -f $(DC_FILE) down
+	docker compose down
+
+logs:
+	docker compose logs -f
 
 ps:
-	docker compose -f $(DC_FILE) ps
+	docker compose ps
 
 test:
-	pytest -q
+	uv run pytest -q
 
 migrate:
-	alembic upgrade head
+	uv run alembic upgrade head
+
+clean:
+	docker compose down -v --rmi local

@@ -1,3 +1,12 @@
+x-app: &app-base
+  image: golubator-tgbot:latest
+  env_file:
+    - .env
+  environment:
+    DB_HOST: db
+    REDIS_HOST: redis
+  restart: unless-stopped
+
 services:
   db:
     image: postgres:16-alpine
@@ -16,83 +25,59 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: tg_bot.redis
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   migrations:
-    build: .
+    <<: *app-base
     container_name: tg_bot.migrations
-    command: >
-      sh -c "alembic upgrade head"
-    env_file:
-      - .env
-    environment:
-      DB_HOST: db
-      REDIS_HOST: redis
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./:/app
 
   bot:
+    <<: *app-base
     build: .
     container_name: tg_bot.bot
-    env_file:
-      - .env
-    environment:
-      DB_HOST: db
-      REDIS_HOST: redis
     depends_on:
       migrations:
         condition: service_completed_successfully
       redis:
-        condition: service_started
-    restart: unless-stopped
-    volumes:
-      - ./:/app
-
-  redis:
-    image: redis:latest
-    container_name: tg_bot.redis
-    ports:
-      - "6380:6379"
-    volumes:
-      - ./redisdata:/data
-    restart: unless-stopped
+        condition: service_healthy
 
   celery_worker:
-    build: .
+    <<: *app-base
     container_name: tg_bot.celery_worker
-    command: python -m src.scripts.celery_worker
-    env_file:
-      - .env
-    environment:
-      DB_HOST: db
-      REDIS_HOST: redis
+    command: ["python", "-m", "src.scripts.celery_worker"]
     depends_on:
       migrations:
         condition: service_completed_successfully
       redis:
-        condition: service_started
-    restart: unless-stopped
-    volumes:
-      - ./:/app
+        condition: service_healthy
 
   celery_beat:
-    build: .
+    <<: *app-base
     container_name: tg_bot.celery_beat
-    command: python -m src.scripts.celery_beat
-    env_file:
-      - .env
-    environment:
-      DB_HOST: db
-      REDIS_HOST: redis
+    command: ["python", "-m", "src.scripts.celery_beat"]
     depends_on:
       migrations:
         condition: service_completed_successfully
       redis:
-        condition: service_started
-    restart: unless-stopped
-    volumes:
-      - ./:/app
+        condition: service_healthy
 
 volumes:
   db_data:
+  redis_data:
