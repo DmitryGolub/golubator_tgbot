@@ -17,7 +17,11 @@ SECOND_DELAY = timedelta(days=14)
 def _reg_time(user: User) -> datetime:
     # fallback to now if registered_at is missing
     if user.registered_at:
-        return user.registered_at if user.registered_at.tzinfo else user.registered_at.replace(tzinfo=timezone.utc)
+        return (
+            user.registered_at
+            if user.registered_at.tzinfo
+            else user.registered_at.replace(tzinfo=timezone.utc)
+        )
     return datetime.now(timezone.utc)
 
 
@@ -27,7 +31,9 @@ def _format_msk(dt: datetime) -> str:
     return dt.astimezone(timezone(timedelta(hours=3))).strftime("%d.%m.%Y %H:%M MSK")
 
 
-async def schedule_onboarding_notifications(user: User, *, base_time: datetime | None = None) -> None:
+async def schedule_onboarding_notifications(
+    user: User, *, base_time: datetime | None = None
+) -> None:
     """Schedule two onboarding notifications for the student."""
     reg_time = base_time or _reg_time(user)
     first_at = reg_time + FIRST_DELAY
@@ -44,8 +50,16 @@ async def schedule_onboarding_notifications(user: User, *, base_time: datetime |
     )
 
     async with async_session_maker() as session:
-        session.add(Notification(user_id=user.telegram_id, text=first_text, scheduled_at=first_at))
-        session.add(Notification(user_id=user.telegram_id, text=second_text, scheduled_at=second_at))
+        session.add(
+            Notification(
+                user_id=user.telegram_id, text=first_text, scheduled_at=first_at
+            )
+        )
+        session.add(
+            Notification(
+                user_id=user.telegram_id, text=second_text, scheduled_at=second_at
+            )
+        )
         await session.commit()
 
 
@@ -68,14 +82,22 @@ async def schedule_onboarding_for_mentor(student: User, mentor_id: int) -> None:
 
     async with async_session_maker() as session:
         session.add(Notification(user_id=mentor_id, text=now_text, scheduled_at=None))
-        session.add(Notification(user_id=mentor_id, text=reminder_text, scheduled_at=meeting_time))
+        session.add(
+            Notification(
+                user_id=mentor_id, text=reminder_text, scheduled_at=meeting_time
+            )
+        )
         await session.commit()
 
     # Create an onboarding meeting if it does not exist yet
-    await _ensure_onboarding_meeting(student_id=student.telegram_id, mentor_id=mentor_id, scheduled_at=meeting_time)
+    await _ensure_onboarding_meeting(
+        student_id=student.telegram_id, mentor_id=mentor_id, scheduled_at=meeting_time
+    )
 
 
-async def _ensure_onboarding_meeting(student_id: int, mentor_id: int, scheduled_at: datetime) -> None:
+async def _ensure_onboarding_meeting(
+    student_id: int, mentor_id: int, scheduled_at: datetime
+) -> None:
     """Create an onboarding meeting for mentor+student if one does not already exist."""
     MU1 = aliased(MeetingUser)
     MU2 = aliased(MeetingUser)
@@ -84,7 +106,11 @@ async def _ensure_onboarding_meeting(student_id: int, mentor_id: int, scheduled_
             select(Meeting)
             .join(MU1, MU1.meeting_id == Meeting.id)
             .join(MU2, MU2.meeting_id == Meeting.id)
-            .where(MU1.user_id == student_id, MU2.user_id == mentor_id, Meeting.scheduled_at == scheduled_at)
+            .where(
+                MU1.user_id == student_id,
+                MU2.user_id == mentor_id,
+                Meeting.scheduled_at == scheduled_at,
+            )
         )
         meeting = existing.scalar_one_or_none()
     if meeting:

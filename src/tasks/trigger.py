@@ -47,8 +47,10 @@ async def _execute_action_async(execution_id: int) -> None:
             from src.services.events.dispatcher import EventDispatcher
 
             from src.core.database import async_session_maker
+
             async with async_session_maker() as session:
                 from src.models.trigger import TriggerExecution, ExecutionStatus
+
                 exec_obj = await session.get(TriggerExecution, execution_id)
                 if not exec_obj:
                     logger.warning("TriggerExecution %s not found", execution_id)
@@ -84,7 +86,9 @@ async def _tick_periodic_async() -> None:
             from src.models.trigger import TriggerType
             from src.services.events.dispatcher import EventDispatcher
 
-            rules = await TriggerRuleDAO.get_active_by_trigger(TriggerType.periodic_cron)
+            rules = await TriggerRuleDAO.get_active_by_trigger(
+                TriggerType.periodic_cron
+            )
             now = datetime.now(timezone.utc)
 
             for rule in rules:
@@ -113,7 +117,9 @@ async def _process_pending_async() -> None:
             for execution in pending:
                 rule = await TriggerRuleDAO.get_by_id(execution.rule_id)
                 if not rule:
-                    await TriggerExecutionDAO.mark_failed(execution.id, "Rule not found")
+                    await TriggerExecutionDAO.mark_failed(
+                        execution.id, "Rule not found"
+                    )
                     continue
 
                 try:

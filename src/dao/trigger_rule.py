@@ -26,7 +26,9 @@ class TriggerRuleDAO:
             return list(result.scalars().all())
 
     @classmethod
-    async def get_active_by_trigger(cls, trigger_type: TriggerType) -> list[TriggerRule]:
+    async def get_active_by_trigger(
+        cls, trigger_type: TriggerType
+    ) -> list[TriggerRule]:
         async with async_session_maker() as session:
             query = (
                 select(TriggerRule)

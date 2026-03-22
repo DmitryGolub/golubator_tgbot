@@ -22,6 +22,7 @@ router.callback_query.filter(PermissionFilter("manage_cohorts"))
 
 # === Rename cohort type ===
 
+
 @router.callback_query(RenameCohortTypeCB.filter())
 async def start_rename_type(
     callback: CallbackQuery, callback_data: RenameCohortTypeCB, state: FSMContext
@@ -51,7 +52,9 @@ async def process_rename_type(message: Message, state: FSMContext):
     notion = get_notion_service()
     if not notion:
         await state.clear()
-        await message.answer("Notion не настроен.", reply_markup=back_to_menu_keyboard())
+        await message.answer(
+            "Notion не настроен.", reply_markup=back_to_menu_keyboard()
+        )
         return
 
     try:
@@ -77,6 +80,7 @@ async def process_rename_type(message: Message, state: FSMContext):
 
 # === Rename option ===
 
+
 @router.callback_query(RenameOptionCB.filter())
 async def start_rename_option(
     callback: CallbackQuery, callback_data: RenameOptionCB, state: FSMContext
@@ -89,7 +93,7 @@ async def start_rename_option(
     )
     await callback.message.edit_text(
         f'Введите новое название для опции "<b>{e(callback_data.option_name)}</b>" '
-        f'в <b>{e(callback_data.type_name)}</b>:',
+        f"в <b>{e(callback_data.type_name)}</b>:",
         reply_markup=cohort_cancel_keyboard(),
     )
 
@@ -111,7 +115,9 @@ async def process_rename_option(message: Message, state: FSMContext):
     notion = get_notion_service()
     if not notion:
         await state.clear()
-        await message.answer("Notion не настроен.", reply_markup=back_to_menu_keyboard())
+        await message.answer(
+            "Notion не настроен.", reply_markup=back_to_menu_keyboard()
+        )
         return
 
     try:

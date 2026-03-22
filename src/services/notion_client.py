@@ -7,17 +7,19 @@ from notion_client.errors import APIResponseError
 logger = logging.getLogger(__name__)
 
 # Properties that are NOT cohort types (system/service properties)
-EXCLUDED_PROPERTIES = frozenset({
-    "Doc name",
-    "Telegram ID",
-    "Договор",
-    "Версия договора с ментором",
-    "Истекает договор",
-    "Оценка ученика (0-10)",
-    "Last edited time",
-    "Стажор",
-    "Author",
-})
+EXCLUDED_PROPERTIES = frozenset(
+    {
+        "Doc name",
+        "Telegram ID",
+        "Договор",
+        "Версия договора с ментором",
+        "Истекает договор",
+        "Оценка ученика (0-10)",
+        "Last edited time",
+        "Стажор",
+        "Author",
+    }
+)
 
 # Notion property types that represent cohort groupings
 COHORT_PROPERTY_TYPES = frozenset({"multi_select", "status", "person", "select"})
@@ -136,9 +138,7 @@ class NotionService:
 
     async def get_database_schema(self) -> dict:
         try:
-            db = await self._client.databases.retrieve(
-                database_id=self._database_id
-            )
+            db = await self._client.databases.retrieve(database_id=self._database_id)
             return db.get("properties", {})
         except APIResponseError as e:
             logger.error("Notion get_database_schema failed: %s", e)
@@ -167,8 +167,7 @@ class NotionService:
                 editable = True
             elif prop_type == "select":
                 options = [
-                    o["name"]
-                    for o in prop_config.get("select", {}).get("options", [])
+                    o["name"] for o in prop_config.get("select", {}).get("options", [])
                 ]
                 editable = True
             elif prop_type == "status":
@@ -203,14 +202,9 @@ class NotionService:
         prop_type = prop.get("type", "")
 
         if prop_type == "multi_select":
-            return [
-                o["name"]
-                for o in prop.get("multi_select", {}).get("options", [])
-            ]
+            return [o["name"] for o in prop.get("multi_select", {}).get("options", [])]
         elif prop_type == "select":
-            return [
-                o["name"] for o in prop.get("select", {}).get("options", [])
-            ]
+            return [o["name"] for o in prop.get("select", {}).get("options", [])]
         elif prop_type == "status":
             options = []
             for group in prop.get("status", {}).get("groups", []):
@@ -241,7 +235,12 @@ class NotionService:
             )
             return True
         except APIResponseError as e:
-            logger.error("Notion add_option '%s' to '%s' failed: %s", option_name, property_name, e)
+            logger.error(
+                "Notion add_option '%s' to '%s' failed: %s",
+                option_name,
+                property_name,
+                e,
+            )
             return False
 
     async def rename_option(

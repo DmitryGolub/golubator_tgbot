@@ -1,6 +1,15 @@
 from typing import Optional
 from datetime import datetime
-from sqlalchemy import Integer, Text, DateTime, ForeignKey, Enum, func, BigInteger, String
+from sqlalchemy import (
+    Integer,
+    Text,
+    DateTime,
+    ForeignKey,
+    Enum,
+    func,
+    BigInteger,
+    String,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.user import State, User
@@ -14,14 +23,12 @@ class UserRule(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False,
+        BigInteger,
+        ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        nullable=False,
     )
-    name: Mapped[str] = mapped_column(
-        String(255), nullable=True
-    )
-    text: Mapped[str] = mapped_column(
-        Text, nullable=False
-    )
+    name: Mapped[str] = mapped_column(String(255), nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
     regularity: Mapped[Regularity] = mapped_column(
         Enum(Regularity, name="regularity_enum"), nullable=False
     )
@@ -39,7 +46,8 @@ class UserRule(Base):
     )
 
     author_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True,
+        ForeignKey("users.telegram_id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     user: Mapped["User"] = relationship(
@@ -56,26 +64,24 @@ class StateRule(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_state: Mapped[State] = mapped_column(
-        Enum(State, name="state_enum"), nullable=False,
+        Enum(State, name="state_enum"),
+        nullable=False,
     )
     last_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    name: Mapped[str] = mapped_column(
-        String(255), nullable=True
-    )
-    text: Mapped[str] = mapped_column(
-        Text, nullable=False
-    )
+    name: Mapped[str] = mapped_column(String(255), nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
     regularity: Mapped[Regularity] = mapped_column(
-        Enum(Regularity, name="regularity_enum"), nullable=False,
+        Enum(Regularity, name="regularity_enum"),
+        nullable=False,
     )
     author_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True,
+        BigInteger,
+        ForeignKey("users.telegram_id", ondelete="SET NULL"),
+        nullable=True,
     )
-    offset_days: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )
+    offset_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     author: Mapped[Optional["User"]] = relationship("User")
 
@@ -85,25 +91,26 @@ class CohortRule(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     cohort_type: Mapped[str] = mapped_column(
-        String(100), nullable=False,
+        String(100),
+        nullable=False,
     )
     cohort_value: Mapped[str] = mapped_column(
-        String(255), nullable=False,
+        String(255),
+        nullable=False,
     )
     last_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    name: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True
-    )
-    text: Mapped[str] = mapped_column(
-        Text, nullable=False
-    )
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
     regularity: Mapped[Regularity] = mapped_column(
-        Enum(Regularity, name="regularity_enum"), nullable=False,
+        Enum(Regularity, name="regularity_enum"),
+        nullable=False,
     )
     author_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True,
+        BigInteger,
+        ForeignKey("users.telegram_id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     author: Mapped[Optional["User"]] = relationship("User")

@@ -77,7 +77,10 @@ def _resolve_student(meeting: Meeting) -> User | None:
     if student:
         return student
 
-    mentor = next((participant for participant in meeting.participants if is_mentor(participant)), None)
+    mentor = next(
+        (participant for participant in meeting.participants if is_mentor(participant)),
+        None,
+    )
     if mentor:
         return next(
             (
@@ -127,7 +130,10 @@ class CallFlowService:
         )
         logger.info(
             "Call started: call_id=%s meeting=%s mentor=%s student=%s",
-            call.id, meeting_id, mentor_id, student.telegram_id,
+            call.id,
+            meeting_id,
+            mentor_id,
+            student.telegram_id,
         )
         return call
 
@@ -155,7 +161,9 @@ class CallFlowService:
         )
         logger.info(
             "Call ended: call_id=%s mentor=%s meeting_completed=%s",
-            finished_call.id, mentor_id, meeting_was_completed,
+            finished_call.id,
+            mentor_id,
+            meeting_was_completed,
         )
 
         # Emit call_ended trigger for dynamic actions (surveys, notifications)
@@ -163,6 +171,7 @@ class CallFlowService:
             try:
                 from src.models.trigger import TriggerType
                 from src.services.events.dispatcher import EventDispatcher
+
                 await EventDispatcher.emit(
                     TriggerType.call_ended,
                     {

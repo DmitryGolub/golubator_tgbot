@@ -69,8 +69,7 @@ class SurveySessionDAO:
                 .where(SurveySession.id == session_id)
                 .options(
                     joinedload(SurveySession.template),
-                    joinedload(SurveySession.answers)
-                    .joinedload(SurveyAnswer.question),
+                    joinedload(SurveySession.answers).joinedload(SurveyAnswer.question),
                 )
             )
             result = await session.execute(query)
@@ -86,8 +85,7 @@ class SurveySessionDAO:
                     SurveySession.status == SessionStatus.completed,
                 )
                 .options(
-                    joinedload(SurveySession.answers)
-                    .joinedload(SurveyAnswer.question),
+                    joinedload(SurveySession.answers).joinedload(SurveyAnswer.question),
                 )
                 .order_by(SurveySession.completed_at.desc())
             )

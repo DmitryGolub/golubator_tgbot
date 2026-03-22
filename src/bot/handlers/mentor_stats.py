@@ -34,7 +34,10 @@ def _format_stats(stats: dict, mentor_name: str) -> str:
     if stats.get("avg_satisfaction") is not None:
         lines.append(f"Общая удовлетворённость: <b>{stats['avg_satisfaction']}</b>")
 
-    if all(stats.get(k) is None for k in ("avg_mentor_style", "avg_knowledge_depth", "avg_understanding")):
+    if all(
+        stats.get(k) is None
+        for k in ("avg_mentor_style", "avg_knowledge_depth", "avg_understanding")
+    ):
         lines.append("\nОценок пока нет.")
 
     return "\n".join(lines)
@@ -49,7 +52,9 @@ async def cb_mentor_my_stats(callback: CallbackQuery):
     mentors = await UserDAO.get_all(telegram_id=mentor_id)
     mentor = mentors[0] if mentors else None
     if not mentor:
-        await callback.message.edit_text("Профиль не найден.", reply_markup=back_to_menu_keyboard())
+        await callback.message.edit_text(
+            "Профиль не найден.", reply_markup=back_to_menu_keyboard()
+        )
         return
 
     stats = await MentorStatsDAO.get_stats(mentor_id=mentor_id)
@@ -89,14 +94,18 @@ async def cb_admin_mentor_stats(callback: CallbackQuery):
 
 # Admin: view selected mentor stats
 @router.callback_query(PermissionFilter("manage_users"), MentorStatsCB.filter())
-async def cb_admin_view_mentor_stats(callback: CallbackQuery, callback_data: MentorStatsCB):
+async def cb_admin_view_mentor_stats(
+    callback: CallbackQuery, callback_data: MentorStatsCB
+):
     await callback.answer()
 
     mentor_id = callback_data.mentor_id
     mentors = await UserDAO.get_all(telegram_id=mentor_id)
     mentor = mentors[0] if mentors else None
     if not mentor:
-        await callback.message.edit_text("Ментор не найден.", reply_markup=back_to_menu_keyboard())
+        await callback.message.edit_text(
+            "Ментор не найден.", reply_markup=back_to_menu_keyboard()
+        )
         return
 
     stats = await MentorStatsDAO.get_stats(mentor_id=mentor_id)

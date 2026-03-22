@@ -24,9 +24,15 @@ QUESTION_TYPE_LABELS = {
 
 def survey_builder_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="Создать опрос", callback_data=SurveyBuilderActionCB(action="create"))
-    builder.button(text="Список опросов", callback_data=SurveyBuilderActionCB(action="list"))
-    builder.button(text="Результаты", callback_data=SurveyBuilderActionCB(action="results"))
+    builder.button(
+        text="Создать опрос", callback_data=SurveyBuilderActionCB(action="create")
+    )
+    builder.button(
+        text="Список опросов", callback_data=SurveyBuilderActionCB(action="list")
+    )
+    builder.button(
+        text="Результаты", callback_data=SurveyBuilderActionCB(action="results")
+    )
     builder.button(text="Назад", callback_data="back_to_menu")
     builder.adjust(1)
     return builder.as_markup()
@@ -43,8 +49,13 @@ def question_type_keyboard() -> InlineKeyboardMarkup:
 
 def after_question_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="Добавить ещё вопрос", callback_data=SurveyBuilderActionCB(action="add_question"))
-    builder.button(text="Завершить создание", callback_data=SurveyBuilderActionCB(action="finish"))
+    builder.button(
+        text="Добавить ещё вопрос",
+        callback_data=SurveyBuilderActionCB(action="add_question"),
+    )
+    builder.button(
+        text="Завершить создание", callback_data=SurveyBuilderActionCB(action="finish")
+    )
     builder.button(text="Отмена", callback_data=SurveyBuilderActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
@@ -52,7 +63,10 @@ def after_question_keyboard() -> InlineKeyboardMarkup:
 
 def add_option_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="Закончить добавление вариантов", callback_data=SurveyBuilderActionCB(action="options_done"))
+    builder.button(
+        text="Закончить добавление вариантов",
+        callback_data=SurveyBuilderActionCB(action="options_done"),
+    )
     builder.button(text="Отмена", callback_data=SurveyBuilderActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
@@ -74,8 +88,12 @@ def templates_list_keyboard(templates: list[SurveyTemplate]) -> InlineKeyboardMa
 def template_detail_keyboard(template: SurveyTemplate) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     toggle_text = "Выключить" if template.is_active else "Включить"
-    builder.button(text=toggle_text, callback_data=SurveyTemplateToggleCB(template_id=template.id))
-    builder.button(text="Удалить", callback_data=SurveyTemplateDeleteCB(template_id=template.id))
+    builder.button(
+        text=toggle_text, callback_data=SurveyTemplateToggleCB(template_id=template.id)
+    )
+    builder.button(
+        text="Удалить", callback_data=SurveyTemplateDeleteCB(template_id=template.id)
+    )
     builder.button(text="Назад", callback_data=SurveyBuilderActionCB(action="list"))
     builder.adjust(1)
     return builder.as_markup()

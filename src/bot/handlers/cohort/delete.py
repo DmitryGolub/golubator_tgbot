@@ -18,6 +18,7 @@ router.callback_query.filter(PermissionFilter("manage_cohorts"))
 
 # === Delete cohort type (show confirmation) ===
 
+
 @router.callback_query(DeleteCohortTypeCB.filter())
 async def confirm_delete_type(
     callback: CallbackQuery, callback_data: DeleteCohortTypeCB
@@ -63,10 +64,9 @@ async def do_delete_type(callback: CallbackQuery):
 
 # === Delete option ===
 
+
 @router.callback_query(DeleteOptionCB.filter())
-async def delete_option(
-    callback: CallbackQuery, callback_data: DeleteOptionCB
-):
+async def delete_option(callback: CallbackQuery, callback_data: DeleteOptionCB):
     await callback.answer()
 
     notion = get_notion_service()

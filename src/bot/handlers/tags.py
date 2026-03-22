@@ -38,12 +38,15 @@ router.callback_query.filter(PermissionFilter("manage_users"))
 
 # --- Menu ---
 
+
 @router.callback_query(F.data == "menu_tags")
 async def cb_tags_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     try:
-        await callback.message.edit_text("Управление тегами", reply_markup=tags_menu_keyboard())
+        await callback.message.edit_text(
+            "Управление тегами", reply_markup=tags_menu_keyboard()
+        )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
@@ -51,12 +54,15 @@ async def cb_tags_menu(callback: CallbackQuery, state: FSMContext):
 
 # --- List ---
 
+
 @router.callback_query(TagActionCB.filter(F.action == "list"))
 async def cb_tags_list(callback: CallbackQuery):
     await callback.answer()
     tags = await TagDAO.get_all()
     if not tags:
-        await callback.message.edit_text("Тегов пока нет.", reply_markup=tags_menu_keyboard())
+        await callback.message.edit_text(
+            "Тегов пока нет.", reply_markup=tags_menu_keyboard()
+        )
         return
     await callback.message.edit_text(
         "Список тегов (нажмите ❌ для удаления):",
@@ -66,11 +72,14 @@ async def cb_tags_list(callback: CallbackQuery):
 
 # --- Create ---
 
+
 @router.callback_query(TagActionCB.filter(F.action == "create"))
 async def cb_tag_create(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(CreateTagFSM.waiting_name)
-    await callback.message.edit_text("Введите имя нового тега:", reply_markup=cancel_keyboard())
+    await callback.message.edit_text(
+        "Введите имя нового тега:", reply_markup=cancel_keyboard()
+    )
 
 
 @router.message(CreateTagFSM.waiting_name)
@@ -101,6 +110,7 @@ async def on_tag_name(message: Message, state: FSMContext):
 
 # --- Delete ---
 
+
 @router.callback_query(TagDeleteCB.filter())
 async def cb_tag_delete(callback: CallbackQuery, callback_data: TagDeleteCB):
     await callback.answer()
@@ -108,7 +118,9 @@ async def cb_tag_delete(callback: CallbackQuery, callback_data: TagDeleteCB):
     logger.info("Tag deleted: id=%s", callback_data.tag_id)
     tags = await TagDAO.get_all()
     if not tags:
-        await callback.message.edit_text("Все теги удалены.", reply_markup=tags_menu_keyboard())
+        await callback.message.edit_text(
+            "Все теги удалены.", reply_markup=tags_menu_keyboard()
+        )
         return
     await callback.message.edit_text(
         "Тег удалён. Список тегов:",
@@ -118,12 +130,15 @@ async def cb_tag_delete(callback: CallbackQuery, callback_data: TagDeleteCB):
 
 # --- Assign ---
 
+
 @router.callback_query(TagActionCB.filter(F.action == "assign"))
 async def cb_tag_assign_select_user(callback: CallbackQuery):
     await callback.answer()
     users = await UserDAO.get_all()
     if not users:
-        await callback.message.edit_text("Пользователей нет.", reply_markup=tags_menu_keyboard())
+        await callback.message.edit_text(
+            "Пользователей нет.", reply_markup=tags_menu_keyboard()
+        )
         return
     await callback.message.edit_text(
         "Выберите пользователя для назначения тега:",
@@ -132,11 +147,15 @@ async def cb_tag_assign_select_user(callback: CallbackQuery):
 
 
 @router.callback_query(TagAssignUserCB.filter())
-async def cb_tag_assign_select_tag(callback: CallbackQuery, callback_data: TagAssignUserCB):
+async def cb_tag_assign_select_tag(
+    callback: CallbackQuery, callback_data: TagAssignUserCB
+):
     await callback.answer()
     tags = await TagDAO.get_all()
     if not tags:
-        await callback.message.edit_text("Тегов нет. Сначала создайте тег.", reply_markup=tags_menu_keyboard())
+        await callback.message.edit_text(
+            "Тегов нет. Сначала создайте тег.", reply_markup=tags_menu_keyboard()
+        )
         return
     await callback.message.edit_text(
         "Выберите тег для назначения:",
@@ -158,7 +177,9 @@ async def cb_tag_assign_confirm(callback: CallbackQuery, callback_data: TagAssig
         )
         return
 
-    logger.info("Tag assigned: user=%s tag_id=%s", callback_data.user_id, callback_data.tag_id)
+    logger.info(
+        "Tag assigned: user=%s tag_id=%s", callback_data.user_id, callback_data.tag_id
+    )
     tags_str = ", ".join(t.name for t in user.tags) if user.tags else "—"
     await callback.message.edit_text(
         f"Тег назначен.\n\n"
@@ -169,6 +190,7 @@ async def cb_tag_assign_confirm(callback: CallbackQuery, callback_data: TagAssig
 
 
 # --- Unassign ---
+
 
 @router.callback_query(TagActionCB.filter(F.action == "unassign"))
 async def cb_tag_unassign_select_user(callback: CallbackQuery):
@@ -188,7 +210,9 @@ async def cb_tag_unassign_select_user(callback: CallbackQuery):
 
 
 @router.callback_query(TagUnassignUserCB.filter())
-async def cb_tag_unassign_select_tag(callback: CallbackQuery, callback_data: TagUnassignUserCB):
+async def cb_tag_unassign_select_tag(
+    callback: CallbackQuery, callback_data: TagUnassignUserCB
+):
     await callback.answer()
     users = await UserDAO.get_all(telegram_id=callback_data.user_id)
     user = users[0] if users else None
@@ -205,7 +229,9 @@ async def cb_tag_unassign_select_tag(callback: CallbackQuery, callback_data: Tag
 
 
 @router.callback_query(TagUnassignCB.filter())
-async def cb_tag_unassign_confirm(callback: CallbackQuery, callback_data: TagUnassignCB):
+async def cb_tag_unassign_confirm(
+    callback: CallbackQuery, callback_data: TagUnassignCB
+):
     await callback.answer()
     user = await UserDAO.unassign_tag(
         telegram_id=callback_data.user_id,
@@ -218,11 +244,11 @@ async def cb_tag_unassign_confirm(callback: CallbackQuery, callback_data: TagUna
         )
         return
 
-    logger.info("Tag unassigned: user=%s tag_id=%s", callback_data.user_id, callback_data.tag_id)
+    logger.info(
+        "Tag unassigned: user=%s tag_id=%s", callback_data.user_id, callback_data.tag_id
+    )
     tags_str = ", ".join(t.name for t in user.tags) if user.tags else "—"
     await callback.message.edit_text(
-        f"Тег снят.\n\n"
-        f"<b>{e(user.name)}</b> @{e(user.username)}\n"
-        f"Теги: {e(tags_str)}",
+        f"Тег снят.\n\n<b>{e(user.name)}</b> @{e(user.username)}\nТеги: {e(tags_str)}",
         reply_markup=tags_menu_keyboard(),
     )

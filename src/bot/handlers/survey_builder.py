@@ -43,6 +43,7 @@ router.callback_query.filter(PermissionFilter("manage_surveys"))
 
 # --- Menu ---
 
+
 @router.callback_query(F.data == "menu_surveys")
 async def cb_surveys_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
@@ -54,6 +55,7 @@ async def cb_surveys_menu(callback: CallbackQuery, state: FSMContext):
 
 
 # --- List templates ---
+
 
 @router.callback_query(SurveyBuilderActionCB.filter(F.action == "list"))
 async def cb_list_templates(callback: CallbackQuery, state: FSMContext):
@@ -73,7 +75,9 @@ async def cb_list_templates(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(SurveyTemplateDetailCB.filter())
-async def cb_template_detail(callback: CallbackQuery, callback_data: SurveyTemplateDetailCB):
+async def cb_template_detail(
+    callback: CallbackQuery, callback_data: SurveyTemplateDetailCB
+):
     service = SurveyTemplateService()
     try:
         template = await service.get(callback_data.template_id)
@@ -83,7 +87,9 @@ async def cb_template_detail(callback: CallbackQuery, callback_data: SurveyTempl
 
     questions_text = ""
     for q in template.questions:
-        type_label = QUESTION_TYPE_LABELS.get(q.question_type.value, q.question_type.value)
+        type_label = QUESTION_TYPE_LABELS.get(
+            q.question_type.value, q.question_type.value
+        )
         questions_text += f"\n  {q.sort_order}. {q.title} [{type_label}]"
         if q.options:
             for opt in q.options:
@@ -99,11 +105,15 @@ async def cb_template_detail(callback: CallbackQuery, callback_data: SurveyTempl
     )
 
     await callback.answer()
-    await callback.message.edit_text(text, reply_markup=template_detail_keyboard(template))
+    await callback.message.edit_text(
+        text, reply_markup=template_detail_keyboard(template)
+    )
 
 
 @router.callback_query(SurveyTemplateToggleCB.filter())
-async def cb_toggle_template(callback: CallbackQuery, callback_data: SurveyTemplateToggleCB):
+async def cb_toggle_template(
+    callback: CallbackQuery, callback_data: SurveyTemplateToggleCB
+):
     service = SurveyTemplateService()
     try:
         template = await service.get(callback_data.template_id)
@@ -121,7 +131,9 @@ async def cb_toggle_template(callback: CallbackQuery, callback_data: SurveyTempl
 
 
 @router.callback_query(SurveyTemplateDeleteCB.filter())
-async def cb_delete_template(callback: CallbackQuery, callback_data: SurveyTemplateDeleteCB):
+async def cb_delete_template(
+    callback: CallbackQuery, callback_data: SurveyTemplateDeleteCB
+):
     service = SurveyTemplateService()
     try:
         await service.delete(callback_data.template_id)
@@ -144,6 +156,7 @@ async def cb_delete_template(callback: CallbackQuery, callback_data: SurveyTempl
 
 
 # --- Create template FSM ---
+
 
 @router.callback_query(SurveyBuilderActionCB.filter(F.action == "create"))
 async def cb_start_create(callback: CallbackQuery, state: FSMContext):
@@ -176,7 +189,9 @@ async def msg_title(message: Message, state: FSMContext):
 async def msg_slug(message: Message, state: FSMContext):
     slug = message.text.strip().lower()
     if not re.match(r"^[a-z0-9_]+$", slug):
-        await message.answer("Slug может содержать только латиницу, цифры и подчёркивания. Попробуйте снова:")
+        await message.answer(
+            "Slug может содержать только латиницу, цифры и подчёркивания. Попробуйте снова:"
+        )
         return
 
     await state.update_data(slug=slug)
@@ -202,6 +217,7 @@ async def msg_description(message: Message, state: FSMContext):
 
 # --- Add question ---
 
+
 @router.message(SurveyBuilderFSM.adding_question_title)
 async def msg_question_title(message: Message, state: FSMContext):
     title = message.text.strip()
@@ -214,8 +230,12 @@ async def msg_question_title(message: Message, state: FSMContext):
     await message.answer("Выберите тип вопроса:", reply_markup=question_type_keyboard())
 
 
-@router.callback_query(SurveyBuilderFSM.choosing_question_type, SurveyQuestionTypeCB.filter())
-async def cb_question_type(callback: CallbackQuery, callback_data: SurveyQuestionTypeCB, state: FSMContext):
+@router.callback_query(
+    SurveyBuilderFSM.choosing_question_type, SurveyQuestionTypeCB.filter()
+)
+async def cb_question_type(
+    callback: CallbackQuery, callback_data: SurveyQuestionTypeCB, state: FSMContext
+):
     qtype = callback_data.value
     await state.update_data(current_question_type=qtype)
     await callback.answer()
@@ -239,6 +259,7 @@ async def cb_question_type(callback: CallbackQuery, callback_data: SurveyQuestio
 
 
 # --- Rating config ---
+
 
 @router.message(SurveyBuilderFSM.configuring_rating_min)
 async def msg_rating_min(message: Message, state: FSMContext):
@@ -267,7 +288,9 @@ async def msg_rating_max(message: Message, state: FSMContext):
 
     min_val = data.get("rating_min", 1)
     if max_val <= min_val:
-        await message.answer(f"Максимум должен быть больше {min_val}. Попробуйте снова:")
+        await message.answer(
+            f"Максимум должен быть больше {min_val}. Попробуйте снова:"
+        )
         return
 
     await state.update_data(rating_max=max_val)
@@ -276,11 +299,14 @@ async def msg_rating_max(message: Message, state: FSMContext):
 
 # --- Choice options ---
 
+
 @router.message(SurveyBuilderFSM.adding_option_value)
 async def msg_option_value(message: Message, state: FSMContext):
     value = message.text.strip()
     if not re.match(r"^[a-z0-9_]+$", value):
-        await message.answer("Значение может содержать только латиницу, цифры и подчёркивания:")
+        await message.answer(
+            "Значение может содержать только латиницу, цифры и подчёркивания:"
+        )
         return
 
     await state.update_data(current_option_value=value)
@@ -330,6 +356,7 @@ async def cb_options_done(callback: CallbackQuery, state: FSMContext):
 
 # --- Save question helper ---
 
+
 async def _save_question(message: Message, state: FSMContext):
     data = await state.get_data()
     questions = data.get("questions", [])
@@ -344,7 +371,10 @@ async def _save_question(message: Message, state: FSMContext):
 
     qtype = data["current_question_type"]
     if qtype == "rating":
-        question["config"] = {"min": data.get("rating_min", 1), "max": data.get("rating_max", 5)}
+        question["config"] = {
+            "min": data.get("rating_min", 1),
+            "max": data.get("rating_max", 5),
+        }
     elif qtype in ("single_choice", "multiple_choice"):
         question["options"] = data.get("current_options", [])
 
@@ -380,6 +410,7 @@ async def cb_add_more_question(callback: CallbackQuery, state: FSMContext):
 
 # --- Finish creating template ---
 
+
 @router.callback_query(SurveyBuilderActionCB.filter(F.action == "finish"))
 async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -407,7 +438,9 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
 
     questions_text = ""
     for q in template.questions:
-        type_label = QUESTION_TYPE_LABELS.get(q.question_type.value, q.question_type.value)
+        type_label = QUESTION_TYPE_LABELS.get(
+            q.question_type.value, q.question_type.value
+        )
         questions_text += f"\n  {q.sort_order}. {q.title} [{type_label}]"
 
     await callback.message.edit_text(
@@ -419,6 +452,7 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
 
 
 # --- Results ---
+
 
 @router.callback_query(SurveyBuilderActionCB.filter(F.action == "results"))
 async def cb_results_templates(callback: CallbackQuery, state: FSMContext):
@@ -437,9 +471,13 @@ async def cb_results_templates(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(SurveyResultsTemplateCB.filter())
-async def cb_results_sessions(callback: CallbackQuery, callback_data: SurveyResultsTemplateCB):
+async def cb_results_sessions(
+    callback: CallbackQuery, callback_data: SurveyResultsTemplateCB
+):
     await callback.answer()
-    sessions = await SurveySessionDAO.get_completed_by_template(callback_data.template_id)
+    sessions = await SurveySessionDAO.get_completed_by_template(
+        callback_data.template_id
+    )
     if not sessions:
         await callback.message.edit_text(
             "Завершённых сессий нет.",
@@ -454,7 +492,9 @@ async def cb_results_sessions(callback: CallbackQuery, callback_data: SurveyResu
 
 
 @router.callback_query(SurveyResultsSessionCB.filter())
-async def cb_results_session_detail(callback: CallbackQuery, callback_data: SurveyResultsSessionCB):
+async def cb_results_session_detail(
+    callback: CallbackQuery, callback_data: SurveyResultsSessionCB
+):
     await callback.answer()
     service = SurveySessionService()
     try:
@@ -497,6 +537,7 @@ async def cb_results_session_detail(callback: CallbackQuery, callback_data: Surv
 
 
 # --- Cancel ---
+
 
 @router.callback_query(SurveyBuilderActionCB.filter(F.action == "cancel"))
 async def cb_cancel(callback: CallbackQuery, state: FSMContext):

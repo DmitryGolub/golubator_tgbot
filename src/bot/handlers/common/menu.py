@@ -138,7 +138,9 @@ async def _finish_active_call_text(mentor_id: int) -> str:
     )
 
 
-@router.callback_query(PermissionFilter("view_students"), F.data == "mentor_students_menu")
+@router.callback_query(
+    PermissionFilter("view_students"), F.data == "mentor_students_menu"
+)
 async def cb_mentor_students_menu(callback: CallbackQuery):
     await callback.answer()
     try:
@@ -151,7 +153,9 @@ async def cb_mentor_students_menu(callback: CallbackQuery):
             raise
 
 
-@router.callback_query(PermissionFilter("view_students"), F.data == "mentor_students_list")
+@router.callback_query(
+    PermissionFilter("view_students"), F.data == "mentor_students_list"
+)
 async def cb_mentor_students_list(callback: CallbackQuery):
     await callback.answer()
 
@@ -190,7 +194,9 @@ async def cb_mentor_students_list(callback: CallbackQuery):
             raise
 
 
-@router.callback_query(PermissionFilter("view_students"), F.data == "mentor_students_add")
+@router.callback_query(
+    PermissionFilter("view_students"), F.data == "mentor_students_add"
+)
 async def cb_mentor_students_add(callback: CallbackQuery):
     await callback.answer()
     permissions = await AuthService.get_user_permissions(callback.from_user.id)
@@ -200,7 +206,9 @@ async def cb_mentor_students_add(callback: CallbackQuery):
     )
 
 
-@router.callback_query(PermissionFilter("manage_meetings"), F.data == "mentor_meetings_menu")
+@router.callback_query(
+    PermissionFilter("manage_meetings"), F.data == "mentor_meetings_menu"
+)
 async def cb_mentor_meetings_menu(callback: CallbackQuery):
     await callback.answer()
     await callback.message.edit_text(

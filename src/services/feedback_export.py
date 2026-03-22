@@ -48,10 +48,7 @@ class FeedbackExportRow:
     mentor_feedback_created_at: Optional[datetime] = None
 
     def to_payload(self) -> dict[str, Any]:
-        return {
-            header: getattr(self, header)
-            for header in FEEDBACK_EXPORT_HEADERS
-        }
+        return {header: getattr(self, header) for header in FEEDBACK_EXPORT_HEADERS}
 
     def to_sheet_row(self) -> list[CellValue]:
         return [getattr(self, header) for header in FEEDBACK_EXPORT_HEADERS]

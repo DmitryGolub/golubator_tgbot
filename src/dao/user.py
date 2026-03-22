@@ -25,20 +25,20 @@ class UserDAO(BaseDAO):
         **filter_by,
     ):
         async with async_session_maker() as session:
-            query = (
-                select(cls.model)
-                .options(
-                    joinedload(cls.model.mentor),
-                    joinedload(cls.model.meetings),
-                    joinedload(cls.model.role_rel),
-                    selectinload(cls.model.tags),
-                )
+            query = select(cls.model).options(
+                joinedload(cls.model.mentor),
+                joinedload(cls.model.meetings),
+                joinedload(cls.model.role_rel),
+                selectinload(cls.model.tags),
             )
             if filter_by:
                 query = query.filter_by(**filter_by)
             if role_name is not None:
                 from src.models.role import RoleModel
-                query = query.join(RoleModel, cls.model.role_id == RoleModel.id).where(RoleModel.name == role_name)
+
+                query = query.join(RoleModel, cls.model.role_id == RoleModel.id).where(
+                    RoleModel.name == role_name
+                )
             if state is not None:
                 query = query.where(cls.model.state == state)
             if tag_id is not None:

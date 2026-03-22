@@ -47,7 +47,9 @@ async def cb_user_list(callback: CallbackQuery):
 
     chunks = split_message(answer)
     # First chunk replaces the original message
-    await callback.message.edit_text(chunks[0], reply_markup=back_to_menu_keyboard() if len(chunks) == 1 else None)
+    await callback.message.edit_text(
+        chunks[0], reply_markup=back_to_menu_keyboard() if len(chunks) == 1 else None
+    )
     # Remaining chunks as new messages
     for i, chunk in enumerate(chunks[1:], 1):
         markup = back_to_menu_keyboard() if i == len(chunks) - 1 else None

@@ -44,7 +44,8 @@ class SendSurveyAction(BaseAction):
         if already_existed:
             logger.info(
                 "Survey session already exists for template=%s user=%s",
-                template_id, recipient_id,
+                template_id,
+                recipient_id,
             )
             return
 

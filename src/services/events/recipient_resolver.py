@@ -39,6 +39,7 @@ class RecipientResolver:
                 logger.warning("TriggerRule %s: by_state without state", rule.id)
                 return []
             from src.models.user import State
+
             users = await UserDAO.get_all(state=State(state))
             return [u.telegram_id for u in users]
 
@@ -46,9 +47,12 @@ class RecipientResolver:
             cohort_type = config.get("cohort_type", "Category")
             cohort_value = config.get("cohort_value")
             if not cohort_value:
-                logger.warning("TriggerRule %s: by_cohort without cohort_value", rule.id)
+                logger.warning(
+                    "TriggerRule %s: by_cohort without cohort_value", rule.id
+                )
                 return []
             from src.dao.notion_cache import NotionCacheDAO
+
             return await NotionCacheDAO.get_users_in_cohort(cohort_type, cohort_value)
 
         if rt == RecipientType.by_tag:

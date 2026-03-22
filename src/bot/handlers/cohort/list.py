@@ -48,9 +48,7 @@ async def show_cohort_types(callback: CallbackQuery):
 
 
 @router.callback_query(CohortTypeCB.filter())
-async def show_cohort_type_detail(
-    callback: CallbackQuery, callback_data: CohortTypeCB
-):
+async def show_cohort_type_detail(callback: CallbackQuery, callback_data: CohortTypeCB):
     await callback.answer()
 
     notion = get_notion_service()
@@ -70,7 +68,9 @@ async def show_cohort_type_detail(
         )
         return
 
-    options_text = "\n".join(f"  • {e(o)}" for o in info.options) if info.options else "  (пусто)"
+    options_text = (
+        "\n".join(f"  • {e(o)}" for o in info.options) if info.options else "  (пусто)"
+    )
     text = (
         f"<b>{e(info.name)}</b> ({e(info.notion_type)})\n\n"
         f"Опции:\n{options_text}\n\n"

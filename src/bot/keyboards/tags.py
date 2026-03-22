@@ -48,7 +48,9 @@ def tag_assign_users_keyboard(users: list[User]) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def tag_select_for_assign_keyboard(user_id: int, tags: list[Tag]) -> InlineKeyboardMarkup:
+def tag_select_for_assign_keyboard(
+    user_id: int, tags: list[Tag]
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for tag in tags:
         builder.button(
@@ -73,7 +75,9 @@ def tag_unassign_users_keyboard(users: list[User]) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def tag_select_for_unassign_keyboard(user_id: int, tags: list[Tag]) -> InlineKeyboardMarkup:
+def tag_select_for_unassign_keyboard(
+    user_id: int, tags: list[Tag]
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for tag in tags:
         builder.button(

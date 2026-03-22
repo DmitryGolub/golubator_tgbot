@@ -15,8 +15,8 @@ class ChooseParamCB(CallbackData, prefix="upd_param"):
 
 # выбор значения для enum (роль / статус)
 class ChooseEnumValueCB(CallbackData, prefix="upd_enum"):
-    param: UpdateParam          # STATUS или ROLE
-    value: str                  # значение enum'а (value)
+    param: UpdateParam  # STATUS или ROLE
+    value: str  # значение enum'а (value)
 
 
 # выбор ментора

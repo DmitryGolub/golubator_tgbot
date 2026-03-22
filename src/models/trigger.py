@@ -21,6 +21,7 @@ from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
+from src.models.enums import Regularity
 
 
 class TriggerType(str, enum.Enum):
@@ -51,9 +52,6 @@ class RecipientType(str, enum.Enum):
     specific_users = "specific_users"
 
 
-from src.models.enums import Regularity
-
-
 class ExecutionStatus(str, enum.Enum):
     pending = "pending"
     sent = "sent"
@@ -61,27 +59,33 @@ class ExecutionStatus(str, enum.Enum):
 
 
 trigger_type_enum = Enum(
-    TriggerType, name="trigger_type_enum",
+    TriggerType,
+    name="trigger_type_enum",
     values_callable=lambda e: [m.value for m in e],
 )
 action_type_enum = Enum(
-    ActionType, name="action_type_enum",
+    ActionType,
+    name="action_type_enum",
     values_callable=lambda e: [m.value for m in e],
 )
 delay_mode_enum = Enum(
-    DelayMode, name="delay_mode_enum",
+    DelayMode,
+    name="delay_mode_enum",
     values_callable=lambda e: [m.value for m in e],
 )
 recipient_type_enum = Enum(
-    RecipientType, name="recipient_type_enum",
+    RecipientType,
+    name="recipient_type_enum",
     values_callable=lambda e: [m.value for m in e],
 )
 trigger_regularity_enum = Enum(
-    Regularity, name="trigger_regularity_enum",
+    Regularity,
+    name="trigger_regularity_enum",
     values_callable=lambda e: [m.value for m in e],
 )
 execution_status_enum = Enum(
-    ExecutionStatus, name="execution_status_enum",
+    ExecutionStatus,
+    name="execution_status_enum",
     values_callable=lambda e: [m.value for m in e],
 )
 
@@ -143,7 +147,9 @@ class TriggerExecution(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "rule_id", "event_key", "recipient_id",
+            "rule_id",
+            "event_key",
+            "recipient_id",
             name="uq_trigger_execution_unique",
         ),
     )

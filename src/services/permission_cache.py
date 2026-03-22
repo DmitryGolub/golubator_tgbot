@@ -17,9 +17,7 @@ async def get_cached_permissions(user_id: int) -> set[str] | None:
 
 async def set_cached_permissions(user_id: int, perms: set[str]) -> None:
     r = get_redis()
-    await r.set(
-        f"{_PERMS_PREFIX}{user_id}", json.dumps(sorted(perms)), ex=_TTL
-    )
+    await r.set(f"{_PERMS_PREFIX}{user_id}", json.dumps(sorted(perms)), ex=_TTL)
 
 
 async def get_cached_role(user_id: int) -> dict | None:

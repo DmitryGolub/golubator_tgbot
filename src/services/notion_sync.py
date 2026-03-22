@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.core.config import settings
@@ -61,9 +60,7 @@ class NotionSyncService:
             async with session_factory() as session:
                 for page in pages:
                     try:
-                        await self._process_page(
-                            session, page, cohort_props, now
-                        )
+                        await self._process_page(session, page, cohort_props, now)
                         result.synced_users += 1
                     except Exception:
                         logger.exception(
@@ -156,9 +153,7 @@ class NotionSyncService:
             return user
 
         # Try by username
-        result = await session.execute(
-            select(User).where(User.username == username)
-        )
+        result = await session.execute(select(User).where(User.username == username))
         return result.scalar_one_or_none()
 
     def _extract_memberships(

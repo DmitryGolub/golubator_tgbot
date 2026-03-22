@@ -27,7 +27,9 @@ class NotionCacheDAO:
             return list(result.scalars().all())
 
     @staticmethod
-    async def get_cohorts_batch(user_ids: list[int]) -> dict[int, list["NotionCohortCache"]]:
+    async def get_cohorts_batch(
+        user_ids: list[int],
+    ) -> dict[int, list["NotionCohortCache"]]:
         """Load cohorts for multiple users in one query."""
         if not user_ids:
             return {}

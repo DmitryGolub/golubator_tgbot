@@ -19,8 +19,11 @@ router = Router(name="dynamic_survey")
 
 # --- Entry point ---
 
+
 @router.callback_query(StartDynamicSurveyCB.filter())
-async def cb_start_survey(callback: CallbackQuery, callback_data: StartDynamicSurveyCB, state: FSMContext):
+async def cb_start_survey(
+    callback: CallbackQuery, callback_data: StartDynamicSurveyCB, state: FSMContext
+):
     service = SurveySessionService()
 
     try:
@@ -63,13 +66,18 @@ async def cb_start_survey(callback: CallbackQuery, callback_data: StartDynamicSu
     )
 
     await callback.answer()
-    await _show_question(callback.message, state, 0, questions_data, session.template.title)
+    await _show_question(
+        callback.message, state, 0, questions_data, session.template.title
+    )
 
 
 # --- Answer handlers ---
 
+
 @router.callback_query(DynamicSurveyFSM.answering, DynamicSurveyAnswerCB.filter())
-async def cb_answer(callback: CallbackQuery, callback_data: DynamicSurveyAnswerCB, state: FSMContext):
+async def cb_answer(
+    callback: CallbackQuery, callback_data: DynamicSurveyAnswerCB, state: FSMContext
+):
     value = callback_data.value
 
     if value == "__cancel__":
@@ -155,6 +163,7 @@ async def msg_text_answer(message: Message, state: FSMContext):
 
 # --- Helpers ---
 
+
 def _build_keyboard_from_dict(question: dict):
     """Build inline keyboard from question dict stored in FSM data."""
     from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -168,16 +177,25 @@ def _build_keyboard_from_dict(question: dict):
         min_val = config.get("min", 1)
         max_val = config.get("max", 5)
         for i in range(min_val, max_val + 1):
-            builder.button(text=str(i), callback_data=DynamicSurveyAnswerCB(value=str(i)))
+            builder.button(
+                text=str(i), callback_data=DynamicSurveyAnswerCB(value=str(i))
+            )
         builder.adjust(5)
     elif qtype in ("single_choice", "multiple_choice"):
         for opt in question.get("options", []):
-            builder.button(text=opt["label"], callback_data=DynamicSurveyAnswerCB(value=opt["value"]))
+            builder.button(
+                text=opt["label"],
+                callback_data=DynamicSurveyAnswerCB(value=opt["value"]),
+            )
         if qtype == "multiple_choice":
-            builder.button(text="Готово", callback_data=DynamicSurveyAnswerCB(value="__done__"))
+            builder.button(
+                text="Готово", callback_data=DynamicSurveyAnswerCB(value="__done__")
+            )
         builder.adjust(1)
 
-    builder.button(text="Отмена", callback_data=DynamicSurveyAnswerCB(value="__cancel__"))
+    builder.button(
+        text="Отмена", callback_data=DynamicSurveyAnswerCB(value="__cancel__")
+    )
     return builder.as_markup()
 
 
@@ -190,7 +208,9 @@ async def _load_question(question_id: int):
     return question
 
 
-async def _show_question(message, state: FSMContext, idx: int, questions: list[dict], title: str):
+async def _show_question(
+    message, state: FSMContext, idx: int, questions: list[dict], title: str
+):
     question = questions[idx]
     total = len(questions)
     text = f"<b>{title}</b>\n\nВопрос {idx + 1}/{total}:\n{question['title']}"

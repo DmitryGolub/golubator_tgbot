@@ -55,7 +55,9 @@ class MeetingDAO(BaseDAO):
             return result.scalar_one()
 
     @classmethod
-    async def get_for_user(cls, user_id: int, *, hide_past: bool = False) -> list[Meeting]:
+    async def get_for_user(
+        cls, user_id: int, *, hide_past: bool = False
+    ) -> list[Meeting]:
         async with async_session_maker() as session:
             query = (
                 select(Meeting)

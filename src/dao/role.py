@@ -49,7 +49,9 @@ class RoleDAO(BaseDAO):
         from sqlalchemy import func
 
         async with async_session_maker() as session:
-            query = select(func.count()).select_from(User).where(User.role_id == role_id)
+            query = (
+                select(func.count()).select_from(User).where(User.role_id == role_id)
+            )
             result = await session.execute(query)
             return result.scalar() or 0
 

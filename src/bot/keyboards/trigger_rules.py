@@ -41,9 +41,13 @@ RECIPIENT_TYPE_LABELS = {
 
 def trigger_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="Создать правило", callback_data=TriggerActionCB(action="create"))
+    builder.button(
+        text="Создать правило", callback_data=TriggerActionCB(action="create")
+    )
     builder.button(text="Список правил", callback_data=TriggerActionCB(action="list"))
-    builder.button(text="Отправить вручную", callback_data=TriggerActionCB(action="manual_send"))
+    builder.button(
+        text="Отправить вручную", callback_data=TriggerActionCB(action="manual_send")
+    )
     builder.button(text="Назад", callback_data="back_to_menu")
     builder.adjust(1)
     return builder.as_markup()
@@ -79,7 +83,9 @@ def recipient_type_keyboard() -> InlineKeyboardMarkup:
 def survey_templates_keyboard(templates) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for t in templates:
-        builder.button(text=t.title, callback_data=TriggerSurveyTemplateCB(template_id=t.id))
+        builder.button(
+            text=t.title, callback_data=TriggerSurveyTemplateCB(template_id=t.id)
+        )
     builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
@@ -89,7 +95,9 @@ def rules_list_keyboard(rules: list[TriggerRule]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for r in rules:
         status = "ON" if r.is_active else "OFF"
-        trigger_label = TRIGGER_TYPE_LABELS.get(r.trigger_type.value, r.trigger_type.value)
+        trigger_label = TRIGGER_TYPE_LABELS.get(
+            r.trigger_type.value, r.trigger_type.value
+        )
         builder.button(
             text=f"[{status}] {r.name} ({trigger_label})",
             callback_data=TriggerRuleDetailCB(rule_id=r.id),
@@ -103,7 +111,9 @@ def rule_detail_keyboard(rule: TriggerRule) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     toggle_text = "Выключить" if rule.is_active else "Включить"
     builder.button(text=toggle_text, callback_data=TriggerRuleToggleCB(rule_id=rule.id))
-    builder.button(text="Отправить сейчас", callback_data=TriggerRuleSendCB(rule_id=rule.id))
+    builder.button(
+        text="Отправить сейчас", callback_data=TriggerRuleSendCB(rule_id=rule.id)
+    )
     builder.button(text="Удалить", callback_data=TriggerRuleDeleteCB(rule_id=rule.id))
     builder.button(text="Назад", callback_data=TriggerActionCB(action="list"))
     builder.adjust(1)

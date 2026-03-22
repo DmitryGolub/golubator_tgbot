@@ -81,16 +81,24 @@ def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:
         if not viewer_is_mentor and student and student.telegram_id != viewer_id:
             continue
 
-        mentor_text = f"Ментор: <b>{e(mentor.name)}</b> @{e(mentor.username)}" if mentor else "Ментор: —"
-        student_text = f"Ученик: <b>{e(student.name)}</b> @{e(student.username)}" if student else "Ученик: —"
+        mentor_text = (
+            f"Ментор: <b>{e(mentor.name)}</b> @{e(mentor.username)}"
+            if mentor
+            else "Ментор: —"
+        )
+        student_text = (
+            f"Ученик: <b>{e(student.name)}</b> @{e(student.username)}"
+            if student
+            else "Ученик: —"
+        )
         desc = e(meeting.description) if meeting.description else "—"
         link = e(meeting.meeting_link) if meeting.meeting_link else "—"
         if meeting.scheduled_at:
             try:
                 if meeting.scheduled_at.tzinfo:
-                    date_str = meeting.scheduled_at.astimezone(meeting.scheduled_at.tzinfo).strftime(
-                        "%d.%m.%Y %H:%M MSK"
-                    )
+                    date_str = meeting.scheduled_at.astimezone(
+                        meeting.scheduled_at.tzinfo
+                    ).strftime("%d.%m.%Y %H:%M MSK")
                 else:
                     date_str = meeting.scheduled_at.strftime("%d.%m.%Y %H:%M MSK")
             except Exception:
@@ -109,23 +117,31 @@ def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:
     return "\n".join(lines)
 
 
-@router.callback_query(PermissionFilter("manage_meetings"), F.data == "mentor_meetings_list")
+@router.callback_query(
+    PermissionFilter("manage_meetings"), F.data == "mentor_meetings_list"
+)
 async def cb_mentor_meetings(callback: CallbackQuery):
     await callback.answer()
     meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
 
     text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=True)
-    await callback.message.edit_text(text, reply_markup=mentor_meetings_keyboard(meetings))
+    await callback.message.edit_text(
+        text, reply_markup=mentor_meetings_keyboard(meetings)
+    )
 
 
-@router.callback_query(PermissionFilter("view_own_meetings"), F.data == "student_meetings")
+@router.callback_query(
+    PermissionFilter("view_own_meetings"), F.data == "student_meetings"
+)
 async def cb_student_meetings(callback: CallbackQuery):
     await callback.answer()
     meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
 
     text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=False)
     try:
-        await callback.message.edit_text(text, reply_markup=await _menu_kb(callback.from_user.id))
+        await callback.message.edit_text(
+            text, reply_markup=await _menu_kb(callback.from_user.id)
+        )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
@@ -221,7 +237,10 @@ async def cb_choose_meeting_student(
     )
 
 
-@router.message(PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_description))
+@router.message(
+    PermissionFilter("manage_meetings"),
+    StateFilter(CreateMeetingFSM.waiting_description),
+)
 async def msg_meeting_description(message: Message, state: FSMContext):
     description = message.text.strip() if message.text else ""
     await state.update_data(description=description)
@@ -287,7 +306,9 @@ def _parse_time(value: str) -> str | None:
     return None
 
 
-@router.message(PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_time))
+@router.message(
+    PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_time)
+)
 async def msg_meeting_time(message: Message, state: FSMContext):
     parsed = _parse_time(message.text)
     if not parsed:
@@ -393,12 +414,15 @@ async def _schedule_meeting_tasks(meeting, mentor_id: int, student_id: int) -> N
         reminder_eta = scheduled_utc - timedelta(minutes=5)
         if reminder_eta > now:
             notify_meeting_reminder.apply_async(args=[meeting_id], eta=reminder_eta)
-            logger.info("Scheduled reminder for meeting %s at %s", meeting_id, reminder_eta)
+            logger.info(
+                "Scheduled reminder for meeting %s at %s", meeting_id, reminder_eta
+            )
 
     # New trigger system
     try:
         from src.models.trigger import TriggerType
         from src.services.events.dispatcher import EventDispatcher
+
         await EventDispatcher.emit(
             TriggerType.meeting_created,
             {
@@ -409,10 +433,14 @@ async def _schedule_meeting_tasks(meeting, mentor_id: int, student_id: int) -> N
             },
         )
     except Exception:
-        logger.exception("Failed to emit meeting_created event for meeting %s", meeting_id)
+        logger.exception(
+            "Failed to emit meeting_created event for meeting %s", meeting_id
+        )
 
 
-@router.message(PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_link))
+@router.message(
+    PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_link)
+)
 async def msg_meeting_link(message: Message, state: FSMContext):
     link = message.text.strip() if message.text else ""
     data = await state.get_data()
@@ -439,7 +467,9 @@ async def msg_meeting_link(message: Message, state: FSMContext):
         mentor_id=message.from_user.id,
         student_id=student_id,
     )
-    await _schedule_meeting_tasks(meeting, mentor_id=message.from_user.id, student_id=student_id)
+    await _schedule_meeting_tasks(
+        meeting, mentor_id=message.from_user.id, student_id=student_id
+    )
     await state.clear()
 
     await message.answer(

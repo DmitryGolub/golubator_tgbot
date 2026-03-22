@@ -60,14 +60,18 @@ REGULARITY_TO_OFFSET = {
 async def cb_menu_mailings(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    await callback.message.edit_text("Меню Рассылок", reply_markup=mailings_menu_keyboard())
+    await callback.message.edit_text(
+        "Меню Рассылок", reply_markup=mailings_menu_keyboard()
+    )
 
 
 @router.callback_query(F.data == "mailings_menu")
 async def cb_mailings_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    await callback.message.edit_text("Меню Рассылок", reply_markup=mailings_menu_keyboard())
+    await callback.message.edit_text(
+        "Меню Рассылок", reply_markup=mailings_menu_keyboard()
+    )
 
 
 @router.callback_query(F.data == "mailings_list")
@@ -113,7 +117,9 @@ async def cb_mailings_list(callback: CallbackQuery, state: FSMContext):
     if not user_rules and not state_rules and not cohort_rules:
         parts = ["<b>Список рассылок пуст.</b>"]
 
-    await callback.message.edit_text("\n".join(parts), reply_markup=mailings_menu_keyboard())
+    await callback.message.edit_text(
+        "\n".join(parts), reply_markup=mailings_menu_keyboard()
+    )
 
 
 @router.callback_query(F.data == "mailings_add")
@@ -121,11 +127,15 @@ async def cb_mailings_add(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.set_state(MailingFSM.choosing_type)
     await callback.answer()
-    await callback.message.edit_text("Выберите тип рассылки:", reply_markup=mailing_type_keyboard())
+    await callback.message.edit_text(
+        "Выберите тип рассылки:", reply_markup=mailing_type_keyboard()
+    )
 
 
 @router.callback_query(MailingTypeCB.filter())
-async def cb_choose_type(callback: CallbackQuery, callback_data: MailingTypeCB, state: FSMContext):
+async def cb_choose_type(
+    callback: CallbackQuery, callback_data: MailingTypeCB, state: FSMContext
+):
     kind = callback_data.kind
     await state.update_data(kind=kind)
     await state.set_state(MailingFSM.waiting_title)
@@ -146,7 +156,9 @@ async def cb_mailings_delete(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
         "Выберите рассылки для удаления:",
-        reply_markup=delete_mailings_keyboard(user_rules, state_rules, cohort_rules, set(), set(), set()),
+        reply_markup=delete_mailings_keyboard(
+            user_rules, state_rules, cohort_rules, set(), set(), set()
+        ),
     )
 
 
@@ -175,7 +187,9 @@ async def cb_toggle_delete_user_rule(
     await callback.message.edit_text(
         "Выберите рассылки для удаления:",
         reply_markup=delete_mailings_keyboard(
-            user_rules, state_rules, cohort_rules,
+            user_rules,
+            state_rules,
+            cohort_rules,
             sel_users,
             set(data.get("del_state_rules", [])),
             set(data.get("del_cohort_rules", [])),
@@ -208,7 +222,9 @@ async def cb_toggle_delete_state_rule(
     await callback.message.edit_text(
         "Выберите рассылки для удаления:",
         reply_markup=delete_mailings_keyboard(
-            user_rules, state_rules, cohort_rules,
+            user_rules,
+            state_rules,
+            cohort_rules,
             set(data.get("del_user_rules", [])),
             sel_states,
             set(data.get("del_cohort_rules", [])),
@@ -241,7 +257,9 @@ async def cb_toggle_delete_cohort_rule(
     await callback.message.edit_text(
         "Выберите рассылки для удаления:",
         reply_markup=delete_mailings_keyboard(
-            user_rules, state_rules, cohort_rules,
+            user_rules,
+            state_rules,
+            cohort_rules,
             set(data.get("del_user_rules", [])),
             set(data.get("del_state_rules", [])),
             sel_cohorts,
@@ -276,7 +294,9 @@ async def cb_delete_mailings_finish(
 
     logger.info(
         "Mailings deleted: user_rules=%d state_rules=%d cohort_rules=%d",
-        len(sel_users), len(sel_states), len(sel_cohorts),
+        len(sel_users),
+        len(sel_states),
+        len(sel_cohorts),
     )
     await state.clear()
     await callback.answer()
@@ -317,6 +337,7 @@ async def msg_mailing_title(message: Message, state: FSMContext):
         # Cohort: first choose cohort type, then values
         if settings.NOTION_TOKEN and settings.NOTION_DATABASE_ID:
             from src.services.notion_client import NotionService
+
             notion = NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
             try:
                 types = await notion.get_cohort_types()
@@ -343,6 +364,7 @@ async def msg_mailing_title(message: Message, state: FSMContext):
 
 # === Cohort type selection for mailings ===
 
+
 @router.callback_query(
     StateFilter(MailingFSM.choosing_cohort_type),
     F.data.startswith("mail_ctype:"),
@@ -357,6 +379,7 @@ async def cb_choose_cohort_type(callback: CallbackQuery, state: FSMContext):
         # Fallback: get from Notion schema
         if settings.NOTION_TOKEN and settings.NOTION_DATABASE_ID:
             from src.services.notion_client import NotionService
+
             notion = NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
             try:
                 values = await notion.get_options(cohort_type)
@@ -381,7 +404,9 @@ async def cb_choose_cohort_type(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(StateFilter(MailingFSM.choosing_users), ToggleUserCB.filter())
-async def cb_toggle_user(callback: CallbackQuery, callback_data: ToggleUserCB, state: FSMContext):
+async def cb_toggle_user(
+    callback: CallbackQuery, callback_data: ToggleUserCB, state: FSMContext
+):
     data = await state.get_data()
     selected = set(data.get("selected_users", []))
     if callback_data.user_id in selected:
@@ -398,12 +423,18 @@ async def cb_toggle_user(callback: CallbackQuery, callback_data: ToggleUserCB, s
     )
 
 
-@router.callback_query(StateFilter(MailingFSM.choosing_users), MailingFinishUsersCB.filter())
-async def cb_finish_users(callback: CallbackQuery, callback_data: MailingFinishUsersCB, state: FSMContext):
+@router.callback_query(
+    StateFilter(MailingFSM.choosing_users), MailingFinishUsersCB.filter()
+)
+async def cb_finish_users(
+    callback: CallbackQuery, callback_data: MailingFinishUsersCB, state: FSMContext
+):
     data = await state.get_data()
     selected: set[int] = set(data.get("selected_users", set()))
     if not selected:
-        await callback.answer("Нужно выбрать хотя бы одного пользователя.", show_alert=True)
+        await callback.answer(
+            "Нужно выбрать хотя бы одного пользователя.", show_alert=True
+        )
         return
 
     await state.set_state(MailingFSM.waiting_text)
@@ -412,7 +443,9 @@ async def cb_finish_users(callback: CallbackQuery, callback_data: MailingFinishU
 
 
 @router.callback_query(StateFilter(MailingFSM.choosing_states), ToggleStateCB.filter())
-async def cb_toggle_state(callback: CallbackQuery, callback_data: ToggleStateCB, state: FSMContext):
+async def cb_toggle_state(
+    callback: CallbackQuery, callback_data: ToggleStateCB, state: FSMContext
+):
     data = await state.get_data()
     selected = set(data.get("selected_states", []))
     state_name = callback_data.state.value
@@ -433,8 +466,12 @@ async def cb_toggle_state(callback: CallbackQuery, callback_data: ToggleStateCB,
             raise
 
 
-@router.callback_query(StateFilter(MailingFSM.choosing_states), MailingFinishStatesCB.filter())
-async def cb_finish_states(callback: CallbackQuery, callback_data: MailingFinishStatesCB, state: FSMContext):
+@router.callback_query(
+    StateFilter(MailingFSM.choosing_states), MailingFinishStatesCB.filter()
+)
+async def cb_finish_states(
+    callback: CallbackQuery, callback_data: MailingFinishStatesCB, state: FSMContext
+):
     data = await state.get_data()
     selected_names = set(data.get("selected_states", []))
     if not selected_names:
@@ -446,8 +483,12 @@ async def cb_finish_states(callback: CallbackQuery, callback_data: MailingFinish
     await callback.message.edit_text("Введите текст рассылки:")
 
 
-@router.callback_query(StateFilter(MailingFSM.choosing_cohorts), ToggleCohortCB.filter())
-async def cb_toggle_cohort(callback: CallbackQuery, callback_data: ToggleCohortCB, state: FSMContext):
+@router.callback_query(
+    StateFilter(MailingFSM.choosing_cohorts), ToggleCohortCB.filter()
+)
+async def cb_toggle_cohort(
+    callback: CallbackQuery, callback_data: ToggleCohortCB, state: FSMContext
+):
     data = await state.get_data()
     selected = set(data.get("selected_cohorts", []))
     cohort_value = callback_data.cohort_value
@@ -463,6 +504,7 @@ async def cb_toggle_cohort(callback: CallbackQuery, callback_data: ToggleCohortC
     values = await NotionCacheDAO.get_distinct_values(cohort_type)
     if not values and settings.NOTION_TOKEN and settings.NOTION_DATABASE_ID:
         from src.services.notion_client import NotionService
+
         notion = NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
         try:
             values = await notion.get_options(cohort_type)
@@ -476,8 +518,12 @@ async def cb_toggle_cohort(callback: CallbackQuery, callback_data: ToggleCohortC
     )
 
 
-@router.callback_query(StateFilter(MailingFSM.choosing_cohorts), MailingFinishCohortsCB.filter())
-async def cb_finish_cohorts(callback: CallbackQuery, callback_data: MailingFinishCohortsCB, state: FSMContext):
+@router.callback_query(
+    StateFilter(MailingFSM.choosing_cohorts), MailingFinishCohortsCB.filter()
+)
+async def cb_finish_cohorts(
+    callback: CallbackQuery, callback_data: MailingFinishCohortsCB, state: FSMContext
+):
     data = await state.get_data()
     selected: set[str] = set(data.get("selected_cohorts", set()))
     if not selected:
@@ -505,7 +551,9 @@ async def msg_mailing_text(message: Message, state: FSMContext):
     )
 
 
-@router.callback_query(StateFilter(MailingFSM.choosing_regularity), ChooseRegularityCB.filter())
+@router.callback_query(
+    StateFilter(MailingFSM.choosing_regularity), ChooseRegularityCB.filter()
+)
 async def cb_choose_regularity(
     callback: CallbackQuery,
     callback_data: ChooseRegularityCB,
@@ -532,7 +580,9 @@ async def cb_choose_regularity(
         )
         logger.info(
             "Mailing created: kind=individual name=%s users=%d author=%s",
-            title, len(selected), author_id,
+            title,
+            len(selected),
+            author_id,
         )
         await state.clear()
         await callback.message.edit_text(
@@ -553,7 +603,9 @@ async def cb_choose_regularity(
         )
         logger.info(
             "Mailing created: kind=state name=%s states=%s author=%s",
-            title, selected_state_names, author_id,
+            title,
+            selected_state_names,
+            author_id,
         )
         await state.clear()
         await callback.message.edit_text(
@@ -573,7 +625,10 @@ async def cb_choose_regularity(
         )
         logger.info(
             "Mailing created: kind=cohort name=%s type=%s values=%d author=%s",
-            title, cohort_type, len(selected_values), author_id,
+            title,
+            cohort_type,
+            len(selected_values),
+            author_id,
         )
         await state.clear()
         await callback.message.edit_text(
@@ -586,4 +641,6 @@ async def cb_choose_regularity(
 async def cb_back_to_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    await callback.message.edit_text("Список доступных команд", reply_markup=back_to_menu_keyboard())
+    await callback.message.edit_text(
+        "Список доступных команд", reply_markup=back_to_menu_keyboard()
+    )

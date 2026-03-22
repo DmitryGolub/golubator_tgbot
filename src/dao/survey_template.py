@@ -30,8 +30,9 @@ class SurveyTemplateDAO:
                 select(SurveyTemplate)
                 .where(SurveyTemplate.id == template_id)
                 .options(
-                    joinedload(SurveyTemplate.questions)
-                    .joinedload(SurveyQuestion.options),
+                    joinedload(SurveyTemplate.questions).joinedload(
+                        SurveyQuestion.options
+                    ),
                 )
             )
             result = await session.execute(query)
@@ -44,8 +45,9 @@ class SurveyTemplateDAO:
                 select(SurveyTemplate)
                 .where(SurveyTemplate.slug == slug)
                 .options(
-                    joinedload(SurveyTemplate.questions)
-                    .joinedload(SurveyQuestion.options),
+                    joinedload(SurveyTemplate.questions).joinedload(
+                        SurveyQuestion.options
+                    ),
                 )
             )
             result = await session.execute(query)
@@ -128,7 +130,9 @@ class SurveyTemplateDAO:
             return True
 
     @classmethod
-    async def set_active(cls, template_id: int, is_active: bool) -> Optional[SurveyTemplate]:
+    async def set_active(
+        cls, template_id: int, is_active: bool
+    ) -> Optional[SurveyTemplate]:
         async with async_session_maker() as session:
             template = await session.get(SurveyTemplate, template_id)
             if not template:

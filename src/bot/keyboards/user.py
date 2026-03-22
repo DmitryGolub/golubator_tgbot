@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from aiogram.filters.callback_data import CallbackData
 
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -96,7 +98,7 @@ def statuses_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def mentors_keyboard(mentors: list[User]) -> InlineKeyboardMarkup:
+def mentors_keyboard(mentors: Sequence[User]) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
     for mentor in mentors:
@@ -109,7 +111,7 @@ def mentors_keyboard(mentors: list[User]) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def users_keyboard(users: list[User]) -> InlineKeyboardMarkup:
+def users_keyboard(users: Sequence[User]) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
     for user in users:

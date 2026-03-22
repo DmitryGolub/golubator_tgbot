@@ -78,13 +78,17 @@ class RuleDAO:
     @staticmethod
     async def delete_user_rules(ids: Iterable[int]) -> None:
         async with async_session_maker() as session:
-            await session.execute(UserRule.__table__.delete().where(UserRule.id.in_(list(ids))))
+            await session.execute(
+                UserRule.__table__.delete().where(UserRule.id.in_(list(ids)))
+            )
             await session.commit()
 
     @staticmethod
     async def delete_state_rules(ids: Iterable[int]) -> None:
         async with async_session_maker() as session:
-            await session.execute(StateRule.__table__.delete().where(StateRule.id.in_(list(ids))))
+            await session.execute(
+                StateRule.__table__.delete().where(StateRule.id.in_(list(ids)))
+            )
             await session.commit()
 
     @staticmethod
@@ -141,5 +145,7 @@ class RuleDAO:
     @staticmethod
     async def delete_cohort_rules(ids: Iterable[int]) -> None:
         async with async_session_maker() as session:
-            await session.execute(CohortRule.__table__.delete().where(CohortRule.id.in_(list(ids))))
+            await session.execute(
+                CohortRule.__table__.delete().where(CohortRule.id.in_(list(ids)))
+            )
             await session.commit()

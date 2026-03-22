@@ -31,9 +31,7 @@ class BaseDAO:
             result = await session.execute(query)
             await session.commit()
             obj = result.scalars().first()
-            logger.debug(
-                "%s.add -> id=%s", cls.model.__name__, getattr(obj, "id", "?")
-            )
+            logger.debug("%s.add -> id=%s", cls.model.__name__, getattr(obj, "id", "?"))
             return obj
 
     @classmethod

@@ -28,7 +28,7 @@ class YandexSheetsUploadError(YandexSheetsError):
 
 
 def _normalize_sheet_name(sheet_name: str) -> str:
-    cleaned = "".join(ch for ch in sheet_name if ch not in '[]:*?/\\')
+    cleaned = "".join(ch for ch in sheet_name if ch not in "[]:*?/\\")
     cleaned = cleaned.strip("'") or "feedback_export"
     return cleaned[:31]
 
@@ -154,7 +154,7 @@ def build_xlsx_bytes(
     created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     core_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<cp:coreProperties '
+        "<cp:coreProperties "
         'xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
         'xmlns:dc="http://purl.org/dc/elements/1.1/" '
         'xmlns:dcterms="http://purl.org/dc/terms/" '
@@ -208,7 +208,9 @@ class YandexSheetsWriter:
             sheet_name or settings.YANDEX_SHEETS_SHEET_NAME
         )
         self._base_url = (base_url or settings.YANDEX_SHEETS_BASE_URL).rstrip("/")
-        self._timeout_seconds = timeout_seconds or settings.YANDEX_SHEETS_TIMEOUT_SECONDS
+        self._timeout_seconds = (
+            timeout_seconds or settings.YANDEX_SHEETS_TIMEOUT_SECONDS
+        )
 
         if not self._token:
             raise YandexSheetsConfigurationError(

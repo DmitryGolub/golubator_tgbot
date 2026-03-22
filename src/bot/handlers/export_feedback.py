@@ -51,7 +51,8 @@ async def cb_export_feedback(callback: CallbackQuery):
 
     logger.info(
         "Feedback export success: rows=%d file=%s",
-        result.dataset.rows_count, result.target.file_path,
+        result.dataset.rows_count,
+        result.target.file_path,
     )
     text = (
         f"Экспорт завершён.\n\n"

@@ -23,6 +23,7 @@ def _format_dt(dt: Optional[datetime]) -> str:
     if not dt:
         return "—"
     from src.utils.tz import MSK
+
     return dt.astimezone(MSK).strftime("%d.%m.%Y %H:%M MSK")
 
 
@@ -151,12 +152,9 @@ async def _cleanup_stale_async() -> None:
     Session = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with Session() as session:
-            query = (
-                select(Meeting)
-                .where(
-                    Meeting.scheduled_at <= cutoff,
-                    Meeting.completed_at.is_(None),
-                )
+            query = select(Meeting).where(
+                Meeting.scheduled_at <= cutoff,
+                Meeting.completed_at.is_(None),
             )
             result = await session.execute(query)
             meetings = result.scalars().all()
@@ -166,10 +164,11 @@ async def _cleanup_stale_async() -> None:
 
             if meetings:
                 await session.commit()
-            logger.info("Cleanup stale meetings: cutoff=%s, completed=%s", cutoff, len(meetings))
+            logger.info(
+                "Cleanup stale meetings: cutoff=%s, completed=%s", cutoff, len(meetings)
+            )
     finally:
         await engine.dispose()
-
 
 
 @celery_app.task(name="meeting.notify_created")

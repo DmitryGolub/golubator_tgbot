@@ -102,10 +102,14 @@ async def cb_toggle_perm(callback: CallbackQuery, callback_data: TogglePermCB):
     has_perm = any(p.id == callback_data.perm_id for p in role.permissions)
     if has_perm:
         await RoleDAO.remove_permission(callback_data.role_id, callback_data.perm_id)
-        logger.info("Permission removed: role=%s perm_id=%s", role.name, callback_data.perm_id)
+        logger.info(
+            "Permission removed: role=%s perm_id=%s", role.name, callback_data.perm_id
+        )
     else:
         await RoleDAO.add_permission(callback_data.role_id, callback_data.perm_id)
-        logger.info("Permission added: role=%s perm_id=%s", role.name, callback_data.perm_id)
+        logger.info(
+            "Permission added: role=%s perm_id=%s", role.name, callback_data.perm_id
+        )
 
     await AuthService.invalidate_role(callback_data.role_id)
 
@@ -135,7 +139,9 @@ async def cb_delete_role(callback: CallbackQuery, callback_data: DeleteRoleCB):
 
 
 @router.callback_query(ConfirmDeleteRoleCB.filter())
-async def cb_confirm_delete(callback: CallbackQuery, callback_data: ConfirmDeleteRoleCB):
+async def cb_confirm_delete(
+    callback: CallbackQuery, callback_data: ConfirmDeleteRoleCB
+):
     await callback.answer()
     user_count = await RoleDAO.count_users(callback_data.role_id)
     if user_count > 0:
@@ -177,12 +183,16 @@ async def msg_role_name(message: Message, state: FSMContext):
 
     existing = await RoleDAO.get_by_name(name)
     if existing:
-        await message.answer(f"Роль <code>{e(name)}</code> уже существует. Введите другое имя.")
+        await message.answer(
+            f"Роль <code>{e(name)}</code> уже существует. Введите другое имя."
+        )
         return
 
     await state.update_data(name=name)
     await state.set_state(CreateRoleFSM.waiting_display_name)
-    await message.answer("Введите отображаемое название роли (например: Старший ментор):")
+    await message.answer(
+        "Введите отображаемое название роли (например: Старший ментор):"
+    )
 
 
 @router.message(StateFilter(CreateRoleFSM.waiting_display_name))

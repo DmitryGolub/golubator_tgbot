@@ -22,6 +22,7 @@ router.callback_query.filter(PermissionFilter("manage_cohorts"))
 
 # === Create cohort type ===
 
+
 @router.callback_query(F.data == "cohort_create_type")
 async def start_create_type(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -45,7 +46,9 @@ async def process_type_name(message: Message, state: FSMContext):
     notion = get_notion_service()
     if not notion:
         await state.clear()
-        await message.answer("Notion не настроен.", reply_markup=back_to_menu_keyboard())
+        await message.answer(
+            "Notion не настроен.", reply_markup=back_to_menu_keyboard()
+        )
         return
 
     try:
@@ -71,6 +74,7 @@ async def process_type_name(message: Message, state: FSMContext):
 
 # === Create option within type ===
 
+
 @router.callback_query(CreateOptionCB.filter())
 async def start_create_option(
     callback: CallbackQuery, callback_data: CreateOptionCB, state: FSMContext
@@ -79,7 +83,7 @@ async def start_create_option(
     await state.set_state(CohortTypeFSM.waiting_option_name)
     await state.update_data(type_name=callback_data.type_name)
     await callback.message.edit_text(
-        f'Введите название новой опции для <b>{e(callback_data.type_name)}</b>:',
+        f"Введите название новой опции для <b>{e(callback_data.type_name)}</b>:",
         reply_markup=cohort_cancel_keyboard(),
     )
 
@@ -100,7 +104,9 @@ async def process_option_name(message: Message, state: FSMContext):
     notion = get_notion_service()
     if not notion:
         await state.clear()
-        await message.answer("Notion не настроен.", reply_markup=back_to_menu_keyboard())
+        await message.answer(
+            "Notion не настроен.", reply_markup=back_to_menu_keyboard()
+        )
         return
 
     try:
@@ -123,6 +129,7 @@ async def process_option_name(message: Message, state: FSMContext):
 
 
 # === Cancel FSM ===
+
 
 @router.callback_query(F.data == "cohort_cancel_fsm")
 async def cancel_fsm(callback: CallbackQuery, state: FSMContext):

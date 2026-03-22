@@ -105,7 +105,9 @@ class SurveySessionService:
         elif question.question_type == QuestionType.single_choice:
             value_choice = [raw_value]
         elif question.question_type == QuestionType.multiple_choice:
-            value_choice = raw_value.split(",") if isinstance(raw_value, str) else raw_value
+            value_choice = (
+                raw_value.split(",") if isinstance(raw_value, str) else raw_value
+            )
 
         await SurveySessionDAO.save_answer(
             session_id=session_id,

@@ -1,4 +1,4 @@
-from src.dao.role import PermissionDAO, RoleDAO
+from src.dao.role import PermissionDAO
 from src.dao.user import UserDAO
 from src.models.role import RoleModel
 from src.services.permission_cache import (
@@ -56,13 +56,16 @@ class AuthService:
             return None
 
         role = user.role_rel
-        await set_cached_role(user_id, {
-            "id": role.id,
-            "name": role.name,
-            "display_name": role.display_name,
-            "is_mentor": role.is_mentor,
-            "is_student": role.is_student,
-        })
+        await set_cached_role(
+            user_id,
+            {
+                "id": role.id,
+                "name": role.name,
+                "display_name": role.display_name,
+                "is_mentor": role.is_mentor,
+                "is_student": role.is_student,
+            },
+        )
         return role
 
     @staticmethod

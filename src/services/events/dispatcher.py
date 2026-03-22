@@ -85,7 +85,8 @@ class EventDispatcher:
                     await TriggerExecutionDAO.mark_failed(execution.id, str(exc))
                     logger.exception(
                         "Failed to execute rule %s for user %s",
-                        rule.id, recipient_id,
+                        rule.id,
+                        recipient_id,
                     )
             else:
                 # Delayed execution via Celery
@@ -101,13 +102,16 @@ class EventDispatcher:
                     continue
 
                 from src.tasks.trigger import execute_trigger_action
+
                 execute_trigger_action.apply_async(
                     args=[execution.id],
                     eta=eta,
                 )
                 logger.info(
                     "Scheduled trigger rule %s for user %s at %s",
-                    rule.id, recipient_id, eta,
+                    rule.id,
+                    recipient_id,
+                    eta,
                 )
 
     @classmethod
@@ -164,6 +168,7 @@ class EventDispatcher:
                     scheduled_at = datetime.fromisoformat(scheduled_at)
                 if scheduled_at.tzinfo is None:
                     from src.utils.tz import MSK
+
                     scheduled_at = scheduled_at.replace(tzinfo=MSK)
                 eta = scheduled_at - timedelta(seconds=rule.delay_seconds)
                 if eta > now:

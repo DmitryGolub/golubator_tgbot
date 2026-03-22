@@ -1,7 +1,6 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardMarkup
 
-from src.bot.callbacks.cohort import CohortTypeCB
 from src.bot.callbacks.rule import (
     MailingTypeCB,
     ToggleUserCB,
@@ -34,7 +33,9 @@ def mailings_menu_keyboard() -> InlineKeyboardMarkup:
 
 def mailing_type_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="Индивидуальная", callback_data=MailingTypeCB(kind="individual").pack())
+    kb.button(
+        text="Индивидуальная", callback_data=MailingTypeCB(kind="individual").pack()
+    )
     kb.button(text="По статусам", callback_data=MailingTypeCB(kind="state").pack())
     kb.button(text="По когортам", callback_data=MailingTypeCB(kind="cohort").pack())
     kb.button(text="⬅️ Назад", callback_data="mailings_menu")
@@ -42,7 +43,9 @@ def mailing_type_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def select_users_keyboard(users: list[User], selected: set[int]) -> InlineKeyboardMarkup:
+def select_users_keyboard(
+    users: list[User], selected: set[int]
+) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for u in users:
         mark = "✅ " if u.telegram_id in selected else ""
@@ -108,7 +111,9 @@ def select_cohorts_keyboard(
 def regularity_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for reg in Regularity:
-        kb.button(text=reg.value, callback_data=ChooseRegularityCB(regularity=reg).pack())
+        kb.button(
+            text=reg.value, callback_data=ChooseRegularityCB(regularity=reg).pack()
+        )
     kb.button(text="❌ Отмена", callback_data="mailings_menu")
     kb.adjust(1)
     return kb.as_markup()
@@ -150,7 +155,9 @@ def delete_mailings_keyboard(
                 callback_data=ToggleDeleteCohortRuleCB(rule_id=rule.id).pack(),
             )
 
-    kb.button(text="Удалить выбранные", callback_data=DeleteMailingsFinishCB(done=True).pack())
+    kb.button(
+        text="Удалить выбранные", callback_data=DeleteMailingsFinishCB(done=True).pack()
+    )
     kb.button(text="❌ Отмена", callback_data="mailings_menu")
     kb.adjust(1)
     return kb.as_markup()

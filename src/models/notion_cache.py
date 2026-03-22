@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     BigInteger,
@@ -14,6 +16,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
+
+if TYPE_CHECKING:
+    from src.models.user import User
 
 
 class NotionCohortCache(Base):
@@ -38,9 +43,12 @@ class NotionCohortCache(Base):
     cohort_type: Mapped[str] = mapped_column(String(100), nullable=False)
     cohort_value: Mapped[str] = mapped_column(String(255), nullable=False)
     synced_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False,
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
 
     user: Mapped["User"] = relationship(
-        "User", back_populates="cohort_cache",
+        "User",
+        back_populates="cohort_cache",
     )

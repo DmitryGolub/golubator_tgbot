@@ -3,7 +3,6 @@ from aiogram.types import InlineKeyboardMarkup
 
 from src.bot.callbacks.cohort import (
     CohortTypeCB,
-    CreateCohortTypeCB,
     CreateOptionCB,
     DeleteCohortTypeCB,
     DeleteOptionCB,

@@ -15,7 +15,9 @@ from src.models.user import User
 from src.models.meeting import Meeting
 
 
-def mentor_meetings_keyboard(meetings: list[Meeting] | None = None) -> InlineKeyboardMarkup:
+def mentor_meetings_keyboard(
+    meetings: list[Meeting] | None = None,
+) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="Добавить созвон", callback_data="meeting_create")
     kb.button(text="Завершить активный созвон", callback_data="mentor_end_call")
@@ -69,12 +71,16 @@ def meeting_calendar_keyboard(current: date) -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(
             text="<==",
-            callback_data=NavigateMeetingMonthCB(year=year, month=month, delta=-1).pack(),
+            callback_data=NavigateMeetingMonthCB(
+                year=year, month=month, delta=-1
+            ).pack(),
         ),
         InlineKeyboardButton(text=current.strftime("%B %Y"), callback_data="noop"),
         InlineKeyboardButton(
             text="==>",
-            callback_data=NavigateMeetingMonthCB(year=year, month=month, delta=1).pack(),
+            callback_data=NavigateMeetingMonthCB(
+                year=year, month=month, delta=1
+            ).pack(),
         ),
     )
 
@@ -105,7 +111,9 @@ def meeting_calendar_keyboard(current: date) -> InlineKeyboardMarkup:
         builder.row(*row_buttons)
 
     # cancel row
-    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="meeting_create_cancel"))
+    builder.row(
+        InlineKeyboardButton(text="❌ Отмена", callback_data="meeting_create_cancel")
+    )
 
     return builder.as_markup()
 
@@ -125,5 +133,7 @@ def meeting_time_keyboard(date_str: str) -> InlineKeyboardMarkup:
             ]
         )
 
-    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="meeting_create_cancel"))
+    builder.row(
+        InlineKeyboardButton(text="❌ Отмена", callback_data="meeting_create_cancel")
+    )
     return builder.as_markup()

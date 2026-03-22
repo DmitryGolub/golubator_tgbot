@@ -44,7 +44,9 @@ class SurveyTemplate(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    slug: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     target_role_id: Mapped[Optional[int]] = mapped_column(
         Integer,
