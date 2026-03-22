@@ -6,7 +6,9 @@ from aiogram.exceptions import TelegramBadRequest
 
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.core.config import settings
 from src.services.feedback_export import FeedbackExportService
+from src.services.ui_text import UiTextService
 from src.services.yandex_sheets import (
     YandexSheetsConfigurationError,
     YandexSheetsUploadError,
@@ -22,30 +24,39 @@ router.callback_query.filter(PermissionFilter("export_feedback"))
 async def cb_export_feedback(callback: CallbackQuery):
     await callback.answer()
 
-    await callback.message.edit_text("Экспорт фидбека запущен, подождите...")
+    if not settings.YANDEX_SHEETS_TOKEN:
+        logger.warning("Feedback export skipped: YANDEX_SHEETS_TOKEN is not configured")
+        text = await UiTextService.get("export.not_configured")
+        await callback.message.edit_text(
+            text, reply_markup=await back_to_menu_keyboard()
+        )
+        return
+
+    loading = await UiTextService.get("export.running")
+    await callback.message.edit_text(loading)
 
     service = FeedbackExportService()
     try:
         result = await service.run_export(dry_run=False)
     except YandexSheetsConfigurationError:
-        logger.exception("Feedback export configuration error")
+        logger.warning("Feedback export configuration error", exc_info=True)
+        text = await UiTextService.get("export.not_configured")
         await callback.message.edit_text(
-            "Экспорт не настроен: проверьте YANDEX_SHEETS_* переменные.",
-            reply_markup=back_to_menu_keyboard(),
+            text, reply_markup=await back_to_menu_keyboard()
         )
         return
     except YandexSheetsUploadError:
         logger.exception("Feedback export upload failed")
+        text = await UiTextService.get("export.upload_error")
         await callback.message.edit_text(
-            "Не удалось загрузить файл в Яндекс Таблицу.",
-            reply_markup=back_to_menu_keyboard(),
+            text, reply_markup=await back_to_menu_keyboard()
         )
         return
 
     if result.target is None:
+        text = await UiTextService.get("export.internal_error")
         await callback.message.edit_text(
-            "Внутренняя ошибка экспорта.",
-            reply_markup=back_to_menu_keyboard(),
+            text, reply_markup=await back_to_menu_keyboard()
         )
         return
 
@@ -54,15 +65,17 @@ async def cb_export_feedback(callback: CallbackQuery):
         result.dataset.rows_count,
         result.target.file_path,
     )
-    text = (
-        f"Экспорт завершён.\n\n"
-        f"Строк: <b>{result.dataset.rows_count}</b>\n"
-        f"Файл: <b>{result.target.file_path}</b>\n"
-        f"Лист: <b>{result.target.sheet_name}</b>"
+    text = await UiTextService.get(
+        "export.success",
+        rows=str(result.dataset.rows_count),
+        file=result.target.file_path,
+        sheet=result.target.sheet_name,
     )
 
     try:
-        await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
+        await callback.message.edit_text(
+            text, reply_markup=await back_to_menu_keyboard()
+        )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise

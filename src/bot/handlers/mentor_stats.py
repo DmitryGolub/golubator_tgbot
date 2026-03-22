@@ -10,6 +10,7 @@ from src.bot.keyboards.mentor_stats import mentor_select_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.dao.mentor_stats import MentorStatsDAO
 from src.dao.user import UserDAO
+from src.services.ui_text import UiTextService
 from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
@@ -17,9 +18,10 @@ logger = logging.getLogger(__name__)
 router = Router(name="mentor_stats")
 
 
-def _format_stats(stats: dict, mentor_name: str) -> str:
+async def _format_stats(stats: dict, mentor_name: str) -> str:
+    header = await UiTextService.get("mentor_stats.header", name=e(mentor_name))
     lines = [
-        f"<b>Статистика ментора: {e(mentor_name)}</b>",
+        header,
         "",
         f"Созвоны: <b>{stats['total_calls']}</b>",
         f"Опросы заполнено: <b>{stats['total_surveys']}</b>",
@@ -38,7 +40,8 @@ def _format_stats(stats: dict, mentor_name: str) -> str:
         stats.get(k) is None
         for k in ("avg_mentor_style", "avg_knowledge_depth", "avg_understanding")
     ):
-        lines.append("\nОценок пока нет.")
+        no_scores = await UiTextService.get("mentor_stats.no_scores")
+        lines.append(f"\n{no_scores}")
 
     return "\n".join(lines)
 
@@ -53,15 +56,18 @@ async def cb_mentor_my_stats(callback: CallbackQuery):
     mentor = mentors[0] if mentors else None
     if not mentor:
         await callback.message.edit_text(
-            "Профиль не найден.", reply_markup=back_to_menu_keyboard()
+            await UiTextService.get("menu.not_found"),
+            reply_markup=await back_to_menu_keyboard(),
         )
         return
 
     stats = await MentorStatsDAO.get_stats(mentor_id=mentor_id)
-    text = _format_stats(stats, mentor.name)
+    text = await _format_stats(stats, mentor.name)
 
     try:
-        await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
+        await callback.message.edit_text(
+            text, reply_markup=await back_to_menu_keyboard()
+        )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
@@ -77,14 +83,14 @@ async def cb_admin_mentor_stats(callback: CallbackQuery):
 
     if not mentors:
         await callback.message.edit_text(
-            "Менторов не найдено.",
-            reply_markup=back_to_menu_keyboard(),
+            await UiTextService.get("mentor_stats.no_mentors"),
+            reply_markup=await back_to_menu_keyboard(),
         )
         return
 
     try:
         await callback.message.edit_text(
-            "Выберите ментора для просмотра статистики:",
+            await UiTextService.get("mentor_stats.select"),
             reply_markup=mentor_select_keyboard(mentors),
         )
     except TelegramBadRequest as exc:
@@ -104,15 +110,18 @@ async def cb_admin_view_mentor_stats(
     mentor = mentors[0] if mentors else None
     if not mentor:
         await callback.message.edit_text(
-            "Ментор не найден.", reply_markup=back_to_menu_keyboard()
+            await UiTextService.get("mentor_stats.not_found"),
+            reply_markup=await back_to_menu_keyboard(),
         )
         return
 
     stats = await MentorStatsDAO.get_stats(mentor_id=mentor_id)
-    text = _format_stats(stats, mentor.name)
+    text = await _format_stats(stats, mentor.name)
 
     try:
-        await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
+        await callback.message.edit_text(
+            text, reply_markup=await back_to_menu_keyboard()
+        )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise

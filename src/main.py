@@ -4,6 +4,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.types import BotCommand
 
 from src.bot.handlers.common.start import router as start_router
 from src.bot.handlers.common.menu import router as menu_router
@@ -66,7 +67,18 @@ async def main():
         tags_router,
     )
 
+    dp.startup.register(_set_bot_commands)
     await dp.start_polling(bot)
+
+
+async def _set_bot_commands(bot: Bot) -> None:
+    commands = [
+        BotCommand(command="start", description="Начать работу с ботом"),
+        BotCommand(command="menu", description="Главное меню"),
+        BotCommand(command="help", description="Помощь"),
+        BotCommand(command="end_call", description="Завершить активный созвон"),
+    ]
+    await bot.set_my_commands(commands)
 
 
 if __name__ == "__main__":

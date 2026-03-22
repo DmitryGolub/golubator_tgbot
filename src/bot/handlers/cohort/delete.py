@@ -39,7 +39,7 @@ async def do_delete_type(callback: CallbackQuery):
     notion = get_notion_service()
     if not notion:
         await callback.message.edit_text(
-            "Notion не настроен.", reply_markup=back_to_menu_keyboard()
+            "Notion не настроен.", reply_markup=await back_to_menu_keyboard()
         )
         return
 
@@ -52,13 +52,13 @@ async def do_delete_type(callback: CallbackQuery):
         logger.info("Cohort type deleted: %s", type_name)
         await callback.message.edit_text(
             f'Тип когорты "<b>{e(type_name)}</b>" удалён из Notion.',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
     else:
         logger.warning("Failed to delete cohort type: %s", type_name)
         await callback.message.edit_text(
             f'Не удалось удалить тип "{e(type_name)}". Возможно, он защищён.',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
 
 
@@ -72,7 +72,7 @@ async def delete_option(callback: CallbackQuery, callback_data: DeleteOptionCB):
     notion = get_notion_service()
     if not notion:
         await callback.message.edit_text(
-            "Notion не настроен.", reply_markup=back_to_menu_keyboard()
+            "Notion не настроен.", reply_markup=await back_to_menu_keyboard()
         )
         return
 
@@ -86,10 +86,10 @@ async def delete_option(callback: CallbackQuery, callback_data: DeleteOptionCB):
     if success:
         await callback.message.edit_text(
             f'Опция "<b>{e(callback_data.option_name)}</b>" удалена из <b>{e(callback_data.type_name)}</b>.',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
     else:
         await callback.message.edit_text(
             f'Не удалось удалить опцию "{e(callback_data.option_name)}".',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )

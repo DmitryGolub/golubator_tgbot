@@ -642,5 +642,5 @@ async def cb_back_to_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     await callback.message.edit_text(
-        "Список доступных команд", reply_markup=back_to_menu_keyboard()
+        "Список доступных команд", reply_markup=await back_to_menu_keyboard()
     )

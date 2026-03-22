@@ -27,6 +27,7 @@ from src.bot.keyboards.tags import (
 from src.bot.states.tags import CreateTagFSM
 from src.dao.tag import TagDAO
 from src.dao.user import UserDAO
+from src.services.ui_text import UiTextService
 from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,8 @@ async def cb_tags_menu(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     try:
         await callback.message.edit_text(
-            "Управление тегами", reply_markup=tags_menu_keyboard()
+            await UiTextService.get("tags.menu.title"),
+            reply_markup=tags_menu_keyboard(),
         )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
@@ -61,7 +63,8 @@ async def cb_tags_list(callback: CallbackQuery):
     tags = await TagDAO.get_all()
     if not tags:
         await callback.message.edit_text(
-            "Тегов пока нет.", reply_markup=tags_menu_keyboard()
+            await UiTextService.get("tags.list.empty"),
+            reply_markup=tags_menu_keyboard(),
         )
         return
     await callback.message.edit_text(
@@ -78,7 +81,8 @@ async def cb_tag_create(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(CreateTagFSM.waiting_name)
     await callback.message.edit_text(
-        "Введите имя нового тега:", reply_markup=cancel_keyboard()
+        await UiTextService.get("tags.create.enter_name"),
+        reply_markup=cancel_keyboard(),
     )
 
 
@@ -95,7 +99,7 @@ async def on_tag_name(message: Message, state: FSMContext):
         logger.warning("Tag already exists: %s", name)
         await state.clear()
         await message.answer(
-            f"Тег <b>{e(name)}</b> уже существует.",
+            await UiTextService.get("tags.already_exists", name=e(name)),
             reply_markup=tags_menu_keyboard(),
         )
         return
@@ -103,7 +107,7 @@ async def on_tag_name(message: Message, state: FSMContext):
     logger.info("Tag created: %s (id=%s)", tag.name, tag.id)
     await state.clear()
     await message.answer(
-        f"Тег <b>{e(tag.name)}</b> создан.",
+        await UiTextService.get("tags.created", name=e(tag.name)),
         reply_markup=tags_menu_keyboard(),
     )
 
@@ -119,11 +123,12 @@ async def cb_tag_delete(callback: CallbackQuery, callback_data: TagDeleteCB):
     tags = await TagDAO.get_all()
     if not tags:
         await callback.message.edit_text(
-            "Все теги удалены.", reply_markup=tags_menu_keyboard()
+            await UiTextService.get("tags.list.empty"),
+            reply_markup=tags_menu_keyboard(),
         )
         return
     await callback.message.edit_text(
-        "Тег удалён. Список тегов:",
+        await UiTextService.get("tags.deleted"),
         reply_markup=tags_list_keyboard(tags),
     )
 
@@ -137,7 +142,8 @@ async def cb_tag_assign_select_user(callback: CallbackQuery):
     users = await UserDAO.get_all()
     if not users:
         await callback.message.edit_text(
-            "Пользователей нет.", reply_markup=tags_menu_keyboard()
+            await UiTextService.get("tags.users.empty"),
+            reply_markup=tags_menu_keyboard(),
         )
         return
     await callback.message.edit_text(

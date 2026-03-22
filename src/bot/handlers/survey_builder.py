@@ -32,6 +32,7 @@ from src.dao.survey_session import SurveySessionDAO
 from src.dao.user import UserDAO
 from src.services.survey_session import SessionNotFoundError, SurveySessionService
 from src.services.survey_template import SlugAlreadyExistsError, SurveyTemplateService
+from src.services.ui_text import UiTextService
 from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ async def cb_surveys_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     await callback.message.edit_text(
-        "Конструктор опросов",
+        await UiTextService.get("survey.menu.title"),
         reply_markup=survey_builder_menu_keyboard(),
     )
 
@@ -150,7 +151,7 @@ async def cb_delete_template(
         )
     else:
         await callback.message.edit_text(
-            "Конструктор опросов",
+            await UiTextService.get("survey.menu.title"),
             reply_markup=survey_builder_menu_keyboard(),
         )
 
@@ -544,6 +545,6 @@ async def cb_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("Отменено")
     await callback.message.edit_text(
-        "Конструктор опросов",
+        await UiTextService.get("survey.menu.title"),
         reply_markup=survey_builder_menu_keyboard(),
     )

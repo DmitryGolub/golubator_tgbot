@@ -34,6 +34,7 @@ from src.bot.states.trigger_rules import TriggerRuleBuilderFSM
 from src.dao.trigger_rule import TriggerRuleDAO
 from src.services.events.dispatcher import EventDispatcher
 from src.services.survey_template import SurveyTemplateService
+from src.services.ui_text import UiTextService
 from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,8 @@ async def cb_triggers_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     await callback.message.edit_text(
-        "Управление триггерами", reply_markup=trigger_menu_keyboard()
+        await UiTextService.get("trigger.menu.title"),
+        reply_markup=trigger_menu_keyboard(),
     )
 
 
@@ -63,11 +65,12 @@ async def cb_list_rules(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     rules = await TriggerRuleDAO.get_all()
     if not rules:
-        await callback.answer("Нет правил")
+        await callback.answer(await UiTextService.get("trigger.no_rules"))
         return
     await callback.answer()
     await callback.message.edit_text(
-        "Правила:", reply_markup=rules_list_keyboard(rules)
+        await UiTextService.get("trigger.list.header"),
+        reply_markup=rules_list_keyboard(rules),
     )
 
 
@@ -75,7 +78,7 @@ async def cb_list_rules(callback: CallbackQuery, state: FSMContext):
 async def cb_rule_detail(callback: CallbackQuery, callback_data: TriggerRuleDetailCB):
     rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
     if not rule:
-        await callback.answer("Правило не найдено")
+        await callback.answer(await UiTextService.get("trigger.rule_not_found"))
         return
 
     trigger_label = TRIGGER_TYPE_LABELS.get(
@@ -109,7 +112,7 @@ async def cb_rule_detail(callback: CallbackQuery, callback_data: TriggerRuleDeta
 async def cb_toggle_rule(callback: CallbackQuery, callback_data: TriggerRuleToggleCB):
     rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
     if not rule:
-        await callback.answer("Правило не найдено")
+        await callback.answer(await UiTextService.get("trigger.rule_not_found"))
         return
     rule = await TriggerRuleDAO.set_active(rule.id, not rule.is_active)
     status = "включено" if rule.is_active else "выключено"
@@ -124,17 +127,19 @@ async def cb_toggle_rule(callback: CallbackQuery, callback_data: TriggerRuleTogg
 async def cb_delete_rule(callback: CallbackQuery, callback_data: TriggerRuleDeleteCB):
     deleted = await TriggerRuleDAO.delete(callback_data.rule_id)
     if not deleted:
-        await callback.answer("Правило не найдено")
+        await callback.answer(await UiTextService.get("trigger.rule_not_found"))
         return
-    await callback.answer("Правило удалено")
+    await callback.answer(await UiTextService.get("trigger.deleted"))
     rules = await TriggerRuleDAO.get_all()
     if rules:
         await callback.message.edit_text(
-            "Правила:", reply_markup=rules_list_keyboard(rules)
+            await UiTextService.get("trigger.list.header"),
+            reply_markup=rules_list_keyboard(rules),
         )
     else:
         await callback.message.edit_text(
-            "Управление триггерами", reply_markup=trigger_menu_keyboard()
+            await UiTextService.get("trigger.menu.title"),
+            reply_markup=trigger_menu_keyboard(),
         )
 
 
@@ -146,7 +151,7 @@ async def cb_manual_send_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     rules = await TriggerRuleDAO.get_all_active()
     if not rules:
-        await callback.answer("Нет активных правил")
+        await callback.answer(await UiTextService.get("trigger.no_rules"))
         return
     await callback.answer()
     await callback.message.edit_text(
@@ -159,7 +164,7 @@ async def cb_manual_send_menu(callback: CallbackQuery, state: FSMContext):
 async def cb_send_now(callback: CallbackQuery, callback_data: TriggerRuleSendCB):
     rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
     if not rule:
-        await callback.answer("Правило не найдено")
+        await callback.answer(await UiTextService.get("trigger.rule_not_found"))
         return
 
     await callback.answer("Отправляю...")
@@ -393,5 +398,6 @@ async def cb_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("Отменено")
     await callback.message.edit_text(
-        "Управление триггерами", reply_markup=trigger_menu_keyboard()
+        await UiTextService.get("trigger.menu.title"),
+        reply_markup=trigger_menu_keyboard(),
     )

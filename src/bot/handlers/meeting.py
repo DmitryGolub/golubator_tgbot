@@ -53,7 +53,7 @@ router.callback_query.filter(PermissionFilter(["manage_meetings", "view_own_meet
 
 async def _menu_kb(user_id: int):
     perms = await AuthService.get_user_permissions(user_id)
-    return menu_keyboard(perms)
+    return await menu_keyboard(perms)
 
 
 def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:

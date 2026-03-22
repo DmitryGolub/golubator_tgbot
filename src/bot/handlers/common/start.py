@@ -1,6 +1,6 @@
 from aiogram import Router
 from aiogram.types import Message
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 
 import logging
 
@@ -11,20 +11,13 @@ from datetime import datetime, timezone
 
 from src.core.config import settings
 from src.services.auth import AuthService
+from src.services.ui_text import UiTextService
+from src.bot.keyboards.menu import menu_keyboard
 from src.utils.onboarding import schedule_onboarding_notifications
 
 logger = logging.getLogger(__name__)
 
 router = Router()
-
-
-WELCOME_TEXT = (
-    "<b>Привет!</b>\n\n"
-    "Я буду напоминать вам о занятиях и присылать полезную информацию.\n"
-    "Через команду <b>/menu</b> можно открыть главное меню, "
-    "посмотреть свои данные и доступные действия.\n\n"
-    "Если что-то не работает — напишите куратору."
-)
 
 
 @router.message(CommandStart())
@@ -68,7 +61,26 @@ async def cmd_start(message: Message):
     # Link user to Notion page
     await _link_notion_page(user.id, username)
 
-    await message.answer(WELCOME_TEXT)
+    welcome = await UiTextService.get("start.welcome", name=user.first_name)
+    await message.answer(welcome)
+
+    # Show menu right after welcome
+    permissions = await AuthService.get_user_permissions(user_id)
+    if permissions:
+        title = await UiTextService.get("menu.title")
+        await message.answer(title, reply_markup=await menu_keyboard(permissions))
+
+
+@router.message(Command("help"))
+async def cmd_help(message: Message):
+    permissions = await AuthService.get_user_permissions(message.from_user.id)
+    if not permissions:
+        text = await UiTextService.get("menu.access_denied")
+        await message.answer(text)
+        return
+
+    title = await UiTextService.get("menu.title")
+    await message.answer(title, reply_markup=await menu_keyboard(permissions))
 
 
 async def _link_notion_page(telegram_id: int, username: str) -> None:

@@ -92,7 +92,7 @@ async def cb_choose_param(
     if "manage_users" not in perms and callback_data.param != UpdateParam.STATUS:
         await _msg(callback).edit_text(
             "Ментору доступно только обновление статуса ученика.",
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
         await state.clear()
         return
@@ -267,7 +267,7 @@ async def cb_choose_user_for_update(
             if "manage_users" not in perms and user.mentor_id != callback.from_user.id:
                 await _msg(callback).edit_text(
                     "Можно обновлять только своих учеников.",
-                    reply_markup=back_to_menu_keyboard(),
+                    reply_markup=await back_to_menu_keyboard(),
                 )
                 await state.clear()
                 return
@@ -298,6 +298,6 @@ async def cb_choose_user_for_update(
     await _msg(callback).edit_text(
         f"Пользователь {e(user.name)} @{e(user.username)}\n"
         f"{e(param_human.title())} обновлено на: {e(value_human)}",
-        reply_markup=back_to_menu_keyboard(),
+        reply_markup=await back_to_menu_keyboard(),
     )
     await state.clear()

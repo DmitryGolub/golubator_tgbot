@@ -53,7 +53,7 @@ async def process_rename_type(message: Message, state: FSMContext):
     if not notion:
         await state.clear()
         await message.answer(
-            "Notion не настроен.", reply_markup=back_to_menu_keyboard()
+            "Notion не настроен.", reply_markup=await back_to_menu_keyboard()
         )
         return
 
@@ -68,13 +68,13 @@ async def process_rename_type(message: Message, state: FSMContext):
         logger.info("Cohort type renamed: %s -> %s", old_name, new_name)
         await message.answer(
             f'Тип когорты переименован: "<b>{e(old_name)}</b>" → "<b>{e(new_name)}</b>".',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
     else:
         logger.warning("Failed to rename cohort type: %s", old_name)
         await message.answer(
             f'Не удалось переименовать тип "{e(old_name)}". Возможно, он защищён.',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
 
 
@@ -116,7 +116,7 @@ async def process_rename_option(message: Message, state: FSMContext):
     if not notion:
         await state.clear()
         await message.answer(
-            "Notion не настроен.", reply_markup=back_to_menu_keyboard()
+            "Notion не настроен.", reply_markup=await back_to_menu_keyboard()
         )
         return
 
@@ -130,10 +130,10 @@ async def process_rename_option(message: Message, state: FSMContext):
     if success:
         await message.answer(
             f'Опция переименована: "<b>{e(old_option)}</b>" → "<b>{e(new_name)}</b>" в <b>{e(type_name)}</b>.',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
     else:
         await message.answer(
             f'Не удалось переименовать опцию "{e(old_option)}".',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )

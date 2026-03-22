@@ -1,43 +1,65 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardMarkup
 
+from src.services.ui_text import UiTextService
 
-def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
+# Permission -> (ui_text key, callback_data) mapping for menu buttons
+_ADMIN_BUTTONS = [
+    ("manage_users", "menu.btn.users", "menu_users"),
+    ("manage_cohorts", "menu.btn.cohorts", "menu_cohorts"),
+    ("manage_mailings", "menu.btn.mailings", "menu_mailings"),
+    ("manage_surveys", "menu.btn.surveys", "menu_surveys"),
+    ("manage_triggers", "menu.btn.triggers", "menu_triggers"),
+    ("manage_roles", "menu.btn.roles", "menu_roles"),
+    ("manage_users", "menu.btn.mentor_stats", "admin_mentor_stats"),
+    ("export_feedback", "menu.btn.export_feedback", "menu_export_feedback"),
+]
 
-    if "manage_users" in permissions:
-        kb.button(text="Пользователи", callback_data="menu_users")
-    if "manage_cohorts" in permissions:
-        kb.button(text="Когорты", callback_data="menu_cohorts")
-    if "manage_mailings" in permissions:
-        kb.button(text="Рассылки", callback_data="menu_mailings")
-    if "manage_surveys" in permissions:
-        kb.button(text="Опросы", callback_data="menu_surveys")
-    if "manage_triggers" in permissions:
-        kb.button(text="Триггеры", callback_data="menu_triggers")
-    if "manage_roles" in permissions:
-        kb.button(text="Роли", callback_data="menu_roles")
-    if "manage_users" in permissions:
-        kb.button(text="Статистика менторов", callback_data="admin_mentor_stats")
-    if "export_feedback" in permissions:
-        kb.button(text="Экспорт фидбека", callback_data="menu_export_feedback")
-    if "view_students" in permissions:
-        kb.button(text="Ученики", callback_data="mentor_students_menu")
-    if "manage_meetings" in permissions:
-        kb.button(text="Созвоны", callback_data="mentor_meetings_menu")
+_MENTOR_BUTTONS = [
+    ("view_students", "menu.btn.students", "mentor_students_menu"),
+    ("manage_meetings", "menu.btn.meetings", "mentor_meetings_menu"),
+]
+
+
+async def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
+    needed_keys: list[str] = []
+    buttons_spec: list[tuple[str, str]] = []  # (ui_text_key, callback_data)
+
+    for perm, key, cb in _ADMIN_BUTTONS:
+        if perm in permissions:
+            needed_keys.append(key)
+            buttons_spec.append((key, cb))
+
+    for perm, key, cb in _MENTOR_BUTTONS:
+        if perm in permissions:
+            needed_keys.append(key)
+            buttons_spec.append((key, cb))
+
     if "view_own_info" in permissions:
-        kb.button(text="Обо мне", callback_data="mentor_me_info")
+        needed_keys.append("menu.btn.my_info")
+        buttons_spec.append(("menu.btn.my_info", "mentor_me_info"))
+
     if "view_own_meetings" in permissions and "manage_meetings" not in permissions:
-        kb.button(text="Назначенные созвоны", callback_data="student_meetings")
+        needed_keys.append("menu.btn.my_meetings")
+        buttons_spec.append(("menu.btn.my_meetings", "student_meetings"))
+
     if "view_own_info" in permissions and "view_students" not in permissions:
-        kb.button(text="Информация обо мне", callback_data="student_me_info")
+        needed_keys.append("menu.btn.my_info_student")
+        buttons_spec.append(("menu.btn.my_info_student", "student_me_info"))
+
+    texts = await UiTextService.get_many(needed_keys) if needed_keys else {}
+
+    kb = InlineKeyboardBuilder()
+    for key, cb in buttons_spec:
+        kb.button(text=texts.get(key, key), callback_data=cb)
 
     kb.adjust(1)
     return kb.as_markup()
 
 
-def back_to_menu_keyboard() -> InlineKeyboardMarkup:
+async def back_to_menu_keyboard() -> InlineKeyboardMarkup:
+    text = await UiTextService.get("menu.back")
     kb = InlineKeyboardBuilder()
-    kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
+    kb.button(text=text, callback_data="back_to_menu")
     kb.adjust(1)
     return kb.as_markup()

@@ -47,7 +47,7 @@ async def process_type_name(message: Message, state: FSMContext):
     if not notion:
         await state.clear()
         await message.answer(
-            "Notion не настроен.", reply_markup=back_to_menu_keyboard()
+            "Notion не настроен.", reply_markup=await back_to_menu_keyboard()
         )
         return
 
@@ -62,13 +62,13 @@ async def process_type_name(message: Message, state: FSMContext):
         logger.info("Cohort type created: %s", name)
         await message.answer(
             f'Тип когорты "<b>{e(name)}</b>" создан в Notion.',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
     else:
         logger.warning("Failed to create cohort type: %s", name)
         await message.answer(
             f'Не удалось создать тип "{e(name)}". Проверьте логи.',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
 
 
@@ -105,7 +105,7 @@ async def process_option_name(message: Message, state: FSMContext):
     if not notion:
         await state.clear()
         await message.answer(
-            "Notion не настроен.", reply_markup=back_to_menu_keyboard()
+            "Notion не настроен.", reply_markup=await back_to_menu_keyboard()
         )
         return
 
@@ -119,12 +119,12 @@ async def process_option_name(message: Message, state: FSMContext):
     if success:
         await message.answer(
             f'Опция "<b>{e(name)}</b>" добавлена в <b>{e(type_name)}</b>.',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
     else:
         await message.answer(
             f'Не удалось добавить опцию "{e(name)}". Тип может быть нередактируемым.',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
 
 
@@ -137,5 +137,5 @@ async def cancel_fsm(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text(
         "Действие отменено.",
-        reply_markup=back_to_menu_keyboard(),
+        reply_markup=await back_to_menu_keyboard(),
     )

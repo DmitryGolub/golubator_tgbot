@@ -10,6 +10,7 @@ from src.bot.keyboards.cohort import (
 )
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.services.notion_client import get_notion_service
+from src.services.ui_text import UiTextService
 from src.utils.escape import e
 
 
@@ -23,11 +24,14 @@ async def show_cohort_types(callback: CallbackQuery):
 
     notion = get_notion_service()
     if not notion:
+        text = await UiTextService.get("cohort.not_configured")
         await callback.message.edit_text(
-            "Notion не настроен (NOTION_TOKEN / NOTION_DATABASE_ID).",
-            reply_markup=back_to_menu_keyboard(),
+            text, reply_markup=await back_to_menu_keyboard()
         )
         return
+
+    loading = await UiTextService.get("common.loading")
+    await callback.message.edit_text(loading)
 
     try:
         types = await notion.get_cohort_types()
@@ -35,16 +39,14 @@ async def show_cohort_types(callback: CallbackQuery):
         await notion.close()
 
     if not types:
+        text = await UiTextService.get("cohort.not_found")
         await callback.message.edit_text(
-            "Типы когорт не найдены в Notion.",
-            reply_markup=back_to_menu_keyboard(),
+            text, reply_markup=await back_to_menu_keyboard()
         )
         return
 
-    await callback.message.edit_text(
-        "<b>Типы когорт:</b>",
-        reply_markup=cohort_types_keyboard(types),
-    )
+    header = await UiTextService.get("cohort.types.header")
+    await callback.message.edit_text(header, reply_markup=cohort_types_keyboard(types))
 
 
 @router.callback_query(CohortTypeCB.filter())
@@ -64,7 +66,7 @@ async def show_cohort_type_detail(callback: CallbackQuery, callback_data: Cohort
     if not info:
         await callback.message.edit_text(
             f'Тип "{e(callback_data.name)}" не найден.',
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
         return
 
@@ -100,7 +102,7 @@ async def show_rename_options_list(callback: CallbackQuery):
     if not options:
         await callback.message.edit_text(
             "Нет опций для переименования.",
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
         return
 
@@ -127,7 +129,7 @@ async def show_delete_options_list(callback: CallbackQuery):
     if not options:
         await callback.message.edit_text(
             "Нет опций для удаления.",
-            reply_markup=back_to_menu_keyboard(),
+            reply_markup=await back_to_menu_keyboard(),
         )
         return
 

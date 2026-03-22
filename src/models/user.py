@@ -43,7 +43,13 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     role: Mapped[Role] = mapped_column(
-        Enum(Role, name="role_enum"), nullable=False, default=Role.student
+        Enum(
+            Role,
+            name="role_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+        default=Role.student,
     )
     role_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("roles.id"), nullable=True
@@ -52,10 +58,14 @@ class User(Base):
         "RoleModel", back_populates="users", lazy="selectin"
     )
     state: Mapped[Optional[State]] = mapped_column(
-        Enum(State, name="state_enum"),
+        Enum(
+            State,
+            name="state_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=True,
         default=State.greeting,
-        server_default="greeting",
+        server_default="Отбор",
     )
 
     mentor_id: Mapped[Optional[int]] = mapped_column(

@@ -116,6 +116,12 @@ options_t = sa.table(
     sa.column("value", sa.String),
     sa.column("label", sa.String),
 )
+ui_texts_t = sa.table(
+    "ui_texts",
+    sa.column("key", sa.String),
+    sa.column("value", sa.Text),
+    sa.column("description", sa.String),
+)
 rules_t = sa.table(
     "trigger_rules",
     sa.column("name", sa.String),
@@ -617,7 +623,21 @@ def upgrade() -> None:
         ),
     )
 
-    # ── 10. Seed: permissions ────────────────────────────────────────────
+    # ── 10. UI texts ───────────────────────────────────────────────────
+    op.create_table(
+        "ui_texts",
+        sa.Column("key", sa.String(100), primary_key=True),
+        sa.Column("value", sa.Text, nullable=False),
+        sa.Column("description", sa.String(255), nullable=True),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+    )
+
+    # ── 11. Seed: permissions ────────────────────────────────────────────
     PERMISSIONS = [
         ("all_permissions", "Полный доступ ко всем функциям"),
         ("manage_users", "Управление пользователями"),
@@ -977,10 +997,171 @@ def upgrade() -> None:
     for rule in seed_rules:
         conn.execute(rules_t.insert().values(**rule))
 
+    # ── 14. Seed: UI texts ──────────────────────────────────────────────
+    UI_TEXTS = [
+        # ── Menu ──
+        ("menu.title", "Список доступных команд", "Main menu title"),
+        ("menu.access_denied", "Доступ запрещен.", "Access denied message"),
+        ("menu.btn.users", "👥 Пользователи", "Menu button: users"),
+        ("menu.btn.cohorts", "📂 Когорты", "Menu button: cohorts"),
+        ("menu.btn.mailings", "📨 Рассылки", "Menu button: mailings"),
+        ("menu.btn.surveys", "📝 Опросы", "Menu button: surveys"),
+        ("menu.btn.triggers", "⚡ Триггеры", "Menu button: triggers"),
+        ("menu.btn.roles", "🛡 Роли", "Menu button: roles"),
+        ("menu.btn.mentor_stats", "📊 Статистика менторов", "Menu button: mentor stats"),
+        ("menu.btn.export_feedback", "📤 Экспорт фидбека", "Menu button: export feedback"),
+        ("menu.btn.students", "🎓 Ученики", "Menu button: students (mentor)"),
+        ("menu.btn.meetings", "📅 Созвоны", "Menu button: meetings (mentor)"),
+        ("menu.btn.my_info", "ℹ️ Обо мне", "Menu button: my info (mentor)"),
+        ("menu.btn.my_meetings", "📅 Назначенные созвоны", "Menu button: my meetings (student)"),
+        ("menu.btn.my_info_student", "ℹ️ Информация обо мне", "Menu button: my info (student)"),
+        ("menu.back", "⬅️ Назад к меню", "Back to menu button"),
+        # ── Submenu titles ──
+        ("menu.users.title", "👥 Меню Пользователей", "Users submenu title"),
+        ("menu.cohorts.title", "📂 Меню Когорт", "Cohorts submenu title"),
+        ("menu.mailings.title", "📨 Меню Рассылок", "Mailings submenu title"),
+        ("menu.meetings.title", "📅 Созвоны:", "Meetings submenu title"),
+        ("menu.students.title", "🎓 Ученики:", "Students submenu title"),
+        # ── Mentor students ──
+        ("menu.students.empty", "Список учеников пуст.", "Empty students list"),
+        ("menu.students.header", "<b>Мои ученики:</b>", "Students list header"),
+        ("menu.mentor_students.btn.list", "Список учеников", "Mentor: students list btn"),
+        ("menu.mentor_students.btn.update", "Изменить статус ученика", "Mentor: update student btn"),
+        # ── Mentor meetings ──
+        ("menu.mentor_meetings.btn.list", "Список созвонов", "Mentor: meetings list btn"),
+        ("menu.mentor_meetings.btn.create", "Добавить созвон", "Mentor: create meeting btn"),
+        ("menu.mentor_meetings.btn.end_call", "Завершить активный созвон", "Mentor: end call btn"),
+        ("menu.mentor_meetings.btn.feedback", "Заполнить фидбек", "Mentor: fill feedback btn"),
+        # ── Call end messages ──
+        ("menu.no_active_call", "У вас нет активного созвона.", "No active call"),
+        ("menu.call_ended.no_meeting", "✅ Активный созвон завершён.\nНачало: {start}\nКонец: {end}", "Call ended (no meeting)"),
+        ("menu.call_ended.with_meeting", "✅ Созвон по встрече #{id} завершён.\nНачало: {start}\nКонец: {end}\n\nТеперь можно заполнить фидбек.", "Call ended (with meeting)"),
+        # ── Profile ──
+        ("menu.not_found", "Профиль не найден.", "Profile not found"),
+        ("menu.me.title", "<b>Моя информация:</b>", "Profile title"),
+        ("menu.mentor_me.btn.stats", "Моя статистика", "Mentor: my stats btn"),
+        # ── Start ──
+        ("start.welcome", "<b>Привет, {name}!</b>\n\nЯ буду напоминать вам о занятиях и присылать полезную информацию.\nЧерез команду <b>/menu</b> можно открыть главное меню, посмотреть свои данные и доступные действия.\n\nЕсли что-то не работает — напишите куратору.", "Welcome message"),
+        # ── Users ──
+        ("user.btn.list", "Список пользователей", "Users: list btn"),
+        ("user.btn.update", "Изменить пользователя", "Users: update btn"),
+        ("user.btn.tags", "Теги", "Users: tags btn"),
+        ("user.btn.update_status", "🔄 Обновить статус", "Users: update status btn"),
+        ("user.btn.update_role", "🛡 Обновить роль", "Users: update role btn"),
+        ("user.btn.update_mentor", "👨\u200d🏫 Обновить ментора", "Users: update mentor btn"),
+        ("user.btn.update_student_status", "🔄 Обновить статус ученика", "Users: update student status btn"),
+        ("user.list.header", "<b>Список пользователей:</b>", "Users list header"),
+        ("user.list.empty", "<b>Список пользователей пуст.</b>", "Users list empty"),
+        ("user.update.what", "Что вы хотите обновить?", "Update user: choose param"),
+        ("user.update.access_denied", "Доступ запрещен.", "Update user: access denied"),
+        ("user.update.success", "Пользователь {name} @{username}\n{param} обновлено на: {value}", "Update user: success"),
+        # ── Cohorts ──
+        ("cohort.btn.types", "Типы когорт", "Cohorts: types list btn"),
+        ("cohort.btn.create_type", "Создать тип когорты", "Cohorts: create type btn"),
+        ("cohort.types.header", "<b>Типы когорт:</b>", "Cohorts list header"),
+        ("cohort.not_configured", "Notion не настроен (NOTION_TOKEN / NOTION_DATABASE_ID).", "Notion not configured"),
+        ("cohort.not_found", "Типы когорт не найдены в Notion.", "No cohort types found"),
+        # ── Mailings ──
+        ("mailings.btn.list", "Список рассылок", "Mailings: list btn"),
+        ("mailings.btn.add", "Добавить рассылку", "Mailings: add btn"),
+        ("mailings.btn.delete", "Удалить рассылку", "Mailings: delete btn"),
+        ("mailings.list.header", "<b>Список рассылок:</b>", "Mailings list header"),
+        ("mailings.list.empty", "<b>Список рассылок пуст.</b>", "Mailings list empty"),
+        ("mailings.choose_type", "Выберите тип рассылки:", "Choose mailing type"),
+        ("mailings.enter_title", "Введите название рассылки:", "Enter mailing title"),
+        # ── Meetings ──
+        ("meeting.list.empty", "Список созвонов пуст.", "Meetings list empty"),
+        ("meeting.list.header", "<b>Мои созвоны:</b>", "Meetings list header"),
+        ("meeting.error.not_found", "Созвон не найден.", "Meeting not found"),
+        ("meeting.error.no_access", "У вас нет доступа к этому созвону.", "Meeting: no access"),
+        ("meeting.error.already_completed", "Этот созвон уже завершён.", "Meeting already completed"),
+        ("meeting.error.active_exists", "У вас уже есть активный созвон. Сначала завершите его через кнопку или команду /end_call.", "Active call exists"),
+        # ── Mentor stats ──
+        ("mentor_stats.header", "<b>Статистика ментора: {name}</b>", "Mentor stats header"),
+        ("mentor_stats.no_scores", "Оценок пока нет.", "No scores yet"),
+        ("mentor_stats.not_found", "Ментор не найден.", "Mentor not found"),
+        ("mentor_stats.select", "Выберите ментора для просмотра статистики:", "Select mentor"),
+        ("mentor_stats.no_mentors", "Менторов не найдено.", "No mentors found"),
+        # ── Export ──
+        ("export.not_configured", "Экспорт не настроен: проверьте YANDEX_SHEETS_* переменные.", "Export not configured"),
+        ("export.running", "⏳ Экспорт фидбека запущен, подождите...", "Export running"),
+        ("export.upload_error", "Не удалось загрузить файл в Яндекс Таблицу.", "Export upload error"),
+        ("export.internal_error", "Внутренняя ошибка экспорта.", "Export internal error"),
+        ("export.success", "✅ Экспорт завершён.\n\nСтрок: <b>{rows}</b>\nФайл: <b>{file}</b>\nЛист: <b>{sheet}</b>", "Export success"),
+        # ── Tags ──
+        ("tags.btn.list", "Список тегов", "Tags: list btn"),
+        ("tags.btn.create", "Создать тег", "Tags: create btn"),
+        ("tags.btn.assign", "Назначить тег", "Tags: assign btn"),
+        ("tags.btn.unassign", "Снять тег", "Tags: unassign btn"),
+        ("tags.menu.title", "Управление тегами", "Tags menu title"),
+        ("tags.list.empty", "Тегов пока нет.", "Tags list empty"),
+        ("tags.create.enter_name", "Введите имя нового тега:", "Enter tag name"),
+        ("tags.already_exists", "Тег <b>{name}</b> уже существует.", "Tag already exists"),
+        ("tags.created", "Тег <b>{name}</b> создан.", "Tag created"),
+        ("tags.deleted", "Тег удалён.", "Tag deleted"),
+        # ── Triggers ──
+        ("trigger.btn.create", "Создать правило", "Triggers: create btn"),
+        ("trigger.btn.list", "Список правил", "Triggers: list btn"),
+        ("trigger.btn.manual_send", "Отправить вручную", "Triggers: manual send btn"),
+        ("trigger.menu.title", "Управление триггерами", "Triggers menu title"),
+        ("trigger.no_rules", "Нет правил", "No trigger rules"),
+        ("trigger.list.header", "Правила:", "Trigger rules header"),
+        ("trigger.rule_not_found", "Правило не найдено", "Trigger rule not found"),
+        ("trigger.deleted", "Правило удалено", "Trigger rule deleted"),
+        # ── Trigger labels ──
+        ("trigger.type.meeting_created", "Создание встречи", "Trigger type: meeting created"),
+        ("trigger.type.call_ended", "Завершение созвона", "Trigger type: call ended"),
+        ("trigger.type.periodic_cron", "По расписанию", "Trigger type: periodic cron"),
+        ("trigger.type.user_state_changed", "Смена статуса", "Trigger type: user state changed"),
+        ("trigger.type.manual", "Ручной", "Trigger type: manual"),
+        ("trigger.action.send_notification", "Отправить уведомление", "Action: send notification"),
+        ("trigger.action.send_survey", "Отправить опрос", "Action: send survey"),
+        ("trigger.recipient.event_student", "Ученик из события", "Recipient: event student"),
+        ("trigger.recipient.event_mentor", "Ментор из события", "Recipient: event mentor"),
+        ("trigger.recipient.by_role", "По роли", "Recipient: by role"),
+        ("trigger.recipient.by_cohort", "По когорте", "Recipient: by cohort"),
+        ("trigger.recipient.by_state", "По статусу", "Recipient: by state"),
+        ("trigger.recipient.by_tag", "По тегу", "Recipient: by tag"),
+        ("trigger.recipient.specific_users", "Конкретные пользователи", "Recipient: specific users"),
+        # ── Surveys ──
+        ("survey.btn.create", "Создать опрос", "Surveys: create btn"),
+        ("survey.btn.list", "Список опросов", "Surveys: list btn"),
+        ("survey.btn.results", "Результаты", "Surveys: results btn"),
+        ("survey.menu.title", "Конструктор опросов", "Surveys menu title"),
+        ("survey.no_surveys", "Нет созданных опросов", "No surveys"),
+        ("survey.not_found", "Опрос не найден", "Survey not found"),
+        ("survey.deleted", "Опрос удалён", "Survey deleted"),
+        ("survey.type.text", "Текст", "Question type: text"),
+        ("survey.type.rating", "Рейтинг (число)", "Question type: rating"),
+        ("survey.type.single_choice", "Одиночный выбор", "Question type: single choice"),
+        ("survey.type.multiple_choice", "Множественный выбор", "Question type: multiple choice"),
+        # ── Dynamic surveys ──
+        ("dynamic_survey.not_found", "Опрос не найден", "Dynamic survey not found"),
+        ("dynamic_survey.already_completed", "Вы уже заполнили этот опрос", "Survey already completed"),
+        ("dynamic_survey.cancelled", "Опрос отменён.", "Survey cancelled"),
+        # ── RBAC ──
+        ("rbac.btn.create_role", "➕ Создать роль", "RBAC: create role btn"),
+        ("rbac.btn.back_to_roles", "⬅️ К списку ролей", "RBAC: back to roles btn"),
+        ("rbac.btn.manage_perms", "🔑 Управление пермишенами", "RBAC: manage perms btn"),
+        ("rbac.btn.delete_role", "🗑 Удалить роль", "RBAC: delete role btn"),
+        ("rbac.menu.title", "<b>Управление ролями</b>", "RBAC menu title"),
+        ("rbac.role_not_found", "Роль не найдена.", "Role not found"),
+        ("rbac.confirm_delete", "Удалить роль <b>{name}</b>?", "Confirm role deletion"),
+        ("rbac.users_cannot_delete", "Нельзя удалить роль, к которой привязаны пользователи.", "Cannot delete role with users"),
+        # ── Common ──
+        ("common.cancel", "❌ Отмена", "Cancel button"),
+        ("common.confirm.yes", "✅ Да, удалить", "Confirm: yes"),
+        ("common.confirm.no", "❌ Отмена", "Confirm: no"),
+        ("common.loading", "⏳ Загрузка...", "Loading indicator"),
+    ]
+    for key, value, description in UI_TEXTS:
+        conn.execute(ui_texts_t.insert().values(key=key, value=value, description=description))
+
 
 def downgrade() -> None:
     conn = op.get_bind()
     for t in (
+        "ui_texts",
         "trigger_executions",
         "trigger_rules",
         "survey_answers",
