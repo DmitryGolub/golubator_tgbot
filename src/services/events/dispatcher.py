@@ -66,7 +66,12 @@ class EventDispatcher:
         if not recipients:
             return
 
-        logger.info("Rule %s (%s): %d recipient(s)", rule.id, rule.action_type.value, len(recipients))
+        logger.info(
+            "Rule %s (%s): %d recipient(s)",
+            rule.id,
+            rule.action_type.value,
+            len(recipients),
+        )
 
         event_key = cls._build_event_key(rule, context)
 

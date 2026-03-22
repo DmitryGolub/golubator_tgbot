@@ -97,5 +97,3 @@ def backup_pull_events() -> None:
         _run(sync.backup_pull_events())
     except NotionDatabaseUnavailableError as exc:
         logger.warning("backup_pull_events skipped: %s", exc)
-
-

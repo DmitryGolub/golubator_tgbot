@@ -10,7 +10,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     func,
-    UniqueConstraint,
 )
 
 if TYPE_CHECKING:
@@ -90,6 +89,4 @@ class MeetingUser(Base):
         primary_key=True,
     )
 
-    __table_args__ = (
-        UniqueConstraint("meeting_id", "user_id", name="uq_meeting_user"),
-    )
+    __table_args__: tuple = ()

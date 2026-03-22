@@ -79,9 +79,7 @@ class NotionEventRepo:
             last_edited_time=_parse_iso(page.get("last_edited_time")),
         )
 
-    async def get_all(
-        self, since: datetime | None = None
-    ) -> list[EventData]:
+    async def get_all(self, since: datetime | None = None) -> list[EventData]:
         filter_obj = None
         if since:
             filter_obj = {

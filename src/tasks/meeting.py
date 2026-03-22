@@ -6,7 +6,7 @@ from typing import Optional
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import InlineKeyboardMarkup
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import joinedload
 
@@ -48,19 +48,17 @@ def _survey_notification_text(call_id: int) -> str:
 
 
 async def _send_to_user(
+    bot: Bot,
     user_id: int,
     text: str,
     *,
     reply_markup: InlineKeyboardMarkup | None = None,
 ) -> None:
-    bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-    try:
-        await bot.send_message(user_id, text, reply_markup=reply_markup)
-    finally:
-        await bot.session.close()
+    await bot.send_message(user_id, text, reply_markup=reply_markup)
 
 
 async def _send_to_student(
+    bot: Bot,
     student: Optional[User],
     text: str,
     *,
@@ -68,7 +66,7 @@ async def _send_to_student(
 ) -> None:
     if not student:
         return
-    await _send_to_user(student.telegram_id, text, reply_markup=reply_markup)
+    await _send_to_user(bot, student.telegram_id, text, reply_markup=reply_markup)
 
 
 async def _load_meeting(meeting_id: int) -> Optional[Meeting]:
@@ -96,23 +94,31 @@ async def _notify_created_async(meeting_id: int) -> None:
         logger.warning("Meeting %s not found for notification", meeting_id)
         return
 
-    mentor, student = _split_participants(meeting)
-    when = _format_dt(meeting.scheduled_at)
-    mentor_line = (
-        f"Ментор: <b>{mentor.name}</b> @{mentor.username}"
-        if mentor
-        else "Ментор не указан"
-    )
-    text = (
-        "<b>Вам назначен созвон.</b>\n"
-        f"{mentor_line}\n"
-        f"Когда: {when}\n"
-        f"Описание: {meeting.description or '—'}\n"
-        f"Ссылка: {meeting.meeting_link or '—'}"
-    )
-    await _send_to_student(student, text)
-    if student:
-        logger.info("Meeting %s: created notification sent to user %s", meeting_id, student.telegram_id)
+    bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+    try:
+        mentor, student = _split_participants(meeting)
+        when = _format_dt(meeting.scheduled_at)
+        mentor_line = (
+            f"Ментор: <b>{mentor.name}</b> @{mentor.username}"
+            if mentor
+            else "Ментор не указан"
+        )
+        text = (
+            "<b>Вам назначен созвон.</b>\n"
+            f"{mentor_line}\n"
+            f"Когда: {when}\n"
+            f"Описание: {meeting.description or '—'}\n"
+            f"Ссылка: {meeting.meeting_link or '—'}"
+        )
+        await _send_to_student(bot, student, text)
+        if student:
+            logger.info(
+                "Meeting %s: created notification sent to user %s",
+                meeting_id,
+                student.telegram_id,
+            )
+    finally:
+        await bot.session.close()
 
 
 async def _notify_reminder_async(meeting_id: int) -> None:
@@ -120,14 +126,18 @@ async def _notify_reminder_async(meeting_id: int) -> None:
     if not meeting:
         return
 
-    _, student = _split_participants(meeting)
-    when = _format_dt(meeting.scheduled_at)
-    text = (
-        "<b>Напоминание о созвоне через ~5 минут.</b>\n"
-        f"Когда: {when}\n"
-        f"Ссылка: {meeting.meeting_link or '—'}"
-    )
-    await _send_to_student(student, text)
+    bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+    try:
+        _, student = _split_participants(meeting)
+        when = _format_dt(meeting.scheduled_at)
+        text = (
+            "<b>Напоминание о созвоне через ~5 минут.</b>\n"
+            f"Когда: {when}\n"
+            f"Ссылка: {meeting.meeting_link or '—'}"
+        )
+        await _send_to_student(bot, student, text)
+    finally:
+        await bot.session.close()
 
 
 async def _complete_meeting_async(meeting_id: int) -> bool:
@@ -179,7 +189,9 @@ def notify_meeting_created(meeting_id: int) -> None:
     try:
         asyncio.run(_notify_created_async(meeting_id))
     except Exception as exc:
-        logger.error("notify_meeting_created failed for meeting %s: %s", meeting_id, exc)
+        logger.error(
+            "notify_meeting_created failed for meeting %s: %s", meeting_id, exc
+        )
 
 
 @celery_app.task(name="meeting.notify_reminder")
@@ -187,7 +199,9 @@ def notify_meeting_reminder(meeting_id: int) -> None:
     try:
         asyncio.run(_notify_reminder_async(meeting_id))
     except Exception as exc:
-        logger.error("notify_meeting_reminder failed for meeting %s: %s", meeting_id, exc)
+        logger.error(
+            "notify_meeting_reminder failed for meeting %s: %s", meeting_id, exc
+        )
 
 
 @celery_app.task(name="meeting.complete")
@@ -198,10 +212,26 @@ def complete_meeting(meeting_id: int) -> None:
         logger.error("complete_meeting failed for meeting %s: %s", meeting_id, exc)
 
 
+async def _delete_meeting_async(meeting_id: int) -> None:
+    engine = create_async_engine(settings.DATABASE_URL)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with Session() as session:
+            stmt = delete(Meeting).where(Meeting.id == meeting_id)
+            result = await session.execute(stmt)
+            await session.commit()
+            if result.rowcount:
+                logger.info("Deleted meeting %s via scheduled task", meeting_id)
+            else:
+                logger.warning("Meeting %s not found for deletion", meeting_id)
+    finally:
+        await engine.dispose()
+
+
 @celery_app.task(name="meeting.delete")
 def delete_meeting(meeting_id: int) -> None:
     try:
-        asyncio.run(_complete_meeting_async(meeting_id))
+        asyncio.run(_delete_meeting_async(meeting_id))
     except Exception as exc:
         logger.error("delete_meeting failed for meeting %s: %s", meeting_id, exc)
 

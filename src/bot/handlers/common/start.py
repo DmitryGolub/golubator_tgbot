@@ -1,8 +1,9 @@
+import asyncio
+import logging
+
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
-
-import logging
 
 from src.dao.user import UserDAO
 from src.dao.role import RoleDAO
@@ -47,7 +48,11 @@ async def cmd_start(message: Message):
             registered_at=reg_time,
         )
         if created_user:
-            logger.info("New user registered: tg=%s role=%s", user_id, "admin" if is_admin else "student")
+            logger.info(
+                "New user registered: tg=%s role=%s",
+                user_id,
+                "admin" if is_admin else "student",
+            )
             await schedule_onboarding_notifications(created_user, base_time=reg_time)
     else:
         # keep admin role in sync with env setting
@@ -59,8 +64,8 @@ async def cmd_start(message: Message):
                 await UserDAO.update(telegram_id=user_id, role_id=admin_role.id)
                 await AuthService.invalidate_user(user_id)
 
-    # Link user to Notion page
-    await _link_notion_page(user.id, username)
+    # Link user to Notion page (background, don't block welcome message)
+    asyncio.create_task(_link_notion_page(user.id, username))
 
     welcome = await UiTextService.get("start.welcome", name=user.first_name)
     await message.answer(welcome)
@@ -102,7 +107,9 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
 
         # 1. Search in Менторская база
         if settings.NOTION_MENTOR_DB_ID:
-            mentor_client = NotionClient(settings.NOTION_TOKEN, settings.NOTION_MENTOR_DB_ID)
+            mentor_client = NotionClient(
+                settings.NOTION_TOKEN, settings.NOTION_MENTOR_DB_ID
+            )
             try:
                 mentor_repo = NotionMentorRepo(mentor_client)
                 mentor = await mentor_repo.find_by_telegram_id(telegram_id)
@@ -113,10 +120,16 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                         notion_source_db="mentor",
                     )
                     await mentor_repo.update_telegram_id(mentor.page_id, telegram_id)
-                    logger.info("Notion page linked: user=%s page=%s db=mentor", telegram_id, mentor.page_id)
+                    logger.info(
+                        "Notion page linked: user=%s page=%s db=mentor",
+                        telegram_id,
+                        mentor.page_id,
+                    )
                     return
             except NotionDatabaseUnavailableError:
-                logger.warning("Mentor DB unavailable, skipping for user %s", telegram_id)
+                logger.warning(
+                    "Mentor DB unavailable, skipping for user %s", telegram_id
+                )
             finally:
                 await mentor_client.close()
 
@@ -138,7 +151,11 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                         notion_source_db="mentee",
                     )
                     await mentee_repo.update_telegram_id(mentee.page_id, telegram_id)
-                    logger.info("Notion page linked: user=%s page=%s db=mentee", telegram_id, mentee.page_id)
+                    logger.info(
+                        "Notion page linked: user=%s page=%s db=mentee",
+                        telegram_id,
+                        mentee.page_id,
+                    )
                     return
 
                 # 3. Not found anywhere — create in Голубиная база
@@ -150,9 +167,15 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                             notion_page_id=page_id,
                             notion_source_db="mentee",
                         )
-                        logger.info("Notion page linked: user=%s page=%s db=mentee", telegram_id, page_id)
+                        logger.info(
+                            "Notion page linked: user=%s page=%s db=mentee",
+                            telegram_id,
+                            page_id,
+                        )
             except NotionDatabaseUnavailableError:
-                logger.warning("Mentee DB unavailable, skipping for user %s", telegram_id)
+                logger.warning(
+                    "Mentee DB unavailable, skipping for user %s", telegram_id
+                )
             finally:
                 await mentee_client.close()
     except Exception as exc:

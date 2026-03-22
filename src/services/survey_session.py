@@ -101,7 +101,10 @@ class SurveySessionService:
         if question.question_type == QuestionType.text:
             value_text = raw_value
         elif question.question_type == QuestionType.rating:
-            value_int = int(raw_value)
+            try:
+                value_int = int(raw_value)
+            except (ValueError, TypeError):
+                raise ValueError(f"Invalid rating value: {raw_value}")
         elif question.question_type == QuestionType.single_choice:
             value_choice = [raw_value]
         elif question.question_type == QuestionType.multiple_choice:

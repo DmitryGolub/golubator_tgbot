@@ -53,9 +53,9 @@ def _make_session_factory() -> tuple:
     return engine, factory
 
 
-def _build_repos() -> (
-    tuple[NotionMentorRepo | None, NotionMenteeRepo | None, NotionEventRepo | None]
-):
+def _build_repos() -> tuple[
+    NotionMentorRepo | None, NotionMenteeRepo | None, NotionEventRepo | None
+]:
     token = settings.NOTION_TOKEN
     if not token:
         return None, None, None
@@ -74,14 +74,14 @@ def _build_repos() -> (
         mentee_repo = NotionMenteeRepo(NotionClient(token, mentee_db_id))
 
     if settings.NOTION_EVENT_DB_ID:
-        event_repo = NotionEventRepo(
-            NotionClient(token, settings.NOTION_EVENT_DB_ID)
-        )
+        event_repo = NotionEventRepo(NotionClient(token, settings.NOTION_EVENT_DB_ID))
 
     return mentor_repo, mentee_repo, event_repo
 
 
-async def _resolve_mentor_id(session: AsyncSession, mentor_name: str | None) -> int | None:
+async def _resolve_mentor_id(
+    session: AsyncSession, mentor_name: str | None
+) -> int | None:
     if not mentor_name:
         return None
     result = await session.execute(
@@ -106,9 +106,11 @@ async def _ensure_meeting_users(
     user_ids = [uid for uid in (mentor_id, mentee_id) if uid is not None]
     if not user_ids:
         return
-    stmt = pg_insert(MeetingUser).values(
-        [{"meeting_id": meeting_id, "user_id": uid} for uid in user_ids]
-    ).on_conflict_do_nothing()
+    stmt = (
+        pg_insert(MeetingUser)
+        .values([{"meeting_id": meeting_id, "user_id": uid} for uid in user_ids])
+        .on_conflict_do_nothing()
+    )
     await session.execute(stmt)
 
 
@@ -127,9 +129,7 @@ class NotionSyncServiceV2:
 
     # ── Automation webhook handlers (Notion → PostgreSQL) ───────────────
 
-    async def handle_automation_user(
-        self, payload: dict, source_db: str
-    ) -> None:
+    async def handle_automation_user(self, payload: dict, source_db: str) -> None:
         """Handle Notion Automation webhook for user page.
 
         payload["data"] is a standard Notion page object with properties.
@@ -272,9 +272,7 @@ class NotionSyncServiceV2:
         finally:
             await engine.dispose()
 
-    async def _upsert_mentor(
-        self, session: AsyncSession, data, page_id: str
-    ) -> None:
+    async def _upsert_mentor(self, session: AsyncSession, data, page_id: str) -> None:
         result = await session.execute(
             select(User).where(User.telegram_id == data.telegram_id)
         )
@@ -308,9 +306,7 @@ class NotionSyncServiceV2:
                 )
             )
 
-    async def _upsert_mentee(
-        self, session: AsyncSession, data, page_id: str
-    ) -> None:
+    async def _upsert_mentee(self, session: AsyncSession, data, page_id: str) -> None:
         result = await session.execute(
             select(User).where(User.telegram_id == data.telegram_id)
         )
@@ -403,8 +399,7 @@ class NotionSyncServiceV2:
                     select(User).where(
                         User.notion_page_id.isnot(None),
                         User.updated_at.isnot(None),
-                        (User.synced_at.is_(None))
-                        | (User.updated_at > User.synced_at),
+                        (User.synced_at.is_(None)) | (User.updated_at > User.synced_at),
                     )
                 )
                 users = result.scalars().all()
@@ -430,9 +425,7 @@ class NotionSyncServiceV2:
                                 }
                             notion_status = _STATE_TO_NOTION.get(user.state)
                             if notion_status:
-                                props["Status"] = {
-                                    "status": {"name": notion_status}
-                                }
+                                props["Status"] = {"status": {"name": notion_status}}
                             if props:
                                 await self.mentee_repo.update_properties(
                                     user.notion_page_id, props
@@ -508,14 +501,10 @@ class NotionSyncServiceV2:
                             props: dict = {}
                             if meeting.topic:
                                 props["Тема"] = {
-                                    "title": [
-                                        {"text": {"content": meeting.topic}}
-                                    ]
+                                    "title": [{"text": {"content": meeting.topic}}]
                                 }
                             if meeting.completed_at:
-                                props["Статус"] = {
-                                    "status": {"name": "Проведён"}
-                                }
+                                props["Статус"] = {"status": {"name": "Проведён"}}
                             if meeting.summary:
                                 props["Итоги"] = {
                                     "rich_text": [
@@ -525,11 +514,7 @@ class NotionSyncServiceV2:
                             if meeting.action_items:
                                 props["Action items"] = {
                                     "rich_text": [
-                                        {
-                                            "text": {
-                                                "content": meeting.action_items
-                                            }
-                                        }
+                                        {"text": {"content": meeting.action_items}}
                                     ]
                                 }
                             if props:
@@ -596,9 +581,7 @@ class NotionSyncServiceV2:
                 for ev in events:
                     try:
                         result = await session.execute(
-                            select(Meeting).where(
-                                Meeting.notion_page_id == ev.page_id
-                            )
+                            select(Meeting).where(Meeting.notion_page_id == ev.page_id)
                         )
                         meeting = result.scalar_one_or_none()
 
@@ -668,9 +651,7 @@ class NotionSyncServiceV2:
 
                         count += 1
                     except Exception as exc:
-                        logger.error(
-                            "Error syncing event %s: %s", ev.page_id, exc
-                        )
+                        logger.error("Error syncing event %s: %s", ev.page_id, exc)
 
                 await session.commit()
         finally:
@@ -678,6 +659,7 @@ class NotionSyncServiceV2:
 
         logger.info("Backup pull: %d events synced", count)
         return count
+
 
 _sync_service: NotionSyncServiceV2 | None = None
 

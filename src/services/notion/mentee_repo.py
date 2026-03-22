@@ -47,9 +47,7 @@ class NotionMenteeRepo:
         tags = [t["name"] for t in tags_items if t.get("name")]
 
         mentor_persons = props.get("Mentor", {}).get("person") or []
-        mentor_name = (
-            mentor_persons[0].get("name") if mentor_persons else None
-        )
+        mentor_name = mentor_persons[0].get("name") if mentor_persons else None
 
         contract_data = props.get("Договор", {})
         contract = contract_data.get("checkbox", False)
@@ -108,9 +106,7 @@ class NotionMenteeRepo:
         page = await self._client.get_page(page_id)
         return self._parse_page(page) if page else None
 
-    async def create_page(
-        self, username: str, telegram_id: int
-    ) -> str | None:
+    async def create_page(self, username: str, telegram_id: int) -> str | None:
         clean = username.lstrip("@")
         page = await self._client.create_page(
             {
@@ -136,9 +132,7 @@ class NotionMenteeRepo:
         )
 
     async def update_telegram_id(self, page_id: str, tg_id: int) -> bool:
-        return await self.update_properties(
-            page_id, {"Telegram ID": {"number": tg_id}}
-        )
+        return await self.update_properties(page_id, {"Telegram ID": {"number": tg_id}})
 
     async def create_tags_property(self) -> bool:
         """Create the 'Tags' multi_select property in the Notion database."""

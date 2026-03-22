@@ -30,9 +30,7 @@ async def _health_handler(_request: web.Request) -> web.Response:
         errors.append("redis")
 
     if errors:
-        return web.json_response(
-            {"status": "unhealthy", "errors": errors}, status=503
-        )
+        return web.json_response({"status": "unhealthy", "errors": errors}, status=503)
     return web.json_response({"status": "healthy"})
 
 

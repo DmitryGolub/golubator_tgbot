@@ -3,6 +3,8 @@ from aiogram.filters import StateFilter
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from datetime import datetime, timedelta, date, timezone
+
+from src.utils.tz import MSK
 from aiogram.exceptions import TelegramBadRequest
 
 from src.bot.callbacks.meeting import (
@@ -248,7 +250,7 @@ async def msg_meeting_description(message: Message, state: FSMContext):
 
     await message.answer(
         "Выберите дату встречи:",
-        reply_markup=meeting_calendar_keyboard(date.today()),
+        reply_markup=meeting_calendar_keyboard(datetime.now(MSK).date()),
     )
 
 
@@ -293,7 +295,7 @@ async def cb_meeting_choose_date(
 
     await callback.message.edit_text(
         f"Дата выбрана: {chosen_date:%d.%m.%Y}\nТеперь выберите время или введите его в формате HH:MM.",
-        reply_markup=meeting_time_keyboard(chosen_date.isoformat()),
+        reply_markup=meeting_time_keyboard(),
     )
 
 

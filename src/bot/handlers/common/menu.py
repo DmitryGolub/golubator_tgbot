@@ -87,9 +87,7 @@ async def cb_menu_mailings(callback: CallbackQuery):
     await callback.answer()
     text = "Рассылки перенесены в систему триггеров. Используйте меню триггеров."
     try:
-        await callback.message.edit_text(
-            text, reply_markup=back_to_menu_keyboard()
-        )
+        await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
@@ -211,9 +209,11 @@ async def cb_mentor_students_list(callback: CallbackQuery):
 
     header = await UiTextService.get("menu.students.header")
     lines = [header, ""]
+    student_ids = [s.telegram_id for s in students]
+    cohorts_map = await NotionCacheDAO.get_cohorts_batch(student_ids)
     for student in students:
         role_display = student.role_rel.display_name if student.role_rel else "—"
-        cohorts = await NotionCacheDAO.get_user_cohorts(student.telegram_id)
+        cohorts = cohorts_map.get(student.telegram_id, [])
         categories = [c.cohort_value for c in cohorts if c.cohort_type == "Category"]
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
         lines.append(
@@ -337,7 +337,7 @@ async def cb_student_me_info(callback: CallbackQuery):
         f"Юзернейм: @{e(student.username)}\n"
         f"Роль: <b>{e(role_display)}</b>\n"
         f"Мой ментор: <b>{e(mentor_name)}</b> {e(mentor_username)}\n"
-        f"Состояние: <b>{e(student.state.value)}</b>\n"
+        f"Состояние: <b>{e(student.state.value if student.state else '—')}</b>\n"
     )
 
     try:

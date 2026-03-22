@@ -1,12 +1,12 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.sql.expression import cast
 
 from src.core.database import async_session_maker
 from src.models.meeting import Meeting, MeetingUser
-from src.models.survey_session import SurveyAnswer, SurveySession
+from src.models.survey_session import SessionStatus, SurveyAnswer, SurveySession
 from src.models.survey_template import SurveyQuestion, SurveyTemplate
 
 
@@ -45,7 +45,7 @@ class MentorStatsDAO:
             survey_meeting_filter = [
                 SurveyTemplate.slug == "post_call_student",
                 SurveySession.context_type == "meeting",
-                SurveySession.status == "completed",
+                SurveySession.status == SessionStatus.completed,
                 MeetingUser.user_id == mentor_id,
             ]
             if date_from is not None:
@@ -57,7 +57,7 @@ class MentorStatsDAO:
             survey_count_query = (
                 select(func.count(SurveySession.id))
                 .join(SurveyTemplate, SurveySession.template_id == SurveyTemplate.id)
-                .join(Meeting, cast(Meeting.id, String) == SurveySession.context_id)
+                .join(Meeting, Meeting.id == cast(SurveySession.context_id, Integer))
                 .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
                 .where(*survey_meeting_filter)
             )
@@ -74,12 +74,12 @@ class MentorStatsDAO:
                 .join(SurveySession, SurveyAnswer.session_id == SurveySession.id)
                 .join(SurveyQuestion, SurveyAnswer.question_id == SurveyQuestion.id)
                 .join(SurveyTemplate, SurveySession.template_id == SurveyTemplate.id)
-                .join(Meeting, cast(Meeting.id, String) == SurveySession.context_id)
+                .join(Meeting, Meeting.id == cast(SurveySession.context_id, Integer))
                 .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
                 .where(
                     SurveyTemplate.slug == "post_call_student",
                     SurveySession.context_type == "meeting",
-                    SurveySession.status == "completed",
+                    SurveySession.status == SessionStatus.completed,
                     SurveyQuestion.question_type == "rating",
                     SurveyAnswer.value_int.isnot(None),
                     MeetingUser.user_id == mentor_id,

@@ -2,9 +2,9 @@ from aiogram.filters.callback_data import CallbackData
 
 
 class CohortTypeCB(CallbackData, prefix="ctype"):
-    """Select a cohort type (Notion property name)."""
+    """Select a cohort type by index in FSM-stored map."""
 
-    name: str
+    idx: int
 
 
 class CreateCohortTypeCB(CallbackData, prefix="ctype_new"):
@@ -14,32 +14,43 @@ class CreateCohortTypeCB(CallbackData, prefix="ctype_new"):
 
 
 class DeleteCohortTypeCB(CallbackData, prefix="ctype_del"):
-    """Delete a cohort type."""
+    """Delete a cohort type by index."""
 
-    name: str
+    idx: int
 
 
 class RenameCohortTypeCB(CallbackData, prefix="ctype_ren"):
-    """Rename a cohort type."""
+    """Rename a cohort type by index."""
 
-    name: str
+    idx: int
 
 
 class CreateOptionCB(CallbackData, prefix="copt_new"):
-    """Start creating an option within a cohort type."""
+    """Start creating an option within a cohort type by index."""
 
-    type_name: str
+    idx: int
 
 
 class DeleteOptionCB(CallbackData, prefix="copt_del"):
-    """Delete an option from a cohort type."""
+    """Delete an option from a cohort type by index."""
 
-    type_name: str
-    option_name: str
+    idx: int
 
 
 class RenameOptionCB(CallbackData, prefix="copt_ren"):
-    """Rename an option."""
+    """Rename an option by index."""
 
-    type_name: str
-    option_name: str
+    idx: int
+
+
+class ConfirmDeleteTypeCB(CallbackData, prefix="ctype_cdel"):
+    """Confirm deletion of a cohort type by index."""
+
+    idx: int
+
+
+class OptionListCB(CallbackData, prefix="copt_ls"):
+    """Show options list for rename or delete action."""
+
+    idx: int
+    action: str  # "rename" or "delete"

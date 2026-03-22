@@ -53,10 +53,12 @@ async def process_type_name(message: Message, state: FSMContext):
 
     try:
         success = await notion.create_cohort_type(name)
+    except Exception:
+        logger.exception("Notion API error creating cohort type %s", name)
+        success = False
     finally:
         await notion.close()
-
-    await state.clear()
+        await state.clear()
 
     if success:
         logger.info("Cohort type created: %s", name)
@@ -80,10 +82,21 @@ async def start_create_option(
     callback: CallbackQuery, callback_data: CreateOptionCB, state: FSMContext
 ):
     await callback.answer()
+
+    data = await state.get_data()
+    types_map = data.get("cohort_types_map", {})
+    type_name = types_map.get(str(callback_data.idx))
+    if not type_name:
+        await callback.message.edit_text(
+            "Тип когорты не найден. Попробуйте снова.",
+            reply_markup=await back_to_menu_keyboard(),
+        )
+        return
+
     await state.set_state(CohortTypeFSM.waiting_option_name)
-    await state.update_data(type_name=callback_data.type_name)
+    await state.update_data(type_name=type_name)
     await callback.message.edit_text(
-        f"Введите название новой опции для <b>{e(callback_data.type_name)}</b>:",
+        f"Введите название новой опции для <b>{e(type_name)}</b>:",
         reply_markup=cohort_cancel_keyboard(),
     )
 
@@ -111,10 +124,12 @@ async def process_option_name(message: Message, state: FSMContext):
 
     try:
         success = await notion.add_option(type_name, name)
+    except Exception:
+        logger.exception("Notion API error adding option %s to %s", name, type_name)
+        success = False
     finally:
         await notion.close()
-
-    await state.clear()
+        await state.clear()
 
     if success:
         await message.answer(

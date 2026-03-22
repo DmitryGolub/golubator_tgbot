@@ -3,9 +3,11 @@ from aiogram.types import InlineKeyboardMarkup
 
 from src.bot.callbacks.cohort import (
     CohortTypeCB,
+    ConfirmDeleteTypeCB,
     CreateOptionCB,
     DeleteCohortTypeCB,
     DeleteOptionCB,
+    OptionListCB,
     RenameCohortTypeCB,
     RenameOptionCB,
 )
@@ -21,48 +23,55 @@ def cohort_actions_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def cohort_types_keyboard(types: list[CohortTypeInfo]) -> InlineKeyboardMarkup:
+def cohort_types_keyboard(
+    types: list[CohortTypeInfo],
+) -> tuple[InlineKeyboardMarkup, dict[int, str]]:
+    """Returns (keyboard, {idx: type_name}) mapping for FSM storage."""
     kb = InlineKeyboardBuilder()
-    for t in types:
+    mapping: dict[int, str] = {}
+    for i, t in enumerate(types):
+        mapping[i] = t.name
         label = f"{t.name} ({t.notion_type}) [{len(t.options)}]"
-        kb.button(text=label, callback_data=CohortTypeCB(name=t.name).pack())
+        kb.button(text=label, callback_data=CohortTypeCB(idx=i))
     kb.button(text="➕ Создать тип", callback_data="cohort_create_type")
     kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
     kb.adjust(1)
-    return kb.as_markup()
+    return kb.as_markup(), mapping
 
 
-def cohort_type_detail_keyboard(info: CohortTypeInfo) -> InlineKeyboardMarkup:
+def cohort_type_detail_keyboard(
+    info: CohortTypeInfo, type_idx: int
+) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
-    # List options
+    # List options (non-interactive display)
     for opt in info.options:
-        kb.button(text=f"  {opt}", callback_data=f"cohort_noop:{opt}")
+        kb.button(text=f"  {opt}", callback_data=f"cohort_noop:{type_idx}")
 
     # Action buttons based on editability
     if info.editable:
         kb.button(
             text="➕ Добавить опцию",
-            callback_data=CreateOptionCB(type_name=info.name).pack(),
+            callback_data=CreateOptionCB(idx=type_idx),
         )
         if info.options:
             kb.button(
                 text="✏️ Переименовать опцию",
-                callback_data=f"cohort_rename_opt_list:{info.name}",
+                callback_data=OptionListCB(idx=type_idx, action="rename"),
             )
             kb.button(
                 text="🗑 Удалить опцию",
-                callback_data=f"cohort_delete_opt_list:{info.name}",
+                callback_data=OptionListCB(idx=type_idx, action="delete"),
             )
 
     if info.type_editable:
         kb.button(
             text="✏️ Переименовать тип",
-            callback_data=RenameCohortTypeCB(name=info.name).pack(),
+            callback_data=RenameCohortTypeCB(idx=type_idx),
         )
         kb.button(
             text="🗑 Удалить тип",
-            callback_data=DeleteCohortTypeCB(name=info.name).pack(),
+            callback_data=DeleteCohortTypeCB(idx=type_idx),
         )
 
     kb.button(text="⬅️ Назад к типам", callback_data="cohort_list")
@@ -71,22 +80,21 @@ def cohort_type_detail_keyboard(info: CohortTypeInfo) -> InlineKeyboardMarkup:
 
 
 def cohort_options_select_keyboard(
-    type_name: str, options: list[str], action: str
-) -> InlineKeyboardMarkup:
-    """Show options for selection (for rename or delete)."""
+    options: list[str], action: str
+) -> tuple[InlineKeyboardMarkup, dict[int, str]]:
+    """Returns (keyboard, {idx: option_name}) mapping for FSM storage."""
     kb = InlineKeyboardBuilder()
-    for opt in options:
+    mapping: dict[int, str] = {}
+    for i, opt in enumerate(options):
+        mapping[i] = opt
         if action == "delete":
-            cb = DeleteOptionCB(type_name=type_name, option_name=opt).pack()
-        else:  # rename
-            cb = RenameOptionCB(type_name=type_name, option_name=opt).pack()
+            cb = DeleteOptionCB(idx=i)
+        else:
+            cb = RenameOptionCB(idx=i)
         kb.button(text=opt, callback_data=cb)
-    kb.button(
-        text="⬅️ Назад",
-        callback_data=CohortTypeCB(name=type_name).pack(),
-    )
+    kb.button(text="⬅️ Назад", callback_data="cohort_list")
     kb.adjust(1)
-    return kb.as_markup()
+    return kb.as_markup(), mapping
 
 
 def cohort_cancel_keyboard() -> InlineKeyboardMarkup:
@@ -96,11 +104,11 @@ def cohort_cancel_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def cohort_confirm_delete_keyboard(type_name: str) -> InlineKeyboardMarkup:
+def cohort_confirm_delete_keyboard(type_idx: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(
         text="✅ Да, удалить",
-        callback_data=f"cohort_confirm_del_type:{type_name}",
+        callback_data=ConfirmDeleteTypeCB(idx=type_idx),
     )
     kb.button(text="❌ Отмена", callback_data="cohort_list")
     kb.adjust(2)

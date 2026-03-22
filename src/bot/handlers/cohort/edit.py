@@ -28,10 +28,21 @@ async def start_rename_type(
     callback: CallbackQuery, callback_data: RenameCohortTypeCB, state: FSMContext
 ):
     await callback.answer()
+
+    data = await state.get_data()
+    types_map = data.get("cohort_types_map", {})
+    type_name = types_map.get(str(callback_data.idx))
+    if not type_name:
+        await callback.message.edit_text(
+            "Тип когорты не найден. Попробуйте снова.",
+            reply_markup=await back_to_menu_keyboard(),
+        )
+        return
+
     await state.set_state(CohortTypeFSM.waiting_rename_type)
-    await state.update_data(old_type_name=callback_data.name)
+    await state.update_data(old_type_name=type_name)
     await callback.message.edit_text(
-        f'Введите новое название для типа когорты "<b>{e(callback_data.name)}</b>":',
+        f'Введите новое название для типа когорты "<b>{e(type_name)}</b>":',
         reply_markup=cohort_cancel_keyboard(),
     )
 
@@ -59,10 +70,12 @@ async def process_rename_type(message: Message, state: FSMContext):
 
     try:
         success = await notion.rename_cohort_type(old_name, new_name)
+    except Exception:
+        logger.exception("Notion API error renaming cohort type %s", old_name)
+        success = False
     finally:
         await notion.close()
-
-    await state.clear()
+        await state.clear()
 
     if success:
         logger.info("Cohort type renamed: %s -> %s", old_name, new_name)
@@ -86,14 +99,27 @@ async def start_rename_option(
     callback: CallbackQuery, callback_data: RenameOptionCB, state: FSMContext
 ):
     await callback.answer()
+
+    data = await state.get_data()
+    options_map = data.get("cohort_options_map", {})
+    type_name = data.get("current_type_name")
+    option_name = options_map.get(str(callback_data.idx))
+
+    if not type_name or not option_name:
+        await callback.message.edit_text(
+            "Данные устарели. Попробуйте снова.",
+            reply_markup=await back_to_menu_keyboard(),
+        )
+        return
+
     await state.set_state(CohortTypeFSM.waiting_rename_option)
     await state.update_data(
-        rename_type_name=callback_data.type_name,
-        rename_old_option=callback_data.option_name,
+        rename_type_name=type_name,
+        rename_old_option=option_name,
     )
     await callback.message.edit_text(
-        f'Введите новое название для опции "<b>{e(callback_data.option_name)}</b>" '
-        f"в <b>{e(callback_data.type_name)}</b>:",
+        f'Введите новое название для опции "<b>{e(option_name)}</b>" '
+        f"в <b>{e(type_name)}</b>:",
         reply_markup=cohort_cancel_keyboard(),
     )
 
@@ -122,10 +148,14 @@ async def process_rename_option(message: Message, state: FSMContext):
 
     try:
         success = await notion.rename_option(type_name, old_option, new_name)
+    except Exception:
+        logger.exception(
+            "Notion API error renaming option %s in %s", old_option, type_name
+        )
+        success = False
     finally:
         await notion.close()
-
-    await state.clear()
+        await state.clear()
 
     if success:
         await message.answer(

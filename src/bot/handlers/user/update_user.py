@@ -226,13 +226,13 @@ async def cb_choose_user_for_update(
     callback_data: ChooseUserCB,
     state: FSMContext,
 ):
-    await callback.answer()
-
     perms = await AuthService.get_user_permissions(callback.from_user.id)
     if not perms:
         await callback.answer("Доступ запрещен.", show_alert=True)
         await state.clear()
         return
+
+    await callback.answer()
 
     data = await state.get_data()
     param: UpdateParam = data["param"]

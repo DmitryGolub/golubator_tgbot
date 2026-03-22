@@ -1,7 +1,5 @@
 from collections.abc import Sequence
 
-from aiogram.filters.callback_data import CallbackData
-
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardMarkup
 
@@ -13,10 +11,6 @@ from src.bot.callbacks.update_user import (
     ChooseUserCB,
 )
 from src.models.user import State, User
-
-
-class UserDetailCB(CallbackData, prefix="user"):
-    user_id: int
 
 
 def user_actions_keyboard() -> InlineKeyboardMarkup:

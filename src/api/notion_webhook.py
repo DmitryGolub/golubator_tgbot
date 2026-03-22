@@ -8,9 +8,7 @@ from aiohttp import web
 logger = logging.getLogger(__name__)
 
 
-async def _handle_automation(
-    request: web.Request, source_db: str
-) -> web.Response:
+async def _handle_automation(request: web.Request, source_db: str) -> web.Response:
     """Handle Notion Automation webhook (Send webhook action).
 
     Payload contains page properties directly (not sparse like API webhooks).
@@ -37,7 +35,9 @@ async def _handle_automation(
         elif source_db == "event":
             await sync.handle_automation_event(payload)
     except Exception as exc:
-        logger.error("Error handling automation webhook (source=%s): %s", source_db, exc)
+        logger.error(
+            "Error handling automation webhook (source=%s): %s", source_db, exc
+        )
         return web.json_response({"error": "processing failed"}, status=500)
 
     return web.json_response({"status": "ok"})

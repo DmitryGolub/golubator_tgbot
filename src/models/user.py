@@ -78,9 +78,7 @@ class User(Base):
         index=True,
     )
 
-    notion_source_db: Mapped[Optional[str]] = mapped_column(
-        String(10), nullable=True
-    )
+    notion_source_db: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     registered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -110,7 +108,7 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="noload",
     )
     mentor: Mapped[Optional["User"]] = relationship(
         "User",
@@ -122,18 +120,19 @@ class User(Base):
         back_populates="mentor",
         cascade="all",
         passive_deletes=True,
+        lazy="noload",
     )
     mentor_calls: Mapped[list["Call"]] = relationship(
         "Call",
         foreign_keys="Call.mentor_id",
         back_populates="mentor",
-        lazy="selectin",
+        lazy="noload",
     )
     student_calls: Mapped[list["Call"]] = relationship(
         "Call",
         foreign_keys="Call.student_id",
         back_populates="student",
-        lazy="selectin",
+        lazy="noload",
     )
     tags: Mapped[list["Tag"]] = relationship(
         "Tag",

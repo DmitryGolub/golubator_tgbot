@@ -164,20 +164,35 @@ class MeetingDAO(BaseDAO):
             completed_at = completed_at.replace(tzinfo=timezone.utc)
 
         async with async_session_maker() as session:
+            stmt = (
+                update(Meeting)
+                .where(Meeting.id == meeting_id, Meeting.completed_at.is_(None))
+                .values(completed_at=completed_at)
+                .returning(Meeting.id)
+            )
+            result = await session.execute(stmt)
+            updated_id = result.scalar_one_or_none()
+            await session.commit()
+
+            if updated_id is None:
+                # Either not found or already completed — fetch to distinguish
+                query = (
+                    select(Meeting)
+                    .where(Meeting.id == meeting_id)
+                    .options(joinedload(Meeting.participants))
+                )
+                res = await session.execute(query)
+                res = res.unique()
+                meeting = res.scalar_one_or_none()
+                return meeting, False
+
+            # Reload with participants
             query = (
                 select(Meeting)
                 .where(Meeting.id == meeting_id)
                 .options(joinedload(Meeting.participants))
             )
-            result = await session.execute(query)
-            result = result.unique()
-            meeting = result.scalar_one_or_none()
-            if not meeting:
-                return None, False
-
-            if meeting.completed_at is not None:
-                return meeting, False
-
-            meeting.completed_at = completed_at
-            await session.commit()
+            res = await session.execute(query)
+            res = res.unique()
+            meeting = res.scalar_one_or_none()
             return meeting, True

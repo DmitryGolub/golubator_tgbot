@@ -79,9 +79,9 @@ async def main():
 async def _initial_sync(**kwargs) -> None:
     from src.celery_app import celery_app
 
-    celery_app.send_task("notion.backup_pull_users")
-    celery_app.send_task("notion.backup_pull_events")
-    celery_app.send_task("notion.sync_cohorts")
+    await asyncio.to_thread(celery_app.send_task, "notion.backup_pull_users")
+    await asyncio.to_thread(celery_app.send_task, "notion.backup_pull_events")
+    await asyncio.to_thread(celery_app.send_task, "notion.sync_cohorts")
     logger.info("Initial sync tasks dispatched to Celery")
 
 

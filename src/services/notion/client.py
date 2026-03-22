@@ -25,16 +25,18 @@ class _RateLimiter:
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> None:
-        async with self._lock:
-            now = time.monotonic()
-            self._timestamps = [
-                t for t in self._timestamps if now - t < self._period
-            ]
-            if len(self._timestamps) >= self._rate:
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                self._timestamps = [
+                    t for t in self._timestamps if now - t < self._period
+                ]
+                if len(self._timestamps) < self._rate:
+                    self._timestamps.append(time.monotonic())
+                    return
                 sleep_time = self._period - (now - self._timestamps[0])
-                if sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
-            self._timestamps.append(time.monotonic())
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
 
 
 # Global rate limiter per token (single integration = single rate limit)
@@ -116,9 +118,7 @@ class NotionClient:
         cursor: str | None = None
         try:
             while True:
-                resp = await self.query_pages(
-                    page_size=100, start_cursor=cursor
-                )
+                resp = await self.query_pages(page_size=100, start_cursor=cursor)
                 pages.extend(resp["results"])
                 if not resp.get("has_more"):
                     break
@@ -147,9 +147,7 @@ class NotionClient:
             logger.error("Notion create_page failed: %s", e)
             return None
 
-    async def update_page(
-        self, page_id: str, properties: dict
-    ) -> dict | None:
+    async def update_page(self, page_id: str, properties: dict) -> dict | None:
         try:
             await self._rate_limiter.acquire()
             return await self._client.pages.update(
@@ -163,9 +161,7 @@ class NotionClient:
         try:
             ds_id = await self._resolve_data_source_id()
             await self._rate_limiter.acquire()
-            db = await self._client.data_sources.retrieve(
-                data_source_id=ds_id
-            )
+            db = await self._client.data_sources.retrieve(data_source_id=ds_id)
             return db.get("properties", {})
         except APIResponseError as e:
             logger.error("Notion get_schema failed: %s", e)

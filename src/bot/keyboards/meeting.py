@@ -118,7 +118,7 @@ def meeting_calendar_keyboard(current: date) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def meeting_time_keyboard(date_str: str) -> InlineKeyboardMarkup:
+def meeting_time_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     times = ["1000", "1400", "1800", "2000"]
     for i in range(0, len(times), 2):

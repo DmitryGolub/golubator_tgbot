@@ -87,9 +87,7 @@ class NotionMentorRepo:
         )
         return page["id"] if page else None
 
-    async def update_properties(
-        self, page_id: str, props: dict
-    ) -> bool:
+    async def update_properties(self, page_id: str, props: dict) -> bool:
         result = await self._client.update_page(page_id, props)
         return result is not None
 
@@ -99,6 +97,4 @@ class NotionMentorRepo:
         )
 
     async def update_telegram_id(self, page_id: str, tg_id: int) -> bool:
-        return await self.update_properties(
-            page_id, {"Telegram ID": {"number": tg_id}}
-        )
+        return await self.update_properties(page_id, {"Telegram ID": {"number": tg_id}})

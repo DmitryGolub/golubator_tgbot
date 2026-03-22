@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from src.core.database import async_session_maker
 from src.models.meeting import Meeting
-from src.models.survey_session import SurveySession
+from src.models.survey_session import SessionStatus, SurveySession
 from src.models.user import User
 
 
@@ -51,7 +51,7 @@ class FeedbackExportDAO:
                 .where(
                     SurveySession.context_type == "meeting",
                     SurveySession.context_id.in_(str_ids),
-                    SurveySession.status == "completed",
+                    SurveySession.status == SessionStatus.completed,
                 )
                 .options(
                     selectinload(SurveySession.answers),
