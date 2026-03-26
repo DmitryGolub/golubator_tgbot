@@ -31,12 +31,13 @@ class NotionCohortCache(Base):
             name="uq_cohort_cache_user_type_value",
         ),
         Index("ix_cohort_cache_type_value", "cohort_type", "cohort_value"),
+        {"schema": "integrations"},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_telegram_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

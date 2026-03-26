@@ -33,6 +33,7 @@ class State(enum.Enum):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = {"schema": "iam"}
 
     telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     username: Mapped[str] = mapped_column(
@@ -50,7 +51,7 @@ class User(Base):
         default=Role.student,
     )
     role_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("roles.id"), nullable=True
+        Integer, ForeignKey("iam.roles.id"), nullable=True
     )
     role_rel: Mapped["RoleModel | None"] = relationship(
         "RoleModel", back_populates="users", lazy="selectin"
@@ -68,7 +69,7 @@ class User(Base):
 
     mentor_id: Mapped[Optional[int]] = mapped_column(
         BigInteger,
-        ForeignKey("users.telegram_id", ondelete="SET NULL"),
+        ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
         nullable=True,
     )
     notion_page_id: Mapped[Optional[str]] = mapped_column(
@@ -99,7 +100,7 @@ class User(Base):
 
     meetings: Mapped[list["Meeting"]] = relationship(
         "Meeting",
-        secondary="meeting_users",
+        secondary="meetings.meeting_users",
         back_populates="participants",
         lazy="raise",
     )
@@ -136,7 +137,7 @@ class User(Base):
     )
     tags: Mapped[list["Tag"]] = relationship(
         "Tag",
-        secondary="user_tags",
+        secondary="iam.user_tags",
         back_populates="users",
         lazy="raise",
     )

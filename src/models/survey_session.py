@@ -49,17 +49,18 @@ class SurveySession(Base):
             "context_id",
             name="uq_survey_session_unique",
         ),
+        {"schema": "surveys"},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     template_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("survey_templates.id", ondelete="CASCADE"),
+        ForeignKey("surveys.survey_templates.id", ondelete="CASCADE"),
         nullable=False,
     )
     respondent_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
         nullable=False,
     )
     context_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
@@ -106,17 +107,18 @@ class SurveyAnswer(Base):
             "question_id",
             name="uq_survey_answer_unique",
         ),
+        {"schema": "surveys"},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("survey_sessions.id", ondelete="CASCADE"),
+        ForeignKey("surveys.survey_sessions.id", ondelete="CASCADE"),
         nullable=False,
     )
     question_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("survey_questions.id", ondelete="CASCADE"),
+        ForeignKey("surveys.survey_questions.id", ondelete="CASCADE"),
         nullable=False,
     )
     value_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

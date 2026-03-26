@@ -41,6 +41,7 @@ question_type_enum = Enum(
 
 class SurveyTemplate(Base):
     __tablename__ = "survey_templates"
+    __table_args__ = {"schema": "surveys"}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -50,13 +51,13 @@ class SurveyTemplate(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     target_role_id: Mapped[Optional[int]] = mapped_column(
         Integer,
-        ForeignKey("roles.id", ondelete="SET NULL"),
+        ForeignKey("iam.roles.id", ondelete="SET NULL"),
         nullable=True,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger,
-        ForeignKey("users.telegram_id", ondelete="SET NULL"),
+        ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -83,12 +84,13 @@ class SurveyQuestion(Base):
 
     __table_args__ = (
         UniqueConstraint("template_id", "sort_order", name="uq_survey_question_order"),
+        {"schema": "surveys"},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     template_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("survey_templates.id", ondelete="CASCADE"),
+        ForeignKey("surveys.survey_templates.id", ondelete="CASCADE"),
         nullable=False,
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -123,12 +125,13 @@ class SurveyQuestionOption(Base):
 
     __table_args__ = (
         UniqueConstraint("question_id", "sort_order", name="uq_survey_option_order"),
+        {"schema": "surveys"},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     question_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("survey_questions.id", ondelete="CASCADE"),
+        ForeignKey("surveys.survey_questions.id", ondelete="CASCADE"),
         nullable=False,
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)

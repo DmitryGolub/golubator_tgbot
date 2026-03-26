@@ -22,6 +22,7 @@ from src.core.database import Base
 
 class Meeting(Base):
     __tablename__ = "meetings"
+    __table_args__ = {"schema": "meetings"}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -44,7 +45,7 @@ class Meeting(Base):
     topic: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     mentor_telegram_id: Mapped[Optional[int]] = mapped_column(
         BigInteger,
-        ForeignKey("users.telegram_id", ondelete="SET NULL"),
+        ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
         nullable=True,
     )
     mentee_telegram_tag: Mapped[Optional[str]] = mapped_column(
@@ -66,7 +67,7 @@ class Meeting(Base):
 
     participants: Mapped[list["User"]] = relationship(
         "User",
-        secondary="meeting_users",
+        secondary="meetings.meeting_users",
         back_populates="meetings",
         lazy="selectin",
     )
@@ -82,12 +83,15 @@ class MeetingUser(Base):
     __tablename__ = "meeting_users"
 
     meeting_id: Mapped[int] = mapped_column(
-        ForeignKey("meetings.id", ondelete="CASCADE"), primary_key=True
+        ForeignKey("meetings.meetings.id", ondelete="CASCADE"), primary_key=True
     )
     user_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
         primary_key=True,
     )
 
-    __table_args__ = (Index("ix_meeting_users_user_id", "user_id"),)
+    __table_args__ = (
+        Index("ix_meeting_users_user_id", "user_id"),
+        {"schema": "meetings"},
+    )

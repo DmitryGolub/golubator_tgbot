@@ -27,17 +27,22 @@ user_tags = Table(
     Column(
         "user_id",
         BigInteger,
-        ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
         primary_key=True,
     ),
     Column(
-        "tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+        "tag_id",
+        Integer,
+        ForeignKey("iam.tags.id", ondelete="CASCADE"),
+        primary_key=True,
     ),
+    schema="iam",
 )
 
 
 class Tag(Base):
     __tablename__ = "tags"
+    __table_args__ = {"schema": "iam"}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(

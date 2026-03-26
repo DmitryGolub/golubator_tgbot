@@ -19,12 +19,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 # ── Enums ──────────────────────────────────────────────────────────────────
 
-role_enum = pgEnum(
-    "Админ", "Ментор", "Студент", name="role_enum", create_type=False
-)
+role_enum = pgEnum("Админ", "Ментор", "Студент", name="role_enum", create_type=False)
 state_enum = pgEnum(
-    "Отбор", "В ожидании", "Обучение", "Поиск работы", "Оффер",
-    name="state_enum", create_type=False,
+    "Отбор",
+    "В ожидании",
+    "Обучение",
+    "Поиск работы",
+    "Оффер",
+    name="state_enum",
+    create_type=False,
 )
 regularity_enum = pgEnum(
     "day", "week", "fortnight", "month", name="regularity_enum", create_type=False
@@ -33,8 +36,12 @@ call_status_enum = pgEnum(
     "идёт", "завершён", name="call_status_enum", create_type=False
 )
 question_type_enum = pgEnum(
-    "text", "rating", "single_choice", "multiple_choice",
-    name="question_type_enum", create_type=False,
+    "text",
+    "rating",
+    "single_choice",
+    "multiple_choice",
+    name="question_type_enum",
+    create_type=False,
 )
 session_status_enum = pgEnum(
     "pending", "in_progress", "completed", name="session_status_enum", create_type=False
@@ -45,7 +52,8 @@ trigger_type_enum = pgEnum(
     "periodic_cron",
     "user_state_changed",
     "manual",
-    name="trigger_type_enum", create_type=False,
+    name="trigger_type_enum",
+    create_type=False,
 )
 action_type_enum = pgEnum(
     "send_notification", "send_survey", name="action_type_enum", create_type=False
@@ -61,11 +69,16 @@ recipient_type_enum = pgEnum(
     "by_state",
     "by_tag",
     "specific_users",
-    name="recipient_type_enum", create_type=False,
+    name="recipient_type_enum",
+    create_type=False,
 )
 trigger_regularity_enum = pgEnum(
-    "day", "week", "fortnight", "month",
-    name="trigger_regularity_enum", create_type=False,
+    "day",
+    "week",
+    "fortnight",
+    "month",
+    name="trigger_regularity_enum",
+    create_type=False,
 )
 execution_status_enum = pgEnum(
     "pending", "sent", "failed", name="execution_status_enum", create_type=False
@@ -75,7 +88,10 @@ execution_status_enum = pgEnum(
 # ── Seed data references ──────────────────────────────────────────────────
 
 permissions_t = sa.table(
-    "permissions", sa.column("codename", sa.String), sa.column("description", sa.String)
+    "permissions",
+    sa.column("codename", sa.String),
+    sa.column("description", sa.String),
+    schema="iam",
 )
 roles_t = sa.table(
     "roles",
@@ -84,11 +100,13 @@ roles_t = sa.table(
     sa.column("display_name", sa.String),
     sa.column("is_mentor", sa.Boolean),
     sa.column("is_student", sa.Boolean),
+    schema="iam",
 )
 role_perms_t = sa.table(
     "role_permissions",
     sa.column("role_id", sa.Integer),
     sa.column("permission_id", sa.Integer),
+    schema="iam",
 )
 templates_t = sa.table(
     "survey_templates",
@@ -97,6 +115,7 @@ templates_t = sa.table(
     sa.column("slug", sa.String),
     sa.column("description", sa.Text),
     sa.column("is_active", sa.Boolean),
+    schema="surveys",
 )
 questions_t = sa.table(
     "survey_questions",
@@ -107,6 +126,7 @@ questions_t = sa.table(
     sa.column("question_type", sa.String),
     sa.column("is_required", sa.Boolean),
     sa.column("config", sa.JSON),
+    schema="surveys",
 )
 options_t = sa.table(
     "survey_question_options",
@@ -115,6 +135,7 @@ options_t = sa.table(
     sa.column("sort_order", sa.Integer),
     sa.column("value", sa.String),
     sa.column("label", sa.String),
+    schema="surveys",
 )
 ui_texts_t = sa.table(
     "ui_texts",
@@ -134,11 +155,16 @@ rules_t = sa.table(
     sa.column("recipient_type", sa.String),
     sa.column("recipient_config", sa.JSON),
     sa.column("action_config", sa.JSON),
+    schema="triggers",
 )
 
 
 def upgrade() -> None:
     conn = op.get_bind()
+
+    # ── 0. Create schemas ─────────────────────────────────────────────────
+    for schema in ("iam", "meetings", "surveys", "triggers", "integrations"):
+        op.execute(sa.text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
 
     # ── 1. Create enums ───────────────────────────────────────────────────
     for e in (
@@ -163,6 +189,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
         sa.Column("codename", sa.String(100), unique=True, nullable=False, index=True),
         sa.Column("description", sa.String(255), nullable=False),
+        schema="iam",
     )
     op.create_table(
         "roles",
@@ -175,21 +202,23 @@ def upgrade() -> None:
         sa.Column(
             "is_student", sa.Boolean, nullable=False, server_default=sa.text("false")
         ),
+        schema="iam",
     )
     op.create_table(
         "role_permissions",
         sa.Column(
             "role_id",
             sa.Integer,
-            sa.ForeignKey("roles.id", ondelete="CASCADE"),
+            sa.ForeignKey("iam.roles.id", ondelete="CASCADE"),
             primary_key=True,
         ),
         sa.Column(
             "permission_id",
             sa.Integer,
-            sa.ForeignKey("permissions.id", ondelete="CASCADE"),
+            sa.ForeignKey("iam.permissions.id", ondelete="CASCADE"),
             primary_key=True,
         ),
+        schema="iam",
     )
 
     # ── 3. Users ──────────────────────────────────────────────────────────
@@ -199,12 +228,12 @@ def upgrade() -> None:
         sa.Column("username", sa.String(255), unique=True, nullable=False, index=True),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("role", role_enum, nullable=False, server_default="Студент"),
-        sa.Column("role_id", sa.Integer, sa.ForeignKey("roles.id"), nullable=True),
+        sa.Column("role_id", sa.Integer, sa.ForeignKey("iam.roles.id"), nullable=True),
         sa.Column("state", state_enum, nullable=True, server_default="Отбор"),
         sa.Column(
             "mentor_id",
             sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="SET NULL"),
+            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
             nullable=True,
         ),
         sa.Column(
@@ -225,6 +254,7 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=True,
         ),
+        schema="iam",
     )
 
     # ── 4. Tags ───────────────────────────────────────────────────────────
@@ -239,21 +269,23 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=True,
         ),
+        schema="iam",
     )
     op.create_table(
         "user_tags",
         sa.Column(
             "user_id",
             sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="CASCADE"),
+            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
             primary_key=True,
         ),
         sa.Column(
             "tag_id",
             sa.Integer,
-            sa.ForeignKey("tags.id", ondelete="CASCADE"),
+            sa.ForeignKey("iam.tags.id", ondelete="CASCADE"),
             primary_key=True,
         ),
+        schema="iam",
     )
 
     # ── 5. Meetings & Calls ──────────────────────────────────────────────
@@ -278,7 +310,7 @@ def upgrade() -> None:
         sa.Column(
             "mentor_telegram_id",
             sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="SET NULL"),
+            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
             nullable=True,
         ),
         sa.Column("mentee_telegram_tag", sa.String(255), nullable=True),
@@ -293,30 +325,34 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=True,
         ),
+        schema="meetings",
     )
     op.create_table(
         "meeting_users",
         sa.Column(
             "meeting_id",
             sa.Integer,
-            sa.ForeignKey("meetings.id", ondelete="CASCADE"),
+            sa.ForeignKey("meetings.meetings.id", ondelete="CASCADE"),
             primary_key=True,
         ),
         sa.Column(
             "user_id",
             sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="CASCADE"),
+            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
             primary_key=True,
         ),
+        schema="meetings",
     )
-    op.create_index("ix_meeting_users_user_id", "meeting_users", ["user_id"])
+    op.create_index(
+        "ix_meeting_users_user_id", "meeting_users", ["user_id"], schema="meetings"
+    )
     op.create_table(
         "calls",
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column(
             "meeting_id",
             sa.Integer,
-            sa.ForeignKey("meetings.id", ondelete="CASCADE"),
+            sa.ForeignKey("meetings.meetings.id", ondelete="CASCADE"),
             nullable=False,
             unique=True,
             index=True,
@@ -324,14 +360,14 @@ def upgrade() -> None:
         sa.Column(
             "mentor_id",
             sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="CASCADE"),
+            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
             nullable=False,
             index=True,
         ),
         sa.Column(
             "student_id",
             sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="CASCADE"),
+            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
             nullable=False,
             index=True,
         ),
@@ -351,6 +387,7 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=True,
         ),
+        schema="meetings",
     )
     op.create_index(
         "ix_calls_active_mentor",
@@ -358,6 +395,7 @@ def upgrade() -> None:
         ["mentor_id"],
         unique=True,
         postgresql_where=sa.text("ended_at IS NULL"),
+        schema="meetings",
     )
 
     # ── 6. (Legacy notifications & rules removed) ───────────────────────
@@ -369,7 +407,7 @@ def upgrade() -> None:
         sa.Column(
             "user_telegram_id",
             sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="CASCADE"),
+            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
             nullable=False,
             index=True,
         ),
@@ -388,6 +426,7 @@ def upgrade() -> None:
             name="uq_cohort_cache_user_type_value",
         ),
         sa.Index("ix_cohort_cache_type_value", "cohort_type", "cohort_value"),
+        schema="integrations",
     )
 
     # ── 8. Survey constructor ────────────────────────────────────────────
@@ -400,7 +439,7 @@ def upgrade() -> None:
         sa.Column(
             "target_role_id",
             sa.Integer,
-            sa.ForeignKey("roles.id", ondelete="SET NULL"),
+            sa.ForeignKey("iam.roles.id", ondelete="SET NULL"),
             nullable=True,
         ),
         sa.Column(
@@ -409,7 +448,7 @@ def upgrade() -> None:
         sa.Column(
             "created_by",
             sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="SET NULL"),
+            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
             nullable=True,
         ),
         sa.Column(
@@ -418,6 +457,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
+        schema="surveys",
     )
     op.create_table(
         "survey_questions",
@@ -425,7 +465,7 @@ def upgrade() -> None:
         sa.Column(
             "template_id",
             sa.Integer,
-            sa.ForeignKey("survey_templates.id", ondelete="CASCADE"),
+            sa.ForeignKey("surveys.survey_templates.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column("sort_order", sa.Integer, nullable=False),
@@ -444,6 +484,7 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "template_id", "sort_order", name="uq_survey_question_order"
         ),
+        schema="surveys",
     )
     op.create_table(
         "survey_question_options",
@@ -451,13 +492,14 @@ def upgrade() -> None:
         sa.Column(
             "question_id",
             sa.Integer,
-            sa.ForeignKey("survey_questions.id", ondelete="CASCADE"),
+            sa.ForeignKey("surveys.survey_questions.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column("sort_order", sa.Integer, nullable=False),
         sa.Column("value", sa.String(64), nullable=False),
         sa.Column("label", sa.String(255), nullable=False),
         sa.UniqueConstraint("question_id", "sort_order", name="uq_survey_option_order"),
+        schema="surveys",
     )
     op.create_table(
         "survey_sessions",
@@ -465,13 +507,13 @@ def upgrade() -> None:
         sa.Column(
             "template_id",
             sa.Integer,
-            sa.ForeignKey("survey_templates.id", ondelete="CASCADE"),
+            sa.ForeignKey("surveys.survey_templates.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "respondent_id",
             sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="CASCADE"),
+            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column("context_type", sa.String(32), nullable=True),
@@ -494,6 +536,7 @@ def upgrade() -> None:
             "context_id",
             name="uq_survey_session_unique",
         ),
+        schema="surveys",
     )
     op.create_table(
         "survey_answers",
@@ -501,13 +544,13 @@ def upgrade() -> None:
         sa.Column(
             "session_id",
             sa.Integer,
-            sa.ForeignKey("survey_sessions.id", ondelete="CASCADE"),
+            sa.ForeignKey("surveys.survey_sessions.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "question_id",
             sa.Integer,
-            sa.ForeignKey("survey_questions.id", ondelete="CASCADE"),
+            sa.ForeignKey("surveys.survey_questions.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column("value_text", sa.Text, nullable=True),
@@ -522,6 +565,7 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "session_id", "question_id", name="uq_survey_answer_unique"
         ),
+        schema="surveys",
     )
 
     # ── 9. Trigger system ────────────────────────────────────────────────
@@ -552,7 +596,7 @@ def upgrade() -> None:
         sa.Column(
             "created_by",
             sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="SET NULL"),
+            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
             nullable=True,
         ),
         sa.Column(
@@ -562,6 +606,7 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        schema="triggers",
     )
     op.create_table(
         "trigger_executions",
@@ -569,14 +614,14 @@ def upgrade() -> None:
         sa.Column(
             "rule_id",
             sa.Integer,
-            sa.ForeignKey("trigger_rules.id", ondelete="CASCADE"),
+            sa.ForeignKey("triggers.trigger_rules.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column("event_key", sa.String(128), nullable=True),
         sa.Column(
             "recipient_id",
             sa.BigInteger,
-            sa.ForeignKey("users.telegram_id", ondelete="CASCADE"),
+            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
@@ -595,11 +640,13 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "rule_id", "event_key", "recipient_id", name="uq_trigger_execution_unique"
         ),
+        schema="triggers",
     )
     op.create_index(
         "ix_trigger_exec_pending",
         "trigger_executions",
         ["status", "scheduled_at"],
+        schema="triggers",
     )
 
     # ── 10. UI texts ───────────────────────────────────────────────────
@@ -671,10 +718,10 @@ def upgrade() -> None:
 
     # ── 10c. Seed: role_permissions (admin gets all_permissions) ─────────
     admin_role_id = conn.execute(
-        sa.text("SELECT id FROM roles WHERE name = 'admin'")
+        sa.text("SELECT id FROM iam.roles WHERE name = 'admin'")
     ).scalar_one()
     all_perms_id = conn.execute(
-        sa.text("SELECT id FROM permissions WHERE codename = 'all_permissions'")
+        sa.text("SELECT id FROM iam.permissions WHERE codename = 'all_permissions'")
     ).scalar_one()
     conn.execute(
         role_perms_t.insert().values(role_id=admin_role_id, permission_id=all_perms_id)
@@ -682,7 +729,7 @@ def upgrade() -> None:
 
     # Mentor default permissions
     mentor_role_id = conn.execute(
-        sa.text("SELECT id FROM roles WHERE name = 'mentor'")
+        sa.text("SELECT id FROM iam.roles WHERE name = 'mentor'")
     ).scalar_one()
     mentor_perms = [
         "view_students",
@@ -695,7 +742,8 @@ def upgrade() -> None:
     ]
     for codename in mentor_perms:
         perm_id = conn.execute(
-            sa.text("SELECT id FROM permissions WHERE codename = :c"), {"c": codename}
+            sa.text("SELECT id FROM iam.permissions WHERE codename = :c"),
+            {"c": codename},
         ).scalar_one()
         conn.execute(
             role_perms_t.insert().values(role_id=mentor_role_id, permission_id=perm_id)
@@ -703,12 +751,13 @@ def upgrade() -> None:
 
     # Student default permissions
     student_role_id = conn.execute(
-        sa.text("SELECT id FROM roles WHERE name = 'student'")
+        sa.text("SELECT id FROM iam.roles WHERE name = 'student'")
     ).scalar_one()
     student_perms = ["view_own_meetings", "view_own_info", "fill_survey"]
     for codename in student_perms:
         perm_id = conn.execute(
-            sa.text("SELECT id FROM permissions WHERE codename = :c"), {"c": codename}
+            sa.text("SELECT id FROM iam.permissions WHERE codename = :c"),
+            {"c": codename},
         ).scalar_one()
         conn.execute(
             role_perms_t.insert().values(role_id=student_role_id, permission_id=perm_id)
@@ -987,13 +1036,29 @@ def upgrade() -> None:
         ("menu.btn.surveys", "📝 Опросы", "Menu button: surveys"),
         ("menu.btn.triggers", "⚡ Триггеры", "Menu button: triggers"),
         ("menu.btn.roles", "🛡 Роли", "Menu button: roles"),
-        ("menu.btn.mentor_stats", "📊 Статистика менторов", "Menu button: mentor stats"),
-        ("menu.btn.export_feedback", "📤 Экспорт фидбека", "Menu button: export feedback"),
+        (
+            "menu.btn.mentor_stats",
+            "📊 Статистика менторов",
+            "Menu button: mentor stats",
+        ),
+        (
+            "menu.btn.export_feedback",
+            "📤 Экспорт фидбека",
+            "Menu button: export feedback",
+        ),
         ("menu.btn.students", "🎓 Ученики", "Menu button: students (mentor)"),
         ("menu.btn.meetings", "📅 Созвоны", "Menu button: meetings (mentor)"),
         ("menu.btn.my_info", "ℹ️ Обо мне", "Menu button: my info (mentor)"),
-        ("menu.btn.my_meetings", "📅 Назначенные созвоны", "Menu button: my meetings (student)"),
-        ("menu.btn.my_info_student", "ℹ️ Информация обо мне", "Menu button: my info (student)"),
+        (
+            "menu.btn.my_meetings",
+            "📅 Назначенные созвоны",
+            "Menu button: my meetings (student)",
+        ),
+        (
+            "menu.btn.my_info_student",
+            "ℹ️ Информация обо мне",
+            "Menu button: my info (student)",
+        ),
         ("menu.back", "⬅️ Назад к меню", "Back to menu button"),
         # ── Submenu titles ──
         ("menu.users.title", "👥 Меню Пользователей", "Users submenu title"),
@@ -1004,42 +1069,94 @@ def upgrade() -> None:
         # ── Mentor students ──
         ("menu.students.empty", "Список учеников пуст.", "Empty students list"),
         ("menu.students.header", "<b>Мои ученики:</b>", "Students list header"),
-        ("menu.mentor_students.btn.list", "Список учеников", "Mentor: students list btn"),
-        ("menu.mentor_students.btn.update", "Изменить статус ученика", "Mentor: update student btn"),
+        (
+            "menu.mentor_students.btn.list",
+            "Список учеников",
+            "Mentor: students list btn",
+        ),
+        (
+            "menu.mentor_students.btn.update",
+            "Изменить статус ученика",
+            "Mentor: update student btn",
+        ),
         # ── Mentor meetings ──
-        ("menu.mentor_meetings.btn.list", "Список созвонов", "Mentor: meetings list btn"),
-        ("menu.mentor_meetings.btn.create", "Добавить созвон", "Mentor: create meeting btn"),
-        ("menu.mentor_meetings.btn.end_call", "Завершить активный созвон", "Mentor: end call btn"),
-        ("menu.mentor_meetings.btn.feedback", "Заполнить фидбек", "Mentor: fill feedback btn"),
+        (
+            "menu.mentor_meetings.btn.list",
+            "Список созвонов",
+            "Mentor: meetings list btn",
+        ),
+        (
+            "menu.mentor_meetings.btn.create",
+            "Добавить созвон",
+            "Mentor: create meeting btn",
+        ),
+        (
+            "menu.mentor_meetings.btn.end_call",
+            "Завершить активный созвон",
+            "Mentor: end call btn",
+        ),
+        (
+            "menu.mentor_meetings.btn.feedback",
+            "Заполнить фидбек",
+            "Mentor: fill feedback btn",
+        ),
         # ── Call end messages ──
         ("menu.no_active_call", "У вас нет активного созвона.", "No active call"),
-        ("menu.call_ended.no_meeting", "✅ Активный созвон завершён.\nНачало: {start}\nКонец: {end}", "Call ended (no meeting)"),
-        ("menu.call_ended.with_meeting", "✅ Созвон по встрече #{id} завершён.\nНачало: {start}\nКонец: {end}\n\nТеперь можно заполнить фидбек.", "Call ended (with meeting)"),
+        (
+            "menu.call_ended.no_meeting",
+            "✅ Активный созвон завершён.\nНачало: {start}\nКонец: {end}",
+            "Call ended (no meeting)",
+        ),
+        (
+            "menu.call_ended.with_meeting",
+            "✅ Созвон по встрече #{id} завершён.\nНачало: {start}\nКонец: {end}\n\nТеперь можно заполнить фидбек.",
+            "Call ended (with meeting)",
+        ),
         # ── Profile ──
         ("menu.not_found", "Профиль не найден.", "Profile not found"),
         ("menu.me.title", "<b>Моя информация:</b>", "Profile title"),
         ("menu.mentor_me.btn.stats", "Моя статистика", "Mentor: my stats btn"),
         # ── Start ──
-        ("start.welcome", "<b>Привет, {name}!</b>\n\nЯ буду напоминать вам о занятиях и присылать полезную информацию.\nЧерез команду <b>/menu</b> можно открыть главное меню, посмотреть свои данные и доступные действия.\n\nЕсли что-то не работает — напишите куратору.", "Welcome message"),
+        (
+            "start.welcome",
+            "<b>Привет, {name}!</b>\n\nЯ буду напоминать вам о занятиях и присылать полезную информацию.\nЧерез команду <b>/menu</b> можно открыть главное меню, посмотреть свои данные и доступные действия.\n\nЕсли что-то не работает — напишите куратору.",
+            "Welcome message",
+        ),
         # ── Users ──
         ("user.btn.list", "Список пользователей", "Users: list btn"),
         ("user.btn.update", "Изменить пользователя", "Users: update btn"),
         ("user.btn.tags", "Теги", "Users: tags btn"),
         ("user.btn.update_status", "🔄 Обновить статус", "Users: update status btn"),
         ("user.btn.update_role", "🛡 Обновить роль", "Users: update role btn"),
-        ("user.btn.update_mentor", "👨\u200d🏫 Обновить ментора", "Users: update mentor btn"),
-        ("user.btn.update_student_status", "🔄 Обновить статус ученика", "Users: update student status btn"),
+        ("user.btn.update_mentor", "👨‍🏫 Обновить ментора", "Users: update mentor btn"),
+        (
+            "user.btn.update_student_status",
+            "🔄 Обновить статус ученика",
+            "Users: update student status btn",
+        ),
         ("user.list.header", "<b>Список пользователей:</b>", "Users list header"),
         ("user.list.empty", "<b>Список пользователей пуст.</b>", "Users list empty"),
         ("user.update.what", "Что вы хотите обновить?", "Update user: choose param"),
         ("user.update.access_denied", "Доступ запрещен.", "Update user: access denied"),
-        ("user.update.success", "Пользователь {name} @{username}\n{param} обновлено на: {value}", "Update user: success"),
+        (
+            "user.update.success",
+            "Пользователь {name} @{username}\n{param} обновлено на: {value}",
+            "Update user: success",
+        ),
         # ── Cohorts ──
         ("cohort.btn.types", "Типы когорт", "Cohorts: types list btn"),
         ("cohort.btn.create_type", "Создать тип когорты", "Cohorts: create type btn"),
         ("cohort.types.header", "<b>Типы когорт:</b>", "Cohorts list header"),
-        ("cohort.not_configured", "Notion не настроен (NOTION_TOKEN / NOTION_DATABASE_ID).", "Notion not configured"),
-        ("cohort.not_found", "Типы когорт не найдены в Notion.", "No cohort types found"),
+        (
+            "cohort.not_configured",
+            "Notion не настроен (NOTION_TOKEN / NOTION_DATABASE_ID).",
+            "Notion not configured",
+        ),
+        (
+            "cohort.not_found",
+            "Типы когорт не найдены в Notion.",
+            "No cohort types found",
+        ),
         # ── Mailings ──
         ("mailings.btn.list", "Список рассылок", "Mailings: list btn"),
         ("mailings.btn.add", "Добавить рассылку", "Mailings: add btn"),
@@ -1052,21 +1169,61 @@ def upgrade() -> None:
         ("meeting.list.empty", "Список созвонов пуст.", "Meetings list empty"),
         ("meeting.list.header", "<b>Мои созвоны:</b>", "Meetings list header"),
         ("meeting.error.not_found", "Созвон не найден.", "Meeting not found"),
-        ("meeting.error.no_access", "У вас нет доступа к этому созвону.", "Meeting: no access"),
-        ("meeting.error.already_completed", "Этот созвон уже завершён.", "Meeting already completed"),
-        ("meeting.error.active_exists", "У вас уже есть активный созвон. Сначала завершите его через кнопку или команду /end_call.", "Active call exists"),
+        (
+            "meeting.error.no_access",
+            "У вас нет доступа к этому созвону.",
+            "Meeting: no access",
+        ),
+        (
+            "meeting.error.already_completed",
+            "Этот созвон уже завершён.",
+            "Meeting already completed",
+        ),
+        (
+            "meeting.error.active_exists",
+            "У вас уже есть активный созвон. Сначала завершите его через кнопку или команду /end_call.",
+            "Active call exists",
+        ),
         # ── Mentor stats ──
-        ("mentor_stats.header", "<b>Статистика ментора: {name}</b>", "Mentor stats header"),
+        (
+            "mentor_stats.header",
+            "<b>Статистика ментора: {name}</b>",
+            "Mentor stats header",
+        ),
         ("mentor_stats.no_scores", "Оценок пока нет.", "No scores yet"),
         ("mentor_stats.not_found", "Ментор не найден.", "Mentor not found"),
-        ("mentor_stats.select", "Выберите ментора для просмотра статистики:", "Select mentor"),
+        (
+            "mentor_stats.select",
+            "Выберите ментора для просмотра статистики:",
+            "Select mentor",
+        ),
         ("mentor_stats.no_mentors", "Менторов не найдено.", "No mentors found"),
         # ── Export ──
-        ("export.not_configured", "Экспорт не настроен: проверьте YANDEX_SHEETS_* переменные.", "Export not configured"),
-        ("export.running", "⏳ Экспорт фидбека запущен, подождите...", "Export running"),
-        ("export.upload_error", "Не удалось загрузить файл в Яндекс Таблицу.", "Export upload error"),
-        ("export.internal_error", "Внутренняя ошибка экспорта.", "Export internal error"),
-        ("export.success", "✅ Экспорт завершён.\n\nСтрок: <b>{rows}</b>\nФайл: <b>{file}</b>\nЛист: <b>{sheet}</b>", "Export success"),
+        (
+            "export.not_configured",
+            "Экспорт не настроен: проверьте YANDEX_SHEETS_* переменные.",
+            "Export not configured",
+        ),
+        (
+            "export.running",
+            "⏳ Экспорт фидбека запущен, подождите...",
+            "Export running",
+        ),
+        (
+            "export.upload_error",
+            "Не удалось загрузить файл в Яндекс Таблицу.",
+            "Export upload error",
+        ),
+        (
+            "export.internal_error",
+            "Внутренняя ошибка экспорта.",
+            "Export internal error",
+        ),
+        (
+            "export.success",
+            "✅ Экспорт завершён.\n\nСтрок: <b>{rows}</b>\nФайл: <b>{file}</b>\nЛист: <b>{sheet}</b>",
+            "Export success",
+        ),
         # ── Tags ──
         ("tags.btn.list", "Список тегов", "Tags: list btn"),
         ("tags.btn.create", "Создать тег", "Tags: create btn"),
@@ -1075,7 +1232,11 @@ def upgrade() -> None:
         ("tags.menu.title", "Управление тегами", "Tags menu title"),
         ("tags.list.empty", "Тегов пока нет.", "Tags list empty"),
         ("tags.create.enter_name", "Введите имя нового тега:", "Enter tag name"),
-        ("tags.already_exists", "Тег <b>{name}</b> уже существует.", "Tag already exists"),
+        (
+            "tags.already_exists",
+            "Тег <b>{name}</b> уже существует.",
+            "Tag already exists",
+        ),
         ("tags.created", "Тег <b>{name}</b> создан.", "Tag created"),
         ("tags.deleted", "Тег удалён.", "Tag deleted"),
         # ── Triggers ──
@@ -1088,20 +1249,44 @@ def upgrade() -> None:
         ("trigger.rule_not_found", "Правило не найдено", "Trigger rule not found"),
         ("trigger.deleted", "Правило удалено", "Trigger rule deleted"),
         # ── Trigger labels ──
-        ("trigger.type.meeting_created", "Создание встречи", "Trigger type: meeting created"),
+        (
+            "trigger.type.meeting_created",
+            "Создание встречи",
+            "Trigger type: meeting created",
+        ),
         ("trigger.type.call_ended", "Завершение созвона", "Trigger type: call ended"),
         ("trigger.type.periodic_cron", "По расписанию", "Trigger type: periodic cron"),
-        ("trigger.type.user_state_changed", "Смена статуса", "Trigger type: user state changed"),
+        (
+            "trigger.type.user_state_changed",
+            "Смена статуса",
+            "Trigger type: user state changed",
+        ),
         ("trigger.type.manual", "Ручной", "Trigger type: manual"),
-        ("trigger.action.send_notification", "Отправить уведомление", "Action: send notification"),
+        (
+            "trigger.action.send_notification",
+            "Отправить уведомление",
+            "Action: send notification",
+        ),
         ("trigger.action.send_survey", "Отправить опрос", "Action: send survey"),
-        ("trigger.recipient.event_student", "Ученик из события", "Recipient: event student"),
-        ("trigger.recipient.event_mentor", "Ментор из события", "Recipient: event mentor"),
+        (
+            "trigger.recipient.event_student",
+            "Ученик из события",
+            "Recipient: event student",
+        ),
+        (
+            "trigger.recipient.event_mentor",
+            "Ментор из события",
+            "Recipient: event mentor",
+        ),
         ("trigger.recipient.by_role", "По роли", "Recipient: by role"),
         ("trigger.recipient.by_cohort", "По когорте", "Recipient: by cohort"),
         ("trigger.recipient.by_state", "По статусу", "Recipient: by state"),
         ("trigger.recipient.by_tag", "По тегу", "Recipient: by tag"),
-        ("trigger.recipient.specific_users", "Конкретные пользователи", "Recipient: specific users"),
+        (
+            "trigger.recipient.specific_users",
+            "Конкретные пользователи",
+            "Recipient: specific users",
+        ),
         # ── Surveys ──
         ("survey.btn.create", "Создать опрос", "Surveys: create btn"),
         ("survey.btn.list", "Список опросов", "Surveys: list btn"),
@@ -1112,21 +1297,41 @@ def upgrade() -> None:
         ("survey.deleted", "Опрос удалён", "Survey deleted"),
         ("survey.type.text", "Текст", "Question type: text"),
         ("survey.type.rating", "Рейтинг (число)", "Question type: rating"),
-        ("survey.type.single_choice", "Одиночный выбор", "Question type: single choice"),
-        ("survey.type.multiple_choice", "Множественный выбор", "Question type: multiple choice"),
+        (
+            "survey.type.single_choice",
+            "Одиночный выбор",
+            "Question type: single choice",
+        ),
+        (
+            "survey.type.multiple_choice",
+            "Множественный выбор",
+            "Question type: multiple choice",
+        ),
         # ── Dynamic surveys ──
         ("dynamic_survey.not_found", "Опрос не найден", "Dynamic survey not found"),
-        ("dynamic_survey.already_completed", "Вы уже заполнили этот опрос", "Survey already completed"),
+        (
+            "dynamic_survey.already_completed",
+            "Вы уже заполнили этот опрос",
+            "Survey already completed",
+        ),
         ("dynamic_survey.cancelled", "Опрос отменён.", "Survey cancelled"),
         # ── RBAC ──
         ("rbac.btn.create_role", "➕ Создать роль", "RBAC: create role btn"),
         ("rbac.btn.back_to_roles", "⬅️ К списку ролей", "RBAC: back to roles btn"),
-        ("rbac.btn.manage_perms", "🔑 Управление пермишенами", "RBAC: manage perms btn"),
+        (
+            "rbac.btn.manage_perms",
+            "🔑 Управление пермишенами",
+            "RBAC: manage perms btn",
+        ),
         ("rbac.btn.delete_role", "🗑 Удалить роль", "RBAC: delete role btn"),
         ("rbac.menu.title", "<b>Управление ролями</b>", "RBAC menu title"),
         ("rbac.role_not_found", "Роль не найдена.", "Role not found"),
         ("rbac.confirm_delete", "Удалить роль <b>{name}</b>?", "Confirm role deletion"),
-        ("rbac.users_cannot_delete", "Нельзя удалить роль, к которой привязаны пользователи.", "Cannot delete role with users"),
+        (
+            "rbac.users_cannot_delete",
+            "Нельзя удалить роль, к которой привязаны пользователи.",
+            "Cannot delete role with users",
+        ),
         # ── Common ──
         ("common.cancel", "❌ Отмена", "Cancel button"),
         ("common.confirm.yes", "✅ Да, удалить", "Confirm: yes"),
@@ -1134,32 +1339,33 @@ def upgrade() -> None:
         ("common.loading", "⏳ Загрузка...", "Loading indicator"),
     ]
     for key, value, description in UI_TEXTS:
-        conn.execute(ui_texts_t.insert().values(key=key, value=value, description=description))
+        conn.execute(
+            ui_texts_t.insert().values(key=key, value=value, description=description)
+        )
 
 
 def downgrade() -> None:
     conn = op.get_bind()
-    for t in (
-        "ui_texts",
-        "trigger_executions",
-        "trigger_rules",
-        "survey_answers",
-        "survey_sessions",
-        "survey_question_options",
-        "survey_questions",
-        "survey_templates",
-        "notion_cohort_cache",
-        "calls",
-        "meeting_users",
-        "meetings",
-        "user_tags",
-        "tags",
-        "role_permissions",
-        "users",
-        "roles",
-        "permissions",
-    ):
-        op.drop_table(t)
+
+    # Drop tables in reverse dependency order
+    op.drop_table("ui_texts")
+    op.drop_table("trigger_executions", schema="triggers")
+    op.drop_table("trigger_rules", schema="triggers")
+    op.drop_table("survey_answers", schema="surveys")
+    op.drop_table("survey_sessions", schema="surveys")
+    op.drop_table("survey_question_options", schema="surveys")
+    op.drop_table("survey_questions", schema="surveys")
+    op.drop_table("survey_templates", schema="surveys")
+    op.drop_table("notion_cohort_cache", schema="integrations")
+    op.drop_table("calls", schema="meetings")
+    op.drop_table("meeting_users", schema="meetings")
+    op.drop_table("meetings", schema="meetings")
+    op.drop_table("user_tags", schema="iam")
+    op.drop_table("tags", schema="iam")
+    op.drop_table("role_permissions", schema="iam")
+    op.drop_table("users", schema="iam")
+    op.drop_table("roles", schema="iam")
+    op.drop_table("permissions", schema="iam")
 
     for e in (
         execution_status_enum,
@@ -1176,3 +1382,6 @@ def downgrade() -> None:
         role_enum,
     ):
         e.drop(conn, checkfirst=True)
+
+    for schema in ("integrations", "triggers", "surveys", "meetings", "iam"):
+        op.execute(sa.text(f"DROP SCHEMA IF EXISTS {schema}"))

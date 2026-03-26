@@ -21,24 +21,25 @@ class CallStatus(enum.Enum):
 
 class Call(Base):
     __tablename__ = "calls"
+    __table_args__ = {"schema": "meetings"}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     meeting_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("meetings.id", ondelete="CASCADE"),
+        ForeignKey("meetings.meetings.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
         index=True,
     )
     mentor_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     student_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

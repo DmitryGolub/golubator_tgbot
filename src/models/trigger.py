@@ -93,6 +93,7 @@ execution_status_enum = Enum(
 
 class TriggerRule(Base):
     __tablename__ = "trigger_rules"
+    __table_args__ = {"schema": "triggers"}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -125,7 +126,7 @@ class TriggerRule(Base):
     # Audit
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger,
-        ForeignKey("users.telegram_id", ondelete="SET NULL"),
+        ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -154,18 +155,19 @@ class TriggerExecution(Base):
             name="uq_trigger_execution_unique",
         ),
         Index("ix_trigger_exec_pending", "status", "scheduled_at"),
+        {"schema": "triggers"},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     rule_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("trigger_rules.id", ondelete="CASCADE"),
+        ForeignKey("triggers.trigger_rules.id", ondelete="CASCADE"),
         nullable=False,
     )
     event_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     recipient_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("users.telegram_id", ondelete="CASCADE"),
+        ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
         nullable=False,
     )
     status: Mapped[ExecutionStatus] = mapped_column(

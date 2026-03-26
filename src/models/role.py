@@ -17,20 +17,22 @@ role_permissions = Table(
     Column(
         "role_id",
         Integer,
-        ForeignKey("roles.id", ondelete="CASCADE"),
+        ForeignKey("iam.roles.id", ondelete="CASCADE"),
         primary_key=True,
     ),
     Column(
         "permission_id",
         Integer,
-        ForeignKey("permissions.id", ondelete="CASCADE"),
+        ForeignKey("iam.permissions.id", ondelete="CASCADE"),
         primary_key=True,
     ),
+    schema="iam",
 )
 
 
 class Permission(Base):
     __tablename__ = "permissions"
+    __table_args__ = {"schema": "iam"}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     codename: Mapped[str] = mapped_column(
@@ -48,6 +50,7 @@ class Permission(Base):
 
 class RoleModel(Base):
     __tablename__ = "roles"
+    __table_args__ = {"schema": "iam"}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(

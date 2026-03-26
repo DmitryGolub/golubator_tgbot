@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.core.config import settings
@@ -20,6 +21,27 @@ from src.services.notion import (
 )
 
 logger = logging.getLogger(__name__)
+
+_USERNAME_RE = re.compile(r"@([A-Za-z0-9_]{3,32})")
+
+
+def _extract_username(text: str | None) -> str | None:
+    """Extract the first Telegram username from a string (without @)."""
+    if not text:
+        return None
+    match = _USERNAME_RE.search(text)
+    return match.group(1) if match else None
+
+
+async def _resolve_user_by_username(
+    session: AsyncSession, username: str
+) -> User | None:
+    """Case-insensitive lookup of a User by their Telegram username."""
+    result = await session.execute(
+        select(User).where(func.lower(User.username) == username.lower())
+    )
+    return result.scalar_one_or_none()
+
 
 # State mapping: PostgreSQL enum ↔ Notion status name
 _STATE_TO_NOTION: dict[State | None, str] = {
@@ -138,20 +160,46 @@ class NotionSyncServiceV2:
 
         if source_db == "mentor" and self.mentor_repo:
             data = self.mentor_repo._parse_page(page)
-            if not data.telegram_id:
-                logger.debug("Skipping mentor page %s: no telegram_id", page_id)
-                return
         elif source_db == "mentee" and self.mentee_repo:
             data = self.mentee_repo._parse_page(page)
-            if not data.telegram_id:
-                logger.debug("Skipping mentee page %s: no telegram_id", page_id)
-                return
         else:
             return
 
         engine, factory = _make_session_factory()
         try:
             async with factory() as session:
+                if not data.telegram_id:
+                    name_field = data.name if source_db == "mentor" else data.doc_name
+                    username = _extract_username(name_field)
+                    if not username:
+                        logger.warning(
+                            "Automation %s page %s: no telegram_id and no username found",
+                            source_db,
+                            page_id,
+                        )
+                        return
+                    user = await _resolve_user_by_username(session, username)
+                    if not user:
+                        logger.warning(
+                            "Automation %s page %s: username @%s not found in DB",
+                            source_db,
+                            page_id,
+                            username,
+                        )
+                        return
+                    data.telegram_id = user.telegram_id
+                    logger.info(
+                        "Automation %s page %s: resolved @%s -> telegram_id=%d",
+                        source_db,
+                        page_id,
+                        username,
+                        user.telegram_id,
+                    )
+                    repo = (
+                        self.mentor_repo if source_db == "mentor" else self.mentee_repo
+                    )
+                    await repo.update_telegram_id(page_id, user.telegram_id)
+
                 if source_db == "mentor":
                     await self._upsert_mentor(session, data, page_id)
                 else:
@@ -543,16 +591,68 @@ class NotionSyncServiceV2:
                 if self.mentor_repo:
                     mentors = await self.mentor_repo.get_all()
                     for m in mentors:
-                        if m.telegram_id:
-                            await self._upsert_mentor(session, m, m.page_id)
-                            count += 1
+                        if not m.telegram_id:
+                            username = _extract_username(m.name)
+                            if not username:
+                                logger.warning(
+                                    "Mentor page %s (%s): no telegram_id and no username found",
+                                    m.page_id,
+                                    m.name,
+                                )
+                                continue
+                            user = await _resolve_user_by_username(session, username)
+                            if not user:
+                                logger.warning(
+                                    "Mentor page %s: username @%s not found in DB",
+                                    m.page_id,
+                                    username,
+                                )
+                                continue
+                            m.telegram_id = user.telegram_id
+                            logger.info(
+                                "Mentor page %s: resolved @%s -> telegram_id=%d",
+                                m.page_id,
+                                username,
+                                user.telegram_id,
+                            )
+                            await self.mentor_repo.update_telegram_id(
+                                m.page_id, user.telegram_id
+                            )
+                        await self._upsert_mentor(session, m, m.page_id)
+                        count += 1
 
                 if self.mentee_repo:
                     mentees = await self.mentee_repo.get_all()
                     for m in mentees:
-                        if m.telegram_id:
-                            await self._upsert_mentee(session, m, m.page_id)
-                            count += 1
+                        if not m.telegram_id:
+                            username = _extract_username(m.doc_name)
+                            if not username:
+                                logger.warning(
+                                    "Mentee page %s (%s): no telegram_id and no username found",
+                                    m.page_id,
+                                    m.doc_name,
+                                )
+                                continue
+                            user = await _resolve_user_by_username(session, username)
+                            if not user:
+                                logger.warning(
+                                    "Mentee page %s: username @%s not found in DB",
+                                    m.page_id,
+                                    username,
+                                )
+                                continue
+                            m.telegram_id = user.telegram_id
+                            logger.info(
+                                "Mentee page %s: resolved @%s -> telegram_id=%d",
+                                m.page_id,
+                                username,
+                                user.telegram_id,
+                            )
+                            await self.mentee_repo.update_telegram_id(
+                                m.page_id, user.telegram_id
+                            )
+                        await self._upsert_mentee(session, m, m.page_id)
+                        count += 1
 
                 await session.commit()
         finally:
