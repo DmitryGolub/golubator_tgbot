@@ -3,7 +3,7 @@ from aiogram.types import CallbackQuery
 
 from src.dao.user import UserDAO
 from src.dao.mentee import MenteeDAO
-from src.dao.notion_cache import NotionCacheDAO
+from src.dao.cohort import CohortDAO
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.utils.escape import e
@@ -30,8 +30,8 @@ async def cb_user_list(callback: CallbackQuery):
             mentee_by_tid[mentee.telegram_id] = mentee
 
     # Batch load cohorts to avoid N+1
-    user_ids = [u.telegram_id for u in all_users]
-    cohorts_map = await NotionCacheDAO.get_cohorts_batch(user_ids)
+    mentee_ids = [m.id for m in all_mentees]
+    cohorts_map = await CohortDAO.get_cohorts_batch(mentee_ids)
 
     answer = "<b>Список пользователей:</b>\n\n"
 
@@ -46,8 +46,8 @@ async def cb_user_list(callback: CallbackQuery):
 
         role_display = user.role_rel.display_name if user.role_rel else "—"
 
-        cohorts = cohorts_map.get(user.telegram_id, [])
-        categories = [c.cohort_value for c in cohorts if c.cohort_type == "Category"]
+        cohorts = cohorts_map.get(mentee.id, []) if mentee else []
+        categories = [c.cohort.value for c in cohorts if c.cohort.type == "Category"]
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
 
         state_line = ""

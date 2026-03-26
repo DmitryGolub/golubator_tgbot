@@ -7,7 +7,7 @@ from src.models.user import User as User
 from src.models.mentor import Mentor as Mentor
 from src.models.mentee import Mentee as Mentee
 from src.models.meeting import Meeting as Meeting, MeetingUser as MeetingUser
-from src.models.notion_cache import NotionCohortCache as NotionCohortCache
+from src.models.cohort import Cohort as Cohort, UserCohort as UserCohort
 from src.models.survey_template import (
     QuestionType as QuestionType,
     SurveyTemplate as SurveyTemplate,

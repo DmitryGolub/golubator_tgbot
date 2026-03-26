@@ -418,32 +418,41 @@ def upgrade() -> None:
 
     # ── 6. (Legacy notifications & rules removed) ───────────────────────
 
-    # ── 7. Notion cohort cache ───────────────────────────────────────────
+    # ── 7. Cohorts ──────────────────────────────────────────────────────
     op.create_table(
-        "notion_cohort_cache",
+        "cohorts",
         sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column("type", sa.String(100), nullable=False),
+        sa.Column("value", sa.String(255), nullable=False),
+        sa.UniqueConstraint("type", "value", name="uq_cohort_type_value"),
+        schema="integrations",
+    )
+    op.create_table(
+        "user_cohorts",
         sa.Column(
             "mentee_id",
             sa.Integer,
             sa.ForeignKey("iam.mentees.id", ondelete="CASCADE"),
-            nullable=False,
-            index=True,
+            primary_key=True,
         ),
-        sa.Column("cohort_type", sa.String(100), nullable=False),
-        sa.Column("cohort_value", sa.String(255), nullable=False),
+        sa.Column(
+            "cohort_id",
+            sa.Integer,
+            sa.ForeignKey("integrations.cohorts.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
         sa.Column(
             "synced_at",
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=False,
         ),
-        sa.UniqueConstraint(
-            "mentee_id",
-            "cohort_type",
-            "cohort_value",
-            name="uq_cohort_cache_mentee_type_value",
-        ),
-        sa.Index("ix_cohort_cache_type_value", "cohort_type", "cohort_value"),
+        schema="integrations",
+    )
+    op.create_index(
+        "ix_user_cohorts_cohort_id",
+        "user_cohorts",
+        ["cohort_id"],
         schema="integrations",
     )
 
@@ -1374,7 +1383,8 @@ def downgrade() -> None:
     op.drop_table("survey_question_options", schema="surveys")
     op.drop_table("survey_questions", schema="surveys")
     op.drop_table("survey_templates", schema="surveys")
-    op.drop_table("notion_cohort_cache", schema="integrations")
+    op.drop_table("user_cohorts", schema="integrations")
+    op.drop_table("cohorts", schema="integrations")
     op.drop_table("meeting_users", schema="meetings")
     op.drop_table("meetings", schema="meetings")
     op.drop_table("user_tags", schema="iam")

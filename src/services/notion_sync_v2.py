@@ -11,7 +11,7 @@ from src.core.config import settings
 from src.models.meeting import Meeting, MeetingUser
 from src.models.mentee import Mentee
 from src.models.mentor import Mentor
-from src.models.notion_cache import NotionCohortCache
+from src.models.cohort import Cohort, UserCohort
 from src.models.user import State, User
 from src.services.notion import (
     NotionClient,
@@ -391,7 +391,7 @@ class NotionSyncServiceV2:
         from sqlalchemy import delete
 
         await session.execute(
-            delete(NotionCohortCache).where(NotionCohortCache.mentee_id == mentee_id)
+            delete(UserCohort).where(UserCohort.mentee_id == mentee_id)
         )
 
         entries: list[tuple[str, str]] = []
@@ -405,11 +405,21 @@ class NotionSyncServiceV2:
             entries.append(("Стажор", intern))
 
         for cohort_type, cohort_value in entries:
+            await session.execute(
+                pg_insert(Cohort)
+                .values(type=cohort_type, value=cohort_value)
+                .on_conflict_do_nothing(constraint="uq_cohort_type_value")
+            )
+            result = await session.execute(
+                select(Cohort.id).where(
+                    Cohort.type == cohort_type, Cohort.value == cohort_value
+                )
+            )
+            cohort_id = result.scalar_one()
             session.add(
-                NotionCohortCache(
+                UserCohort(
                     mentee_id=mentee_id,
-                    cohort_type=cohort_type,
-                    cohort_value=cohort_value,
+                    cohort_id=cohort_id,
                     synced_at=now,
                 )
             )

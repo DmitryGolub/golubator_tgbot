@@ -52,9 +52,9 @@ class RecipientResolver:
                     "TriggerRule %s: by_cohort without cohort_value", rule.id
                 )
                 return []
-            from src.dao.notion_cache import NotionCacheDAO
+            from src.dao.cohort import CohortDAO
 
-            return await NotionCacheDAO.get_users_in_cohort(cohort_type, cohort_value)
+            return await CohortDAO.get_telegram_ids_in_cohort(cohort_type, cohort_value)
 
         if rt == RecipientType.by_tag:
             tag_id = config.get("tag_id")

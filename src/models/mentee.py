@@ -21,7 +21,7 @@ from src.models.user import State
 
 if TYPE_CHECKING:
     from src.models.mentor import Mentor
-    from src.models.notion_cache import NotionCohortCache
+    from src.models.cohort import UserCohort
     from src.models.user import User
 
 
@@ -86,9 +86,8 @@ class Mentee(Base):
         foreign_keys=[mentor_id],
         lazy="selectin",
     )
-    cohort_cache: Mapped[list["NotionCohortCache"]] = relationship(
-        "NotionCohortCache",
-        back_populates="mentee",
+    cohorts: Mapped[list["UserCohort"]] = relationship(
+        "UserCohort",
         cascade="all, delete-orphan",
         passive_deletes=True,
         lazy="noload",
