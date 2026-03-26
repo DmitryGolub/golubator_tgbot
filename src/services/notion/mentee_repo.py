@@ -46,7 +46,11 @@ class NotionMenteeRepo:
         tags_items = props.get("Tags", {}).get("multi_select") or []
         tags = [t["name"] for t in tags_items if t.get("name")]
 
-        mentor_persons = props.get("Mentor", {}).get("person") or []
+        mentor_prop = props.get("Mentor", {})
+        mentor_persons = mentor_prop.get("people") or mentor_prop.get("person") or []
+        if not isinstance(mentor_persons, list):
+            mentor_persons = [mentor_persons]
+        logger.debug("Mentor raw property for page %s: %s", page.get("id"), mentor_prop)
         mentor_name = mentor_persons[0].get("name") if mentor_persons else None
         mentor_person = mentor_persons[0].get("person", {}) if mentor_persons else {}
         mentor_email = mentor_person.get("email") if mentor_person else None

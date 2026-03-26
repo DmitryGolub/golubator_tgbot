@@ -46,7 +46,10 @@ class NotionEventRepo:
         mentee_rt = props.get("ТГ тег менти", {}).get("rich_text") or []
         mentee_tg_tag = join_rich_text(mentee_rt).strip() or None
 
-        mentor_persons = props.get("Ментор", {}).get("person") or []
+        mentor_prop = props.get("Ментор", {})
+        mentor_persons = mentor_prop.get("people") or mentor_prop.get("person") or []
+        if not isinstance(mentor_persons, list):
+            mentor_persons = [mentor_persons]
         mentor_name = mentor_persons[0].get("name") if mentor_persons else None
 
         link = props.get("Ссылка", {}).get("url")

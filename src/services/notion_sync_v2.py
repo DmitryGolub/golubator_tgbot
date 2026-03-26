@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -23,17 +23,18 @@ from src.services.notion import (
 logger = logging.getLogger(__name__)
 
 # Mapping from Notion Role select → DB role name
-_NOTION_ROLE_MAP: dict[str | None, str] = {
-    "Mentor": "mentor",
-    "Admin": "admin",
-    "Админ": "admin",
-    "Ментор": "mentor",
-    None: "student",
+_NOTION_ROLE_MAP: dict[str, str] = {
+    "mentor": "mentor",
+    "admin": "admin",
+    "админ": "admin",
+    "ментор": "mentor",
 }
 
 
 def _resolve_role_name(notion_role: str | None) -> str:
-    return _NOTION_ROLE_MAP.get(notion_role, "student")
+    if notion_role is None:
+        return "student"
+    return _NOTION_ROLE_MAP.get(notion_role.strip().lower(), "student")
 
 
 def _clean_name(name: str | None) -> str | None:
@@ -101,12 +102,12 @@ async def _ensure_user_exists(
         )
         await session.flush()
     else:
-        if user.role_id is None:
+        if role_name != "student" or user.role_id is None:
             role_result = await session.execute(
                 select(RoleModel.id).where(RoleModel.name == role_name)
             )
             role_id = role_result.scalar_one_or_none()
-            if role_id:
+            if role_id and user.role_id != role_id:
                 user.role_id = role_id
 
 
@@ -116,12 +117,14 @@ async def _resolve_mentor_id(
     if not mentor_name and not mentor_email:
         return None
     if mentor_name:
-        result = await session.execute(
-            select(Mentor.id).where(Mentor.name == mentor_name)
-        )
-        mid = result.scalar_one_or_none()
-        if mid:
-            return mid
+        clean = _clean_name(mentor_name)
+        if clean:
+            result = await session.execute(
+                select(Mentor.id).where(func.ltrim(Mentor.name, "@") == clean)
+            )
+            mid = result.scalar_one_or_none()
+            if mid:
+                return mid
     if mentor_email:
         result = await session.execute(
             select(Mentor.id).where(Mentor.email == mentor_email)
@@ -136,12 +139,14 @@ async def _resolve_mentor_telegram_id(
     if not mentor_name and not mentor_email:
         return None
     if mentor_name:
-        result = await session.execute(
-            select(Mentor.telegram_id).where(Mentor.name == mentor_name)
-        )
-        tid = result.scalar_one_or_none()
-        if tid:
-            return tid
+        clean = _clean_name(mentor_name)
+        if clean:
+            result = await session.execute(
+                select(Mentor.telegram_id).where(func.ltrim(Mentor.name, "@") == clean)
+            )
+            tid = result.scalar_one_or_none()
+            if tid:
+                return tid
     if mentor_email:
         result = await session.execute(
             select(Mentor.telegram_id).where(Mentor.email == mentor_email)
@@ -341,7 +346,7 @@ class NotionSyncServiceV2:
                 logger.debug("Skipping echo for mentor page %s", page_id)
                 return
 
-            mentor.name = data.name or mentor.name
+            mentor.name = _clean_name(data.name) or mentor.name
             mentor.email = getattr(data, "email", None) or mentor.email
             mentor.about = getattr(data, "about", None) or mentor.about
             mentor.membership_type = (
@@ -357,7 +362,7 @@ class NotionSyncServiceV2:
         else:
             new_mentor = Mentor(
                 notion_page_id=page_id,
-                name=data.name,
+                name=_clean_name(data.name),
                 email=getattr(data, "email", None),
                 about=getattr(data, "about", None),
                 membership_type=getattr(data, "membership_type", None),
