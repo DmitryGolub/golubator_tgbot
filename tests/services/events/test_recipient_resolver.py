@@ -21,9 +21,7 @@ class TestEventBasedRecipients:
         assert result == [200]
 
     async def test_event_student_missing(self):
-        result = await RecipientResolver.resolve(
-            _rule(RecipientType.event_student), {}
-        )
+        result = await RecipientResolver.resolve(_rule(RecipientType.event_student), {})
         assert result == []
 
     async def test_event_mentor_from_context(self):
@@ -33,9 +31,7 @@ class TestEventBasedRecipients:
         assert result == [100]
 
     async def test_event_mentor_missing(self):
-        result = await RecipientResolver.resolve(
-            _rule(RecipientType.event_mentor), {}
-        )
+        result = await RecipientResolver.resolve(_rule(RecipientType.event_mentor), {})
         assert result == []
 
 
@@ -79,10 +75,10 @@ class TestByRole:
         assert result == []
 
 
-@patch("src.services.events.recipient_resolver.UserDAO")
+@patch("src.dao.mentee.MenteeDAO")
 class TestByState:
     async def test_fetches_users(self, mock_dao):
-        mock_dao.get_all = AsyncMock(
+        mock_dao.get_all_with_details = AsyncMock(
             return_value=[SimpleNamespace(telegram_id=300)]
         )
         result = await RecipientResolver.resolve(
@@ -102,9 +98,7 @@ class TestByState:
 @patch("src.services.events.recipient_resolver.UserDAO")
 class TestByTag:
     async def test_fetches_users(self, mock_dao):
-        mock_dao.get_all = AsyncMock(
-            return_value=[SimpleNamespace(telegram_id=400)]
-        )
+        mock_dao.get_all = AsyncMock(return_value=[SimpleNamespace(telegram_id=400)])
         result = await RecipientResolver.resolve(
             _rule(RecipientType.by_tag, {"tag_id": "5"}),
             {},

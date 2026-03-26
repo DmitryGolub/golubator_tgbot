@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
-    BigInteger,
     DateTime,
     ForeignKey,
     Index,
@@ -18,26 +17,26 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.core.database import Base
 
 if TYPE_CHECKING:
-    from src.models.user import User
+    from src.models.mentee import Mentee
 
 
 class NotionCohortCache(Base):
     __tablename__ = "notion_cohort_cache"
     __table_args__ = (
         UniqueConstraint(
-            "user_telegram_id",
+            "mentee_id",
             "cohort_type",
             "cohort_value",
-            name="uq_cohort_cache_user_type_value",
+            name="uq_cohort_cache_mentee_type_value",
         ),
         Index("ix_cohort_cache_type_value", "cohort_type", "cohort_value"),
         {"schema": "integrations"},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_telegram_id: Mapped[int] = mapped_column(
-        BigInteger,
-        ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
+    mentee_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("iam.mentees.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -49,7 +48,7 @@ class NotionCohortCache(Base):
         nullable=False,
     )
 
-    user: Mapped["User"] = relationship(
-        "User",
+    mentee: Mapped["Mentee"] = relationship(
+        "Mentee",
         back_populates="cohort_cache",
     )

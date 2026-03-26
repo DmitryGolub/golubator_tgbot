@@ -12,13 +12,31 @@ from src.bot.keyboards.cohort import cohort_actions_keyboard
 from src.services.auth import AuthService
 from src.services.ui_text import UiTextService
 from src.dao.user import UserDAO
+from src.dao.role import RoleDAO
+from src.dao.mentee import MenteeDAO
 from src.dao.notion_cache import NotionCacheDAO
 
+from src.core.config import settings
 from src.services.call_flow import ActiveCallNotFoundError, CallFlowService
-from src.models.user import Role
 from src.utils.escape import e
 
 router = Router(name="menu")
+
+
+async def _auto_register(tg_user):
+    """Register user if not exists, return User."""
+    existing = await UserDAO.find_one_or_none(telegram_id=tg_user.id)
+    if existing:
+        return existing
+    role_obj = await RoleDAO.get_by_name(
+        "admin" if tg_user.id in settings.admin_ids else "student"
+    )
+    return await UserDAO.add(
+        telegram_id=tg_user.id,
+        username=tg_user.username,
+        name=tg_user.full_name,
+        role_id=role_obj.id if role_obj else None,
+    )
 
 
 async def _render_menu(message_or_callback, permissions: set[str]):
@@ -39,6 +57,10 @@ async def _render_menu(message_or_callback, permissions: set[str]):
 async def cmd_menu(message: Message):
     permissions = await AuthService.get_user_permissions(message.from_user.id)
     if not permissions:
+        await _auto_register(message.from_user)
+        await AuthService.invalidate_user(message.from_user.id)
+        permissions = await AuthService.get_user_permissions(message.from_user.id)
+    if not permissions:
         text = await UiTextService.get("menu.access_denied")
         await message.answer(text)
         return
@@ -51,6 +73,10 @@ async def cb_menu(callback: CallbackQuery):
     await callback.answer()
 
     permissions = await AuthService.get_user_permissions(callback.from_user.id)
+    if not permissions:
+        await _auto_register(callback.from_user)
+        await AuthService.invalidate_user(callback.from_user.id)
+        permissions = await AuthService.get_user_permissions(callback.from_user.id)
     if not permissions:
         text = await UiTextService.get("menu.access_denied")
         await callback.message.edit_text(text)
@@ -159,18 +185,15 @@ async def _finish_active_call_text(mentor_id: int) -> str:
     except ActiveCallNotFoundError:
         return await UiTextService.get("menu.no_active_call")
 
-    if result.meeting is None:
-        return await UiTextService.get(
-            "menu.call_ended.no_meeting",
-            start=f"{result.call.started_at:%d.%m.%Y %H:%M}",
-            end=f"{result.call.ended_at:%d.%m.%Y %H:%M}",
-        )
-
     return await UiTextService.get(
         "menu.call_ended.with_meeting",
         id=str(result.meeting.id),
-        start=f"{result.call.started_at:%d.%m.%Y %H:%M}",
-        end=f"{result.call.ended_at:%d.%m.%Y %H:%M}",
+        start=f"{result.meeting.scheduled_at:%d.%m.%Y %H:%M}"
+        if result.meeting.scheduled_at
+        else "—",
+        end=f"{result.meeting.completed_at:%d.%m.%Y %H:%M}"
+        if result.meeting.completed_at
+        else "—",
     )
 
 
@@ -196,8 +219,8 @@ async def cb_mentor_students_menu(callback: CallbackQuery):
 async def cb_mentor_students_list(callback: CallbackQuery):
     await callback.answer()
 
-    students = await UserDAO.get_all(mentor_id=callback.from_user.id)
-    if not students:
+    mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
+    if not mentees:
         text = await UiTextService.get("menu.students.empty")
         try:
             await callback.message.edit_text(
@@ -211,18 +234,19 @@ async def cb_mentor_students_list(callback: CallbackQuery):
 
     header = await UiTextService.get("menu.students.header")
     lines = [header, ""]
-    student_ids = [s.telegram_id for s in students]
-    cohorts_map = await NotionCacheDAO.get_cohorts_batch(student_ids)
-    for student in students:
-        role_display = student.role_rel.display_name if student.role_rel else "—"
-        cohorts = cohorts_map.get(student.telegram_id, [])
+    mentee_tids = [m.telegram_id for m in mentees if m.telegram_id]
+    cohorts_map = await NotionCacheDAO.get_cohorts_batch(mentee_tids)
+    for mentee in mentees:
+        display_name = mentee.doc_name or (mentee.user.name if mentee.user else "—")
+        username = mentee.user.username if mentee.user else None
+        username_display = f"@{e(username)}" if username else ""
+        cohorts = cohorts_map.get(mentee.telegram_id, []) if mentee.telegram_id else []
         categories = [c.cohort_value for c in cohorts if c.cohort_type == "Category"]
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
         lines.append(
-            f"👤 <b>{e(student.name)}</b> @{e(student.username)}\n"
+            f"👤 <b>{e(display_name)}</b> {username_display}\n"
             f"   • Направления: <b>{e(cohort_display)}</b>\n"
-            f"   • Роль: <b>{e(role_display)}</b>\n"
-            f"   • Состояние: <b>{e(student.state.value if student.state else '—')}</b>\n"
+            f"   • Состояние: <b>{e(mentee.state.value if mentee.state else '—')}</b>\n"
         )
 
     try:
@@ -304,8 +328,6 @@ async def cb_mentor_me_info(callback: CallbackQuery):
         f"Юзернейм: @{e(mentor.username)}\n"
         f"Роль: <b>{e(role_display)}</b>\n"
     )
-    if mentor.role == Role.student and mentor.state:
-        text += f"Состояние: <b>{e(mentor.state.value)}</b>\n"
 
     try:
         await callback.message.edit_text(text, reply_markup=await _mentor_me_keyboard())
@@ -328,8 +350,17 @@ async def cb_student_me_info(callback: CallbackQuery):
         )
         return
 
-    mentor_name = student.mentor.name if student.mentor else "Отсутствует"
-    mentor_username = f"@{student.mentor.username}" if student.mentor else ""
+    mentee = await MenteeDAO.find_by_telegram_id(callback.from_user.id)
+    mentor_name = "Отсутствует"
+    mentor_username = ""
+    mentee_state = "—"
+    if mentee:
+        if mentee.mentor:
+            mentor_name = mentee.mentor.name or "Отсутствует"
+            if mentee.mentor.user and mentee.mentor.user.username:
+                mentor_username = f"@{mentee.mentor.user.username}"
+        mentee_state = mentee.state.value if mentee.state else "—"
+
     role_display = student.role_rel.display_name if student.role_rel else "—"
 
     title = await UiTextService.get("menu.me.title")
@@ -339,7 +370,7 @@ async def cb_student_me_info(callback: CallbackQuery):
         f"Юзернейм: @{e(student.username)}\n"
         f"Роль: <b>{e(role_display)}</b>\n"
         f"Мой ментор: <b>{e(mentor_name)}</b> {e(mentor_username)}\n"
-        f"Состояние: <b>{e(student.state.value if student.state else '—')}</b>\n"
+        f"Состояние: <b>{e(mentee_state)}</b>\n"
     )
 
     try:

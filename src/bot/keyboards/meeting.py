@@ -11,7 +11,6 @@ from src.bot.callbacks.meeting import (
     NavigateMeetingMonthCB,
     ChooseMeetingTimeCB,
 )
-from src.models.user import User
 from src.models.meeting import Meeting
 
 
@@ -47,12 +46,18 @@ def meeting_cancel_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def meeting_students_keyboard(students: list[User]) -> InlineKeyboardMarkup:
+def meeting_students_keyboard(students) -> InlineKeyboardMarkup:
+    """Accept User or Mentee objects. Uses doc_name/name and telegram_id."""
     kb = InlineKeyboardBuilder()
 
     for student in students:
+        display_name = getattr(student, "doc_name", None) or student.name
+        username = getattr(student, "username", None)
+        if not username and hasattr(student, "user") and student.user:
+            username = student.user.username
+        label = f"{display_name} @{username}" if username else display_name
         kb.button(
-            text=f"{student.name} @{student.username}",
+            text=label,
             callback_data=ChooseMeetingStudentCB(student_id=student.telegram_id).pack(),
         )
 

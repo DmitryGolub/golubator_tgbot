@@ -5,7 +5,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from src.core.dao import BaseDAO
 from src.models.tag import Tag
-from src.models.user import User, State
+from src.models.user import User
 
 from src.core.database import async_session_maker
 
@@ -18,7 +18,6 @@ class UserDAO(BaseDAO):
         cls,
         *,
         role_name: str | None = None,
-        state: State | None = None,
         tag_id: int | None = None,
         registered_from: datetime | None = None,
         registered_to: datetime | None = None,
@@ -26,8 +25,6 @@ class UserDAO(BaseDAO):
     ):
         async with async_session_maker() as session:
             query = select(cls.model).options(
-                joinedload(cls.model.mentor),
-                joinedload(cls.model.meetings),
                 joinedload(cls.model.role_rel),
                 selectinload(cls.model.tags),
             )
@@ -39,8 +36,6 @@ class UserDAO(BaseDAO):
                 query = query.join(RoleModel, cls.model.role_id == RoleModel.id).where(
                     RoleModel.name == role_name
                 )
-            if state is not None:
-                query = query.where(cls.model.state == state)
             if tag_id is not None:
                 query = query.join(cls.model.tags).where(Tag.id == tag_id)
             if registered_from is not None:

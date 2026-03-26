@@ -30,11 +30,6 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     beat_schedule={
-        # Legacy cohort sync (kept until full migration to v2)
-        "notion.sync_cohorts": {
-            "task": "notion.sync_cohorts",
-            "schedule": crontab(minute="*/5"),
-        },
         # Bidirectional Notion sync
         "notion.push_changes": {
             "task": "notion.push_changes",
@@ -47,6 +42,10 @@ celery_app.conf.update(
         "notion.backup_pull_events": {
             "task": "notion.backup_pull_events",
             "schedule": settings.NOTION_BACKUP_POLL_EVENTS_INTERVAL,
+        },
+        "notion.backup_pull_cohorts": {
+            "task": "notion.backup_pull_cohorts",
+            "schedule": crontab(minute="*/5"),
         },
         # Triggers
         "triggers.tick_periodic": {

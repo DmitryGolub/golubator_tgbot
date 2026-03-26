@@ -1,43 +1,13 @@
 import logging
 
 from src.celery_app import celery_app
-from src.core.config import settings
 from src.services.notion.client import NotionDatabaseUnavailableError
 from src.tasks._db import run_async
 
 logger = logging.getLogger(__name__)
 
 
-# ── Legacy task (kept for backward compatibility with existing beat) ───
-
-
-async def _do_legacy_sync() -> None:
-    if not settings.NOTION_TOKEN or not settings.NOTION_DATABASE_ID:
-        logger.debug("NOTION_TOKEN or NOTION_DATABASE_ID not set, skipping sync")
-        return
-
-    from src.services.notion_client import NotionService
-    from src.services.notion_sync import NotionSyncService
-
-    notion = NotionService(settings.NOTION_TOKEN, settings.NOTION_DATABASE_ID)
-    try:
-        sync_service = NotionSyncService(notion)
-        result = await sync_service.sync_all()
-        logger.info(
-            "Notion sync: synced=%d, errors=%d",
-            result.synced_users,
-            result.errors,
-        )
-    finally:
-        await notion.close()
-
-
-@celery_app.task(name="notion.sync_cohorts")
-def sync_notion_cohorts() -> None:
-    run_async(_do_legacy_sync())
-
-
-# ── New bidirectional sync tasks ───────────────────────────────────────
+# ── Bidirectional sync tasks ───────────────────────────────────────
 
 
 def _get_sync_v2():
@@ -53,10 +23,16 @@ def push_changes() -> None:
         return
 
     async def _push():
-        users = await sync.push_users()
+        mentors = await sync.push_mentors()
+        mentees = await sync.push_mentees()
         events = await sync.push_events()
-        if users or events:
-            logger.info("Push complete: %d users, %d events", users, events)
+        if mentors or mentees or events:
+            logger.info(
+                "Push complete: %d mentors, %d mentees, %d events",
+                mentors,
+                mentees,
+                events,
+            )
 
     try:
         run_async(_push())
@@ -69,8 +45,17 @@ def backup_pull_users() -> None:
     sync = _get_sync_v2()
     if not sync:
         return
+
+    async def _pull():
+        mentors = await sync.backup_pull_mentors()
+        mentees = await sync.backup_pull_mentees()
+        if mentors or mentees:
+            logger.info(
+                "Backup pull complete: %d mentors, %d mentees", mentors, mentees
+            )
+
     try:
-        run_async(sync.backup_pull_users())
+        run_async(_pull())
     except NotionDatabaseUnavailableError as exc:
         logger.warning("backup_pull_users skipped: %s", exc)
 
@@ -84,3 +69,14 @@ def backup_pull_events() -> None:
         run_async(sync.backup_pull_events())
     except NotionDatabaseUnavailableError as exc:
         logger.warning("backup_pull_events skipped: %s", exc)
+
+
+@celery_app.task(name="notion.backup_pull_cohorts")
+def backup_pull_cohorts() -> None:
+    sync = _get_sync_v2()
+    if not sync:
+        return
+    try:
+        run_async(sync.backup_pull_cohorts())
+    except NotionDatabaseUnavailableError as exc:
+        logger.warning("backup_pull_cohorts skipped: %s", exc)

@@ -27,7 +27,8 @@ from src.bot.keyboards.menu import menu_keyboard
 from src.bot.states.meeting import CreateMeetingFSM
 from src.dao.meeting import MeetingDAO
 from src.dao.user import UserDAO
-from src.models.call import CallStatus
+from src.dao.mentee import MenteeDAO
+from src.models.meeting import CallStatus
 from src.services.auth import AuthService
 from src.utils.roles import is_mentor, is_student
 from src.utils.escape import e
@@ -159,7 +160,7 @@ async def cb_start_meeting_call(
     service = CallFlowService()
 
     try:
-        call = await service.start_call(
+        await service.start_call(
             mentor_id=callback.from_user.id,
             meeting_id=callback_data.meeting_id,
         )
@@ -172,7 +173,7 @@ async def cb_start_meeting_call(
     except MeetingStudentNotFoundError:
         text = "Не удалось определить ученика для этого созвона."
     except ActiveCallAlreadyExistsError as exc:
-        if exc.call.meeting_id == callback_data.meeting_id:
+        if exc.meeting.id == callback_data.meeting_id:
             text = "Этот созвон уже запущен и числится активным."
         else:
             text = (
@@ -180,14 +181,13 @@ async def cb_start_meeting_call(
                 "Сначала завершите его через кнопку или команду /end_call."
             )
     except CallAlreadyExistsError as exc:
-        if exc.call.status == CallStatus.ongoing:
+        if exc.meeting.call_status == CallStatus.ongoing:
             text = "Этот созвон уже запущен и числится активным."
         else:
             text = "Для этого созвона уже есть завершённая сессия."
     else:
         text = (
-            f"✅ Созвон по встрече #{callback_data.meeting_id} начат.\n"
-            f"Активный Call #{call.id} создан.\n\n"
+            f"✅ Созвон по встрече #{callback_data.meeting_id} начат.\n\n"
             "После окончания используйте кнопку «Завершить активный созвон» "
             "или команду /end_call."
         )
@@ -203,8 +203,8 @@ async def cb_start_meeting_call(
 async def cb_meeting_create(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
-    students = await UserDAO.get_all(mentor_id=callback.from_user.id)
-    if not students:
+    mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
+    if not mentees:
         await callback.message.edit_text(
             "У вас пока нет учеников.",
             reply_markup=await _menu_kb(callback.from_user.id),
@@ -214,7 +214,7 @@ async def cb_meeting_create(callback: CallbackQuery, state: FSMContext):
     await state.set_state(CreateMeetingFSM.choosing_student)
     await callback.message.edit_text(
         "Выберите ученика для созвона:",
-        reply_markup=meeting_students_keyboard(students),
+        reply_markup=meeting_students_keyboard(mentees),
     )
 
 

@@ -14,7 +14,7 @@ from src.services.call_flow import (
     _resolve_mentor,
     _resolve_student,
 )
-from tests.conftest import make_call, make_meeting, make_role, make_user
+from tests.conftest import make_meeting, make_role, make_user
 
 MENTOR_ID = 100
 STUDENT_ID = 200
@@ -79,34 +79,32 @@ class TestResolveStudent:
         assert _resolve_student(meeting) is None
 
 
-@patch("src.services.call_flow.CallDAO")
 @patch("src.services.call_flow.MeetingDAO")
 class TestStartCall:
-    async def test_happy_path(self, mock_meeting_dao, mock_call_dao):
+    async def test_happy_path(self, mock_meeting_dao):
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=_meeting())
-        mock_call_dao.get_active_for_mentor = AsyncMock(return_value=None)
-        mock_call_dao.get_by_meeting_id = AsyncMock(return_value=None)
-        call = make_call()
-        mock_call_dao.create_for_meeting = AsyncMock(return_value=call)
+        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=None)
+        started = _meeting(call_status="ongoing", student_telegram_id=STUDENT_ID)
+        mock_meeting_dao.start_call = AsyncMock(return_value=started)
 
         result = await CallFlowService().start_call(
             mentor_id=MENTOR_ID, meeting_id=MEETING_ID
         )
-        assert result.id == call.id
+        assert result.id == started.id
 
-    async def test_meeting_not_found(self, mock_meeting_dao, mock_call_dao):
+    async def test_meeting_not_found(self, mock_meeting_dao):
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=None)
         with pytest.raises(MeetingNotFoundError):
             await CallFlowService().start_call(
                 mentor_id=MENTOR_ID, meeting_id=MEETING_ID
             )
 
-    async def test_mentor_not_in_meeting(self, mock_meeting_dao, mock_call_dao):
+    async def test_mentor_not_in_meeting(self, mock_meeting_dao):
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=_meeting())
         with pytest.raises(MentorNotInMeetingError):
             await CallFlowService().start_call(mentor_id=999, meeting_id=MEETING_ID)
 
-    async def test_meeting_already_completed(self, mock_meeting_dao, mock_call_dao):
+    async def test_meeting_already_completed(self, mock_meeting_dao):
         from datetime import datetime, timezone
 
         meeting = _meeting(completed_at=datetime.now(timezone.utc))
@@ -116,60 +114,67 @@ class TestStartCall:
                 mentor_id=MENTOR_ID, meeting_id=MEETING_ID
             )
 
-    async def test_active_call_exists(self, mock_meeting_dao, mock_call_dao):
+    async def test_active_call_exists(self, mock_meeting_dao):
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=_meeting())
-        existing = make_call()
-        mock_call_dao.get_active_for_mentor = AsyncMock(return_value=existing)
+        existing = _meeting(call_status="ongoing", student_telegram_id=STUDENT_ID)
+        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=existing)
         with pytest.raises(ActiveCallAlreadyExistsError) as exc_info:
             await CallFlowService().start_call(
                 mentor_id=MENTOR_ID, meeting_id=MEETING_ID
             )
-        assert exc_info.value.call is existing
+        assert exc_info.value.meeting is existing
 
-    async def test_call_for_meeting_exists(self, mock_meeting_dao, mock_call_dao):
-        mock_meeting_dao.get_with_participants = AsyncMock(return_value=_meeting())
-        mock_call_dao.get_active_for_mentor = AsyncMock(return_value=None)
-        existing = make_call()
-        mock_call_dao.get_by_meeting_id = AsyncMock(return_value=existing)
+    async def test_call_for_meeting_exists(self, mock_meeting_dao):
+        mock_meeting_dao.get_with_participants = AsyncMock(
+            return_value=_meeting(call_status="finished")
+        )
+        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=None)
         with pytest.raises(CallAlreadyExistsError):
             await CallFlowService().start_call(
                 mentor_id=MENTOR_ID, meeting_id=MEETING_ID
             )
 
-    async def test_no_student(self, mock_meeting_dao, mock_call_dao):
+    async def test_no_student(self, mock_meeting_dao):
         meeting = make_meeting(participants=[_mentor()])
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=meeting)
-        mock_call_dao.get_active_for_mentor = AsyncMock(return_value=None)
-        mock_call_dao.get_by_meeting_id = AsyncMock(return_value=None)
+        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=None)
         with pytest.raises(MeetingStudentNotFoundError):
             await CallFlowService().start_call(
                 mentor_id=MENTOR_ID, meeting_id=MEETING_ID
             )
 
 
-@patch("src.services.call_flow.CallDAO")
 @patch("src.services.call_flow.MeetingDAO")
 class TestEndActiveCall:
-    async def test_happy_path(self, mock_meeting_dao, mock_call_dao):
+    async def test_happy_path(self, mock_meeting_dao):
         from datetime import datetime, timezone
 
-        finished = make_call(ended_at=datetime.now(timezone.utc), status="finished")
-        mock_call_dao.get_active_for_mentor = AsyncMock(return_value=make_call())
-        mock_call_dao.finish_call = AsyncMock(return_value=finished)
-        meeting = _meeting()
-        mock_meeting_dao.complete = AsyncMock(return_value=(meeting, True))
+        active = _meeting(
+            call_status="ongoing",
+            mentor_telegram_id=MENTOR_ID,
+            student_telegram_id=STUDENT_ID,
+        )
+        finished = _meeting(
+            call_status="finished",
+            completed_at=datetime.now(timezone.utc),
+            mentor_telegram_id=MENTOR_ID,
+            student_telegram_id=STUDENT_ID,
+        )
+        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=active)
+        mock_meeting_dao.finish_call = AsyncMock(return_value=finished)
 
         result = await CallFlowService().end_active_call(mentor_id=MENTOR_ID)
-        assert result.call is finished
+        assert result.meeting is finished
         assert result.meeting_was_completed is True
 
-    async def test_no_active_call(self, mock_meeting_dao, mock_call_dao):
-        mock_call_dao.get_active_for_mentor = AsyncMock(return_value=None)
+    async def test_no_active_call(self, mock_meeting_dao):
+        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=None)
         with pytest.raises(ActiveCallNotFoundError):
             await CallFlowService().end_active_call(mentor_id=MENTOR_ID)
 
-    async def test_finish_returns_none(self, mock_meeting_dao, mock_call_dao):
-        mock_call_dao.get_active_for_mentor = AsyncMock(return_value=make_call())
-        mock_call_dao.finish_call = AsyncMock(return_value=None)
+    async def test_finish_returns_none(self, mock_meeting_dao):
+        active = _meeting(call_status="ongoing")
+        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=active)
+        mock_meeting_dao.finish_call = AsyncMock(return_value=None)
         with pytest.raises(ActiveCallNotFoundError):
             await CallFlowService().end_active_call(mentor_id=MENTOR_ID)

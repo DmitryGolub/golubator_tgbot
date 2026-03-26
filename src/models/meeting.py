@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import enum
 from typing import TYPE_CHECKING, Optional
 from datetime import datetime
 from sqlalchemy import (
+    Enum,
     Index,
     Integer,
     BigInteger,
@@ -11,18 +13,31 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     func,
+    text,
 )
 
 if TYPE_CHECKING:
-    from src.models.call import Call
     from src.models.user import User
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.core.database import Base
 
 
+class CallStatus(enum.Enum):
+    ongoing = "идёт"
+    finished = "завершён"
+
+
 class Meeting(Base):
     __tablename__ = "meetings"
-    __table_args__ = {"schema": "meetings"}
+    __table_args__ = (
+        Index(
+            "ix_meetings_active_mentor",
+            "mentor_telegram_id",
+            unique=True,
+            postgresql_where=text("call_status = 'идёт'"),
+        ),
+        {"schema": "meetings"},
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -58,6 +73,20 @@ class Meeting(Base):
     synced_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    call_status: Mapped[Optional[CallStatus]] = mapped_column(
+        Enum(
+            CallStatus,
+            name="call_status_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+            create_type=False,
+        ),
+        nullable=True,
+    )
+    student_telegram_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+        nullable=True,
+    )
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -71,10 +100,9 @@ class Meeting(Base):
         back_populates="meetings",
         lazy="selectin",
     )
-    call: Mapped[Optional["Call"]] = relationship(
-        "Call",
-        back_populates="meeting",
-        uselist=False,
+    student: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[student_telegram_id],
         lazy="selectin",
     )
 

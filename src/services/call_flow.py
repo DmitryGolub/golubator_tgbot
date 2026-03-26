@@ -3,9 +3,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.exc import IntegrityError
 
-from src.dao.call import CallDAO
 from src.dao.meeting import MeetingDAO
-from src.models.call import Call
 from src.models.meeting import Meeting
 from src.models.user import User
 from src.utils.roles import is_mentor, is_student
@@ -38,21 +36,20 @@ class ActiveCallNotFoundError(CallFlowError):
 
 
 class ActiveCallAlreadyExistsError(CallFlowError):
-    def __init__(self, call: Call):
+    def __init__(self, meeting: Meeting):
         super().__init__("Active call already exists")
-        self.call = call
+        self.meeting = meeting
 
 
 class CallAlreadyExistsError(CallFlowError):
-    def __init__(self, call: Call):
+    def __init__(self, meeting: Meeting):
         super().__init__("Call for this meeting already exists")
-        self.call = call
+        self.meeting = meeting
 
 
 @dataclass(slots=True)
 class EndCallResult:
-    call: Call
-    meeting: Meeting | None
+    meeting: Meeting
     meeting_was_completed: bool
 
 
@@ -101,7 +98,7 @@ class CallFlowService:
         *,
         mentor_id: int,
         meeting_id: int,
-    ) -> Call:
+    ) -> Meeting:
         meeting = await MeetingDAO.get_with_participants(meeting_id)
         if not meeting:
             raise MeetingNotFoundError
@@ -113,74 +110,64 @@ class CallFlowService:
         if meeting.completed_at is not None:
             raise MeetingAlreadyCompletedError
 
-        active_call = await CallDAO.get_active_for_mentor(mentor_id)
-        if active_call:
-            raise ActiveCallAlreadyExistsError(active_call)
+        active = await MeetingDAO.get_active_call_for_mentor(mentor_id)
+        if active:
+            raise ActiveCallAlreadyExistsError(active)
 
-        existing_call = await CallDAO.get_by_meeting_id(meeting_id)
-        if existing_call:
-            raise CallAlreadyExistsError(existing_call)
+        if meeting.call_status is not None:
+            raise CallAlreadyExistsError(meeting)
 
         student = _resolve_student(meeting)
         if not student:
             raise MeetingStudentNotFoundError
 
         try:
-            call = await CallDAO.create_for_meeting(
-                meeting_id=meeting_id,
-                mentor_id=mentor_id,
-                student_id=student.telegram_id,
-            )
+            started = await MeetingDAO.start_call(meeting_id, student.telegram_id)
         except IntegrityError:
             # Concurrent call creation — re-check state
-            existing = await CallDAO.get_active_for_mentor(mentor_id)
+            existing = await MeetingDAO.get_active_call_for_mentor(mentor_id)
             if existing:
                 raise ActiveCallAlreadyExistsError(existing)
-            existing = await CallDAO.get_by_meeting_id(meeting_id)
-            if existing:
-                raise CallAlreadyExistsError(existing)
+            refreshed = await MeetingDAO.get_with_participants(meeting_id)
+            if refreshed and refreshed.call_status is not None:
+                raise CallAlreadyExistsError(refreshed)
             raise
 
+        if not started:
+            raise CallAlreadyExistsError(meeting)
+
         logger.info(
-            "Call started: call_id=%s meeting=%s mentor=%s student=%s",
-            call.id,
+            "Call started: meeting=%s mentor=%s student=%s",
             meeting_id,
             mentor_id,
             student.telegram_id,
         )
-        return call
+        return started
 
     async def end_active_call(self, *, mentor_id: int) -> EndCallResult:
-        active_call = await CallDAO.get_active_for_mentor(mentor_id)
-        if not active_call:
+        active_meeting = await MeetingDAO.get_active_call_for_mentor(mentor_id)
+        if not active_meeting:
             raise ActiveCallNotFoundError
 
-        finished_call = await CallDAO.finish_call(active_call.id, mentor_id)
-        if not finished_call:
+        finished_meeting = await MeetingDAO.finish_call(active_meeting.id, mentor_id)
+        if not finished_meeting:
             raise ActiveCallNotFoundError
 
-        meeting = None
-        meeting_was_completed = False
-        if finished_call.meeting_id is not None:
-            meeting, meeting_was_completed = await MeetingDAO.complete(
-                finished_call.meeting_id,
-                completed_at=finished_call.ended_at,
-            )
+        meeting_was_completed = finished_meeting.completed_at is not None
 
         result = EndCallResult(
-            call=finished_call,
-            meeting=meeting,
+            meeting=finished_meeting,
             meeting_was_completed=meeting_was_completed,
         )
         logger.info(
-            "Call ended: call_id=%s mentor=%s meeting_completed=%s",
-            finished_call.id,
+            "Call ended: meeting=%s mentor=%s meeting_completed=%s",
+            finished_meeting.id,
             mentor_id,
             meeting_was_completed,
         )
 
         # Emit call_ended trigger for dynamic actions (surveys, notifications)
-        if meeting_was_completed and meeting:
+        if meeting_was_completed:
             try:
                 from src.models.trigger import TriggerType
                 from src.services.events.dispatcher import EventDispatcher
@@ -188,9 +175,9 @@ class CallFlowService:
                 await EventDispatcher.emit(
                     TriggerType.call_ended,
                     {
-                        "meeting_id": meeting.id,
-                        "mentor_id": finished_call.mentor_id,
-                        "student_id": finished_call.student_id,
+                        "meeting_id": finished_meeting.id,
+                        "mentor_id": finished_meeting.mentor_telegram_id,
+                        "student_id": finished_meeting.student_telegram_id,
                     },
                 )
             except Exception:

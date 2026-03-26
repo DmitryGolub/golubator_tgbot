@@ -2,10 +2,10 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery
 
 from src.dao.user import UserDAO
+from src.dao.mentee import MenteeDAO
 from src.dao.notion_cache import NotionCacheDAO
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import back_to_menu_keyboard
-from src.models.user import Role
 from src.utils.escape import e
 from src.utils.telegram import split_message
 
@@ -22,6 +22,13 @@ async def cb_user_list(callback: CallbackQuery):
     if not all_users:
         return await callback.message.edit_text("<b>Список пользователей пуст.</b>")
 
+    # Load all mentee profiles for mentor/state info
+    all_mentees = await MenteeDAO.get_all_with_details()
+    mentee_by_tid: dict[int, object] = {}
+    for mentee in all_mentees:
+        if mentee.telegram_id:
+            mentee_by_tid[mentee.telegram_id] = mentee
+
     # Batch load cohorts to avoid N+1
     user_ids = [u.telegram_id for u in all_users]
     cohorts_map = await NotionCacheDAO.get_cohorts_batch(user_ids)
@@ -29,8 +36,14 @@ async def cb_user_list(callback: CallbackQuery):
     answer = "<b>Список пользователей:</b>\n\n"
 
     for user in all_users:
-        mentor_name = user.mentor.name if user.mentor else "Отсутствует"
-        mentor_username = f"@{user.mentor.username}" if user.mentor else ""
+        mentee = mentee_by_tid.get(user.telegram_id)
+        mentor_name = "Отсутствует"
+        mentor_username = ""
+        if mentee and mentee.mentor:
+            mentor_name = mentee.mentor.name or "Отсутствует"
+            if mentee.mentor.user and mentee.mentor.user.username:
+                mentor_username = f"@{mentee.mentor.user.username}"
+
         role_display = user.role_rel.display_name if user.role_rel else "—"
 
         cohorts = cohorts_map.get(user.telegram_id, [])
@@ -38,8 +51,8 @@ async def cb_user_list(callback: CallbackQuery):
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
 
         state_line = ""
-        if user.role == Role.student and user.state:
-            state_line = f"   • Состояние: <b>{e(user.state.value)}</b>\n"
+        if mentee and mentee.state:
+            state_line = f"   • Состояние: <b>{e(mentee.state.value)}</b>\n"
 
         answer += (
             f"👤 <b>{e(user.name)}</b> @{e(user.username)}\n"

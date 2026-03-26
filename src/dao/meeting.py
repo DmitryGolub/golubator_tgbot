@@ -6,7 +6,7 @@ from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
 from src.core.database import async_session_maker
-from src.models.meeting import Meeting, MeetingUser
+from src.models.meeting import CallStatus, Meeting, MeetingUser
 
 
 class MeetingDAO(BaseDAO):
@@ -125,6 +125,87 @@ class MeetingDAO(BaseDAO):
             res = await session.execute(stmt)
             await session.commit()
             return res.rowcount or 0
+
+    @classmethod
+    async def get_active_call_for_mentor(cls, mentor_id: int) -> Optional[Meeting]:
+        async with async_session_maker() as session:
+            query = (
+                select(Meeting)
+                .where(
+                    Meeting.mentor_telegram_id == mentor_id,
+                    Meeting.call_status == CallStatus.ongoing,
+                )
+                .options(joinedload(Meeting.participants))
+                .order_by(Meeting.scheduled_at.desc())
+                .limit(1)
+            )
+            result = await session.execute(query)
+            result = result.unique()
+            return result.scalar_one_or_none()
+
+    @classmethod
+    async def start_call(cls, meeting_id: int, student_id: int) -> Optional[Meeting]:
+        async with async_session_maker() as session:
+            stmt = (
+                update(Meeting)
+                .where(
+                    Meeting.id == meeting_id,
+                    Meeting.call_status.is_(None),
+                )
+                .values(
+                    call_status=CallStatus.ongoing,
+                    student_telegram_id=student_id,
+                )
+                .returning(Meeting.id)
+            )
+            result = await session.execute(stmt)
+            updated_id = result.scalar_one_or_none()
+            await session.commit()
+
+            if updated_id is None:
+                return None
+
+            query = (
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .options(joinedload(Meeting.participants))
+            )
+            res = await session.execute(query)
+            res = res.unique()
+            return res.scalar_one_or_none()
+
+    @classmethod
+    async def finish_call(cls, meeting_id: int, mentor_id: int) -> Optional[Meeting]:
+        async with async_session_maker() as session:
+            now = datetime.now(timezone.utc)
+            stmt = (
+                update(Meeting)
+                .where(
+                    Meeting.id == meeting_id,
+                    Meeting.mentor_telegram_id == mentor_id,
+                    Meeting.call_status == CallStatus.ongoing,
+                )
+                .values(
+                    call_status=CallStatus.finished,
+                    completed_at=now,
+                )
+                .returning(Meeting.id)
+            )
+            result = await session.execute(stmt)
+            updated_id = result.scalar_one_or_none()
+            await session.commit()
+
+            if updated_id is None:
+                return None
+
+            query = (
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .options(joinedload(Meeting.participants))
+            )
+            res = await session.execute(query)
+            res = res.unique()
+            return res.scalar_one_or_none()
 
     @classmethod
     async def get_unsynced(cls) -> list[Meeting]:

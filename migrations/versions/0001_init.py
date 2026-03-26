@@ -19,7 +19,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 # ── Enums ──────────────────────────────────────────────────────────────────
 
-role_enum = pgEnum("Админ", "Ментор", "Студент", name="role_enum", create_type=False)
 state_enum = pgEnum(
     "Отбор",
     "В ожидании",
@@ -168,7 +167,6 @@ def upgrade() -> None:
 
     # ── 1. Create enums ───────────────────────────────────────────────────
     for e in (
-        role_enum,
         state_enum,
         regularity_enum,
         call_status_enum,
@@ -225,27 +223,83 @@ def upgrade() -> None:
     op.create_table(
         "users",
         sa.Column("telegram_id", sa.BigInteger, primary_key=True),
-        sa.Column("username", sa.String(255), unique=True, nullable=False, index=True),
+        sa.Column("username", sa.String(255), unique=True, nullable=True, index=True),
         sa.Column("name", sa.String(255), nullable=False),
-        sa.Column("role", role_enum, nullable=False, server_default="Студент"),
         sa.Column("role_id", sa.Integer, sa.ForeignKey("iam.roles.id"), nullable=True),
-        sa.Column("state", state_enum, nullable=True, server_default="Отбор"),
-        sa.Column(
-            "mentor_id",
-            sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column(
-            "notion_page_id", sa.String(50), nullable=True, unique=True, index=True
-        ),
-        sa.Column("notion_source_db", sa.String(10), nullable=True),
         sa.Column(
             "registered_at",
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=False,
         ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=True,
+        ),
+        schema="iam",
+    )
+
+    # ── 3b. Mentors ────────────────────────────────────────────────────────
+    op.create_table(
+        "mentors",
+        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column(
+            "telegram_id",
+            sa.BigInteger,
+            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+            nullable=True,
+            unique=True,
+            index=True,
+        ),
+        sa.Column(
+            "notion_page_id", sa.String(50), nullable=True, unique=True, index=True
+        ),
+        sa.Column("name", sa.String(255), nullable=True),
+        sa.Column("role", sa.String(50), nullable=True),
+        sa.Column("email", sa.String(255), nullable=True),
+        sa.Column("about", sa.Text, nullable=True),
+        sa.Column("membership_type", sa.String(100), nullable=True),
+        sa.Column("synced_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=True,
+        ),
+        schema="iam",
+    )
+
+    # ── 3c. Mentees ────────────────────────────────────────────────────────
+    op.create_table(
+        "mentees",
+        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column(
+            "telegram_id",
+            sa.BigInteger,
+            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+            nullable=True,
+            unique=True,
+            index=True,
+        ),
+        sa.Column(
+            "notion_page_id", sa.String(50), nullable=True, unique=True, index=True
+        ),
+        sa.Column("doc_name", sa.String(255), nullable=True),
+        sa.Column("state", state_enum, nullable=True),
+        sa.Column(
+            "mentor_id",
+            sa.Integer,
+            sa.ForeignKey("iam.mentors.id", ondelete="SET NULL"),
+            nullable=True,
+            index=True,
+        ),
+        sa.Column("contract", sa.Boolean, nullable=True),
+        sa.Column("intern", sa.String(255), nullable=True),
+        sa.Column("contract_version", sa.Float, nullable=True),
+        sa.Column("contract_expires", sa.String(100), nullable=True),
+        sa.Column("student_score", sa.Float, nullable=True),
         sa.Column("state_changed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("synced_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
@@ -319,6 +373,13 @@ def upgrade() -> None:
         sa.Column("action_items", sa.Text, nullable=True),
         sa.Column("project", sa.String(255), nullable=True),
         sa.Column("synced_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("call_status", call_status_enum, nullable=True),
+        sa.Column(
+            "student_telegram_id",
+            sa.BigInteger,
+            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
@@ -346,55 +407,12 @@ def upgrade() -> None:
     op.create_index(
         "ix_meeting_users_user_id", "meeting_users", ["user_id"], schema="meetings"
     )
-    op.create_table(
-        "calls",
-        sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column(
-            "meeting_id",
-            sa.Integer,
-            sa.ForeignKey("meetings.meetings.id", ondelete="CASCADE"),
-            nullable=False,
-            unique=True,
-            index=True,
-        ),
-        sa.Column(
-            "mentor_id",
-            sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
-            nullable=False,
-            index=True,
-        ),
-        sa.Column(
-            "student_id",
-            sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
-            nullable=False,
-            index=True,
-        ),
-        sa.Column(
-            "started_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
-        ),
-        sa.Column("ended_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "status", call_status_enum, nullable=False, server_default=sa.text("'идёт'")
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=True,
-        ),
-        schema="meetings",
-    )
     op.create_index(
-        "ix_calls_active_mentor",
-        "calls",
-        ["mentor_id"],
+        "ix_meetings_active_mentor",
+        "meetings",
+        ["mentor_telegram_id"],
         unique=True,
-        postgresql_where=sa.text("ended_at IS NULL"),
+        postgresql_where=sa.text("call_status = 'идёт'"),
         schema="meetings",
     )
 
@@ -405,9 +423,9 @@ def upgrade() -> None:
         "notion_cohort_cache",
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column(
-            "user_telegram_id",
-            sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
+            "mentee_id",
+            sa.Integer,
+            sa.ForeignKey("iam.mentees.id", ondelete="CASCADE"),
             nullable=False,
             index=True,
         ),
@@ -420,10 +438,10 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.UniqueConstraint(
-            "user_telegram_id",
+            "mentee_id",
             "cohort_type",
             "cohort_value",
-            name="uq_cohort_cache_user_type_value",
+            name="uq_cohort_cache_mentee_type_value",
         ),
         sa.Index("ix_cohort_cache_type_value", "cohort_type", "cohort_value"),
         schema="integrations",
@@ -1357,11 +1375,12 @@ def downgrade() -> None:
     op.drop_table("survey_questions", schema="surveys")
     op.drop_table("survey_templates", schema="surveys")
     op.drop_table("notion_cohort_cache", schema="integrations")
-    op.drop_table("calls", schema="meetings")
     op.drop_table("meeting_users", schema="meetings")
     op.drop_table("meetings", schema="meetings")
     op.drop_table("user_tags", schema="iam")
     op.drop_table("tags", schema="iam")
+    op.drop_table("mentees", schema="iam")
+    op.drop_table("mentors", schema="iam")
     op.drop_table("role_permissions", schema="iam")
     op.drop_table("users", schema="iam")
     op.drop_table("roles", schema="iam")
@@ -1379,7 +1398,6 @@ def downgrade() -> None:
         call_status_enum,
         regularity_enum,
         state_enum,
-        role_enum,
     ):
         e.drop(conn, checkfirst=True)
 

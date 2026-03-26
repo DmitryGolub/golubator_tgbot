@@ -7,7 +7,9 @@ from aiogram.filters import CommandStart, Command
 
 from src.dao.user import UserDAO
 from src.dao.role import RoleDAO
-from src.models.user import State
+from src.dao.mentor import MentorDAO
+from src.dao.mentee import MenteeDAO
+from src.models.user import User
 from datetime import datetime, timezone
 
 from src.core.config import settings
@@ -23,50 +25,49 @@ router = Router()
 _background_tasks: set[asyncio.Task] = set()
 
 
-@router.message(CommandStart())
-async def cmd_start(message: Message):
-    user = message.from_user
-
-    user_id = user.id
-    username = (user.username or "").strip()
-    reg_time = datetime.now(timezone.utc)
-
+async def _ensure_user(tg_user) -> User:
+    """Create or update User record (telegram data only). Returns User."""
+    user_id = tg_user.id
     is_admin = user_id in settings.admin_ids
 
-    existing_user = await UserDAO.find_one_or_none(telegram_id=user_id)
+    existing = await UserDAO.find_one_or_none(telegram_id=user_id)
 
-    if not existing_user:
-        if is_admin:
-            role_obj = await RoleDAO.get_by_name("admin")
-        else:
-            role_obj = await RoleDAO.get_by_name("student")
-
-        created_user = await UserDAO.add(
+    if not existing:
+        role_obj = await RoleDAO.get_by_name("admin" if is_admin else "student")
+        created = await UserDAO.add(
             telegram_id=user_id,
-            username=user.username,
-            name=user.full_name,
+            username=tg_user.username,
+            name=tg_user.full_name,
             role_id=role_obj.id if role_obj else None,
-            state=State.greeting,
-            registered_at=reg_time,
+            registered_at=datetime.now(timezone.utc),
         )
-        if created_user:
+        if created:
             logger.info(
                 "New user registered: tg=%s role=%s",
                 user_id,
                 "admin" if is_admin else "student",
             )
-            await schedule_onboarding_notifications(created_user, base_time=reg_time)
+            await schedule_onboarding_notifications(created)
+        return created
     else:
-        # keep admin role in sync with env setting
         if is_admin and (
-            existing_user.role_rel is None or existing_user.role_rel.name != "admin"
+            existing.role_rel is None or existing.role_rel.name != "admin"
         ):
             admin_role = await RoleDAO.get_by_name("admin")
             if admin_role:
                 await UserDAO.update(telegram_id=user_id, role_id=admin_role.id)
                 await AuthService.invalidate_user(user_id)
+        return existing
 
-    # Link user to Notion page (background, don't block welcome message)
+
+@router.message(CommandStart())
+async def cmd_start(message: Message):
+    user = message.from_user
+
+    await _ensure_user(user)
+
+    username = (user.username or "").strip()
+
     task = asyncio.create_task(_link_notion_page(user.id, username))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
@@ -74,8 +75,7 @@ async def cmd_start(message: Message):
     welcome = await UiTextService.get("start.welcome", name=user.first_name)
     await message.answer(welcome)
 
-    # Show menu right after welcome
-    permissions = await AuthService.get_user_permissions(user_id)
+    permissions = await AuthService.get_user_permissions(user.id)
     if permissions:
         title = await UiTextService.get("menu.title")
         await message.answer(title, reply_markup=await menu_keyboard(permissions))
@@ -97,8 +97,12 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
     if not settings.NOTION_TOKEN:
         return
 
-    existing = await UserDAO.find_one_or_none(telegram_id=telegram_id)
-    if existing and existing.notion_page_id:
+    mentor_record = await MentorDAO.find_by_telegram_id(telegram_id)
+    if mentor_record and mentor_record.notion_page_id:
+        return
+
+    mentee_record = await MenteeDAO.find_by_telegram_id(telegram_id)
+    if mentee_record and mentee_record.notion_page_id:
         return
 
     try:
@@ -116,18 +120,24 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
             )
             try:
                 mentor_repo = NotionMentorRepo(mentor_client)
-                mentor = await mentor_repo.find_by_telegram_id(telegram_id)
-                if mentor:
-                    await UserDAO.update(
-                        telegram_id=telegram_id,
-                        notion_page_id=mentor.page_id,
-                        notion_source_db="mentor",
+                notion_mentor = await mentor_repo.find_by_telegram_id(telegram_id)
+                if notion_mentor:
+                    if mentor_record:
+                        await MentorDAO.update(
+                            mentor_record.id, telegram_id=telegram_id
+                        )
+                    else:
+                        await MentorDAO.add(
+                            telegram_id=telegram_id,
+                            notion_page_id=notion_mentor.page_id,
+                        )
+                    await mentor_repo.update_telegram_id(
+                        notion_mentor.page_id, telegram_id
                     )
-                    await mentor_repo.update_telegram_id(mentor.page_id, telegram_id)
                     logger.info(
-                        "Notion page linked: user=%s page=%s db=mentor",
+                        "Notion mentor linked: user=%s page=%s",
                         telegram_id,
-                        mentor.page_id,
+                        notion_mentor.page_id,
                     )
                     return
             except NotionDatabaseUnavailableError:
@@ -144,21 +154,27 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
             try:
                 mentee_repo = NotionMenteeRepo(mentee_client)
 
-                mentee = await mentee_repo.find_by_telegram_id(telegram_id)
-                if not mentee and username:
-                    mentee = await mentee_repo.find_by_username(username)
+                notion_mentee = await mentee_repo.find_by_telegram_id(telegram_id)
+                if not notion_mentee and username:
+                    notion_mentee = await mentee_repo.find_by_username(username)
 
-                if mentee:
-                    await UserDAO.update(
-                        telegram_id=telegram_id,
-                        notion_page_id=mentee.page_id,
-                        notion_source_db="mentee",
+                if notion_mentee:
+                    if mentee_record:
+                        await MenteeDAO.update(
+                            mentee_record.id, telegram_id=telegram_id
+                        )
+                    else:
+                        await MenteeDAO.add(
+                            telegram_id=telegram_id,
+                            notion_page_id=notion_mentee.page_id,
+                        )
+                    await mentee_repo.update_telegram_id(
+                        notion_mentee.page_id, telegram_id
                     )
-                    await mentee_repo.update_telegram_id(mentee.page_id, telegram_id)
                     logger.info(
-                        "Notion page linked: user=%s page=%s db=mentee",
+                        "Notion mentee linked: user=%s page=%s",
                         telegram_id,
-                        mentee.page_id,
+                        notion_mentee.page_id,
                     )
                     return
 
@@ -166,13 +182,12 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                 if username:
                     page_id = await mentee_repo.create_page(username, telegram_id)
                     if page_id:
-                        await UserDAO.update(
+                        await MenteeDAO.add(
                             telegram_id=telegram_id,
                             notion_page_id=page_id,
-                            notion_source_db="mentee",
                         )
                         logger.info(
-                            "Notion page linked: user=%s page=%s db=mentee",
+                            "Notion mentee created: user=%s page=%s",
                             telegram_id,
                             page_id,
                         )

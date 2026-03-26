@@ -38,10 +38,11 @@ class RecipientResolver:
             if not state:
                 logger.warning("TriggerRule %s: by_state without state", rule.id)
                 return []
+            from src.dao.mentee import MenteeDAO
             from src.models.user import State
 
-            users = await UserDAO.get_all(state=State(state))
-            return [u.telegram_id for u in users]
+            mentees = await MenteeDAO.get_all_with_details(state=State(state))
+            return [m.telegram_id for m in mentees if m.telegram_id is not None]
 
         if rt == RecipientType.by_cohort:
             cohort_type = config.get("cohort_type", "Category")

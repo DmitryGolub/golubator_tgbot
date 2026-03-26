@@ -24,6 +24,8 @@ from src.bot.callbacks.update_user import (
 from src.models.user import State
 from src.dao.user import UserDAO
 from src.dao.role import RoleDAO
+from src.dao.mentor import MentorDAO
+from src.dao.mentee import MenteeDAO
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.services.auth import AuthService
 from src.utils.onboarding import (
@@ -155,11 +157,17 @@ async def cb_choose_enum_value(
         chosen_value_type="enum",
     )
 
-    users = (
-        await UserDAO.get_all()
-        if "manage_users" in perms
-        else await UserDAO.get_all(mentor_id=callback.from_user.id)
-    )
+    if "manage_users" in perms:
+        users = await UserDAO.get_all()
+    else:
+        mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
+        mentee_tids = [m.telegram_id for m in mentees if m.telegram_id]
+        users = (
+            [u for u in await UserDAO.get_all() if u.telegram_id in set(mentee_tids)]
+            if mentee_tids
+            else []
+        )
+
     if not users:
         await _msg(callback).edit_text("Пользователи не найдены.")
         await state.clear()
@@ -207,8 +215,8 @@ async def cb_choose_mentor(
 
     await state.set_state(UpdateUserFSM.choosing_user)
 
-    mentor = await UserDAO.find_one_or_none(telegram_id=mentor_id)
-    mentor_text = mentor.name if mentor else f"id={mentor_id}"
+    mentor_user = await UserDAO.find_one_or_none(telegram_id=mentor_id)
+    mentor_text = mentor_user.name if mentor_user else f"id={mentor_id}"
 
     await _msg(callback).edit_text(
         f"Вы выбрали: обновить <b>ментора</b> на <b>{e(mentor_text)}</b>.\n\n"
@@ -264,33 +272,51 @@ async def cb_choose_user_for_update(
                 value_human = chosen_value
 
         elif param == UpdateParam.STATUS:
-            if "manage_users" not in perms and user.mentor_id != callback.from_user.id:
-                await _msg(callback).edit_text(
-                    "Можно обновлять только своих учеников.",
-                    reply_markup=await back_to_menu_keyboard(),
+            mentee = await MenteeDAO.find_by_telegram_id(user_id)
+
+            if "manage_users" not in perms:
+                mentor_record = await MentorDAO.find_by_telegram_id(
+                    callback.from_user.id
                 )
-                await state.clear()
-                return
+                if not mentee or mentee.mentor_id != (
+                    mentor_record.id if mentor_record else None
+                ):
+                    await _msg(callback).edit_text(
+                        "Можно обновлять только своих учеников.",
+                        reply_markup=await back_to_menu_keyboard(),
+                    )
+                    await state.clear()
+                    return
 
             value_human = State[chosen_value].value
 
-            await UserDAO.update(telegram_id=user_id, state=State[chosen_value])
+            if mentee:
+                await MenteeDAO.update(mentee.id, state=State[chosen_value])
+            else:
+                value_human = f"{value_human} (профиль менти не найден)"
 
         else:
             value_human = chosen_value
 
     elif chosen_value_type == "mentor":
-        mentor = await UserDAO.find_one_or_none(telegram_id=chosen_value)
-        is_new_mentor = user.mentor_id != chosen_value
-        await UserDAO.update(telegram_id=user_id, mentor_id=chosen_value)
+        mentor_record = await MentorDAO.find_by_telegram_id(chosen_value)
+        mentee = await MenteeDAO.find_by_telegram_id(user_id)
 
-        value_human = mentor.name if mentor else f"id={chosen_value}"
+        if mentor_record and mentee:
+            is_new_mentor = mentee.mentor_id != mentor_record.id
+            await MenteeDAO.update(mentee.id, mentor_id=mentor_record.id)
+            value_human = mentor_record.name or f"id={chosen_value}"
 
-        if is_student(user) and user.state == State.greeting and mentor:
-            await schedule_onboarding_for_mentor(user, mentor.telegram_id)
+            if is_student(user) and mentee.state == State.greeting:
+                await schedule_onboarding_for_mentor(user, chosen_value)
 
-        if mentor and is_new_mentor:
-            await notify_student_new_mentor(user, mentor)
+            mentor_user = await UserDAO.find_one_or_none(telegram_id=chosen_value)
+            if mentor_user and is_new_mentor:
+                await notify_student_new_mentor(user, mentor_user)
+        elif not mentor_record:
+            value_human = f"Ментор id={chosen_value} не найден в таблице менторов"
+        else:
+            value_human = "Профиль менти не найден для пользователя"
 
     else:
         value_human = str(chosen_value)
