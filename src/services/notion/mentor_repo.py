@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 
 from src.services.notion.client import NotionClient
-from src.services.notion.dto import MentorData
+from src.services.notion.dto import MentorData, join_rich_text
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class NotionMentorRepo:
         props = page.get("properties", {})
 
         name_title = props.get("Name", {}).get("title") or []
-        name = name_title[0].get("plain_text", "").strip() if name_title else None
+        name = join_rich_text(name_title).strip() or None
 
         tg_id_raw = props.get("Telegram ID", {}).get("number")
         telegram_id = int(tg_id_raw) if tg_id_raw is not None else None
@@ -43,7 +43,7 @@ class NotionMentorRepo:
         email = props.get("Email", {}).get("email")
 
         about_rt = props.get("About", {}).get("rich_text") or []
-        about = about_rt[0].get("plain_text", "") if about_rt else None
+        about = join_rich_text(about_rt) or None
 
         membership_sel = props.get("Membership Type", {}).get("select")
         membership_type = membership_sel.get("name") if membership_sel else None

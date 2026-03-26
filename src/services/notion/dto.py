@@ -4,6 +4,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 
+def join_rich_text(blocks: list[dict]) -> str:
+    """Join all rich_text/title blocks into a single plain-text string."""
+    return "".join(item.get("plain_text", "") for item in blocks)
+
+
 @dataclass
 class MentorData:
     page_id: str

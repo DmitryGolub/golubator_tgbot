@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 
 from src.services.notion.client import NotionClient
-from src.services.notion.dto import MenteeData
+from src.services.notion.dto import MenteeData, join_rich_text
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class NotionMenteeRepo:
         props = page.get("properties", {})
 
         doc_title = props.get("Doc name", {}).get("title") or []
-        doc_name = doc_title[0].get("plain_text", "").strip() if doc_title else None
+        doc_name = join_rich_text(doc_title).strip() or None
 
         tg_id_raw = props.get("Telegram ID", {}).get("number")
         telegram_id = int(tg_id_raw) if tg_id_raw is not None else None

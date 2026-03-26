@@ -193,7 +193,8 @@ class NotionSyncService:
         title_list = prop.get("title") or []
         if not title_list:
             return None
-        return title_list[0].get("plain_text", "").strip() or None
+        text = "".join(item.get("plain_text", "") for item in title_list)
+        return text.strip() or None
 
     @staticmethod
     def _extract_number(prop: dict) -> int | None:

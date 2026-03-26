@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 
 from src.services.notion.client import NotionClient
-from src.services.notion.dto import EventData
+from src.services.notion.dto import EventData, join_rich_text
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class NotionEventRepo:
         props = page.get("properties", {})
 
         topic_title = props.get("Тема", {}).get("title") or []
-        topic = topic_title[0].get("plain_text", "").strip() if topic_title else None
+        topic = join_rich_text(topic_title).strip() or None
 
         date_data = props.get("Дата", {}).get("date")
         date = date_data.get("start") if date_data else None
@@ -44,9 +44,7 @@ class NotionEventRepo:
         status = status_data.get("name") if status_data else None
 
         mentee_rt = props.get("ТГ тег менти", {}).get("rich_text") or []
-        mentee_tg_tag = (
-            mentee_rt[0].get("plain_text", "").strip() if mentee_rt else None
-        )
+        mentee_tg_tag = join_rich_text(mentee_rt).strip() or None
 
         mentor_persons = props.get("Ментор", {}).get("person") or []
         mentor_name = mentor_persons[0].get("name") if mentor_persons else None
@@ -55,13 +53,13 @@ class NotionEventRepo:
         recording = props.get("Запись", {}).get("url")
 
         summary_rt = props.get("Итоги", {}).get("rich_text") or []
-        summary = summary_rt[0].get("plain_text", "") if summary_rt else None
+        summary = join_rich_text(summary_rt) or None
 
         actions_rt = props.get("Action items", {}).get("rich_text") or []
-        action_items = actions_rt[0].get("plain_text", "") if actions_rt else None
+        action_items = join_rich_text(actions_rt) or None
 
         project_rt = props.get("Проект", {}).get("rich_text") or []
-        project = project_rt[0].get("plain_text", "") if project_rt else None
+        project = join_rich_text(project_rt) or None
 
         return EventData(
             page_id=page["id"],
