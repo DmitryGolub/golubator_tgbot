@@ -7,7 +7,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import menu_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
-from src.bot.keyboards.user import user_actions_keyboard
 from src.bot.keyboards.cohort import cohort_actions_keyboard
 from src.services.auth import AuthService
 from src.services.ui_text import UiTextService
@@ -86,17 +85,6 @@ async def cb_menu(callback: CallbackQuery):
 
 
 # ==== ADMIN ====
-@router.callback_query(PermissionFilter("manage_users"), F.data == "menu_users")
-async def cb_menu_users(callback: CallbackQuery):
-    await callback.answer()
-    text = await UiTextService.get("menu.users.title")
-    try:
-        await callback.message.edit_text(text, reply_markup=user_actions_keyboard())
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
-
-
 @router.callback_query(PermissionFilter("manage_cohorts"), F.data == "menu_cohorts")
 async def cb_menu_cohorts(callback: CallbackQuery):
     await callback.answer()

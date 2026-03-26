@@ -13,19 +13,6 @@ from src.bot.callbacks.update_user import (
 from src.models.user import User
 
 
-def user_actions_keyboard() -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-
-    kb.button(text="Список пользователей", callback_data="user_list")
-    kb.button(text="Изменить пользователя", callback_data="user_update_menu")
-
-    kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
-
-    kb.adjust(1)
-
-    return kb.as_markup()
-
-
 def update_param_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 

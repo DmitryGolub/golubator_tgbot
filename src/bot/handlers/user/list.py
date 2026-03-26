@@ -13,7 +13,7 @@ router = Router(name="user")
 router.callback_query.filter(PermissionFilter("manage_users"))
 
 
-@router.callback_query(F.data == "user_list")
+@router.callback_query(F.data.in_({"user_list", "menu_users"}))
 async def cb_user_list(callback: CallbackQuery):
     await callback.answer()
 
