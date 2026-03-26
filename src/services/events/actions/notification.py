@@ -1,6 +1,8 @@
 import logging
 from string import Template
 
+from aiogram.exceptions import TelegramForbiddenError
+
 from src.models.trigger import TriggerRule
 from src.services.events.actions.base import BaseAction
 
@@ -27,4 +29,9 @@ class SendNotificationAction(BaseAction):
         except (ValueError, TypeError):
             pass
 
-        await bot.send_message(recipient_id, text, parse_mode="HTML")
+        try:
+            await bot.send_message(recipient_id, text, parse_mode="HTML")
+        except TelegramForbiddenError:
+            logger.warning(
+                "User %s blocked the bot, skipping notification", recipient_id
+            )

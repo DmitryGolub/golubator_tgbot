@@ -45,6 +45,7 @@ class MentorStatsDAO:
             survey_meeting_filter = [
                 SurveyTemplate.slug == "post_call_student",
                 SurveySession.context_type == "meeting",
+                SurveySession.context_id.op("~")(r"^\d+$"),
                 SurveySession.status == SessionStatus.completed,
                 MeetingUser.user_id == mentor_id,
             ]
@@ -79,6 +80,7 @@ class MentorStatsDAO:
                 .where(
                     SurveyTemplate.slug == "post_call_student",
                     SurveySession.context_type == "meeting",
+                    SurveySession.context_id.op("~")(r"^\d+$"),
                     SurveySession.status == SessionStatus.completed,
                     SurveyQuestion.question_type == "rating",
                     SurveyAnswer.value_int.isnot(None),

@@ -1,5 +1,6 @@
 import logging
 
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.dynamic_survey import StartDynamicSurveyCB
@@ -56,9 +57,12 @@ class SendSurveyAction(BaseAction):
         )
 
         template_title = rule.action_config.get("survey_title", "Опрос")
-        await bot.send_message(
-            recipient_id,
-            f"<b>{e(template_title)}</b>\n\nВам доступен новый опрос.",
-            reply_markup=kb.as_markup(),
-            parse_mode="HTML",
-        )
+        try:
+            await bot.send_message(
+                recipient_id,
+                f"<b>{e(template_title)}</b>\n\nВам доступен новый опрос.",
+                reply_markup=kb.as_markup(),
+                parse_mode="HTML",
+            )
+        except TelegramForbiddenError:
+            logger.warning("User %s blocked the bot, skipping survey", recipient_id)

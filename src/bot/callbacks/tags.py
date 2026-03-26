@@ -29,3 +29,7 @@ class TagUnassignUserCB(CallbackData, prefix="tag_unasgn_u"):
 
 class TagDeleteCB(CallbackData, prefix="tag_del"):
     tag_id: int
+
+
+class TagConfirmDeleteCB(CallbackData, prefix="tag_cdel"):
+    tag_id: int

@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -152,6 +153,7 @@ class TriggerExecution(Base):
             "recipient_id",
             name="uq_trigger_execution_unique",
         ),
+        Index("ix_trigger_exec_pending", "status", "scheduled_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

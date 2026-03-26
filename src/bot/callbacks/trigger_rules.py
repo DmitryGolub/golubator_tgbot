@@ -29,6 +29,10 @@ class TriggerRuleDeleteCB(CallbackData, prefix="tr_delete"):
     rule_id: int
 
 
+class TriggerRuleConfirmDeleteCB(CallbackData, prefix="tr_cdel"):
+    rule_id: int
+
+
 class TriggerRuleSendCB(CallbackData, prefix="tr_send"):
     rule_id: int
 

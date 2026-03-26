@@ -87,7 +87,9 @@ async def cb_menu_mailings(callback: CallbackQuery):
     await callback.answer()
     text = "Рассылки перенесены в систему триггеров. Используйте меню триггеров."
     try:
-        await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard())
+        await callback.message.edit_text(
+            text, reply_markup=await back_to_menu_keyboard()
+        )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise

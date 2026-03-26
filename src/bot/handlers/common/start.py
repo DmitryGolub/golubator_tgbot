@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
+_background_tasks: set[asyncio.Task] = set()
+
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
@@ -65,7 +67,9 @@ async def cmd_start(message: Message):
                 await AuthService.invalidate_user(user_id)
 
     # Link user to Notion page (background, don't block welcome message)
-    asyncio.create_task(_link_notion_page(user.id, username))
+    task = asyncio.create_task(_link_notion_page(user.id, username))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
     welcome = await UiTextService.get("start.welcome", name=user.first_name)
     await message.answer(welcome)

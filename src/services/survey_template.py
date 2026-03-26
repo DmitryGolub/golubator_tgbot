@@ -48,16 +48,10 @@ class SurveyTemplateService:
         )
 
         if questions:
-            for i, q in enumerate(questions):
-                await SurveyTemplateDAO.add_question(
-                    template_id=template.id,
-                    sort_order=i + 1,
-                    title=q["title"],
-                    question_type=q["question_type"],
-                    is_required=q.get("is_required", True),
-                    config=q.get("config"),
-                    options=q.get("options"),
-                )
+            await SurveyTemplateDAO.add_questions_batch(
+                template_id=template.id,
+                questions=questions,
+            )
 
         return await SurveyTemplateDAO.get_by_id(template.id)
 

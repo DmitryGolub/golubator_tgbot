@@ -48,6 +48,8 @@ async def cb_user_list(callback: CallbackQuery):
             f"   • Роль: <b>{e(role_display)}</b>\n"
             f"{state_line}"
             f"   • Дата регистрации: {user.registered_at:%d.%m.%Y %H:%M}\n\n"
+            if user.registered_at
+            else "   • Дата регистрации: —\n\n"
         )
 
     chunks = split_message(answer)

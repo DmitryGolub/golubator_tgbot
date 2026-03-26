@@ -34,8 +34,8 @@ class EventDispatcher:
         for rule in rules:
             try:
                 await cls._process_rule(rule, context, bot)
-            except Exception as exc:
-                logger.error("Error processing TriggerRule %s: %s", rule.id, exc)
+            except Exception:
+                logger.exception("Error processing TriggerRule %s", rule.id)
 
     @classmethod
     async def execute_rule_manually(

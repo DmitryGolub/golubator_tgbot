@@ -1,4 +1,5 @@
-from sqlalchemy import select, delete as sa_delete, insert
+from sqlalchemy import select, delete as sa_delete
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.core.dao import BaseDAO
 from src.core.database import async_session_maker
@@ -25,11 +26,12 @@ class RoleDAO(BaseDAO):
     @classmethod
     async def add_permission(cls, role_id: int, permission_id: int) -> None:
         async with async_session_maker() as session:
-            await session.execute(
-                insert(role_permissions).values(
-                    role_id=role_id, permission_id=permission_id
-                )
+            stmt = (
+                pg_insert(role_permissions)
+                .values(role_id=role_id, permission_id=permission_id)
+                .on_conflict_do_nothing()
             )
+            await session.execute(stmt)
             await session.commit()
 
     @classmethod

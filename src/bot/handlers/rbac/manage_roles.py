@@ -168,7 +168,18 @@ async def cb_create_role_start(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.set_state(CreateRoleFSM.waiting_name)
     await callback.message.edit_text(
-        "Введите системное имя роли (латиница, snake_case, например: <code>senior_mentor</code>):"
+        "Введите системное имя роли (латиница, snake_case, например: <code>senior_mentor</code>):\n\n"
+        "Отправьте /cancel для отмены."
+    )
+
+
+@router.message(StateFilter(CreateRoleFSM), F.text == "/cancel")
+async def msg_cancel_create_role(message: Message, state: FSMContext):
+    await state.clear()
+    roles = await RoleDAO.get_all()
+    await message.answer(
+        "Создание роли отменено.",
+        reply_markup=roles_list_keyboard(roles),
     )
 
 

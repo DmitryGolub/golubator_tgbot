@@ -15,16 +15,29 @@ _RATE_PERIOD = 1.0
 
 
 class _RateLimiter:
-    """Token-bucket rate limiter shared across all repos using the same token."""
+    """Token-bucket rate limiter shared across all repos using the same token.
+
+    Asyncio primitives (Lock) are bound to a specific event loop.
+    In Celery (-P solo) each task calls asyncio.run() which creates a new loop,
+    so we track the loop id and re-create primitives when the loop changes.
+    """
 
     def __init__(self, rate: int = _RATE_LIMIT, period: float = _RATE_PERIOD):
         self._rate = rate
         self._period = period
-        self._semaphore = asyncio.Semaphore(rate)
         self._timestamps: list[float] = []
-        self._lock = asyncio.Lock()
+        self._lock: asyncio.Lock | None = None
+        self._loop_id: int | None = None
+
+    def _ensure_primitives(self) -> None:
+        current_loop_id = id(asyncio.get_running_loop())
+        if self._loop_id != current_loop_id:
+            self._lock = asyncio.Lock()
+            self._timestamps = []
+            self._loop_id = current_loop_id
 
     async def acquire(self) -> None:
+        self._ensure_primitives()
         while True:
             async with self._lock:
                 now = time.monotonic()

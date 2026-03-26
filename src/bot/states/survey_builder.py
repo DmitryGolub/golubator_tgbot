@@ -11,5 +11,3 @@ class SurveyBuilderFSM(StatesGroup):
     configuring_rating_max = State()
     adding_option_value = State()
     adding_option_label = State()
-    confirming_question = State()
-    confirm_template = State()

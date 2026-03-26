@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import select, insert, delete, update
+from sqlalchemy import inspect as sa_inspect, select, insert, delete, update
 
 from src.core.database import async_session_maker
 
@@ -9,6 +9,11 @@ logger = logging.getLogger(__name__)
 
 class BaseDAO:
     model = None
+
+    @classmethod
+    def _pk_column(cls):
+        mapper = sa_inspect(cls.model)
+        return mapper.primary_key[0]
 
     @classmethod
     async def get_all(cls):
@@ -31,7 +36,11 @@ class BaseDAO:
             result = await session.execute(query)
             await session.commit()
             obj = result.scalars().first()
-            logger.debug("%s.add -> id=%s", cls.model.__name__, getattr(obj, "id", "?"))
+            logger.debug(
+                "%s.add -> pk=%s",
+                cls.model.__name__,
+                getattr(obj, cls._pk_column().key, "?"),
+            )
             return obj
 
     @classmethod
@@ -43,16 +52,17 @@ class BaseDAO:
             logger.debug("%s.delete(%s)", cls.model.__name__, filter_by)
 
     @classmethod
-    async def update(cls, id: int, **values):
+    async def update(cls, pk_value, **values):
+        pk_col = cls._pk_column()
         async with async_session_maker() as session:
             query = (
                 update(cls.model)
-                .where(cls.model.id == id)
+                .where(pk_col == pk_value)
                 .values(**values)
                 .returning(cls.model)
             )
             result = await session.execute(query)
             await session.commit()
             obj = result.scalars().first()
-            logger.debug("%s.update(id=%s)", cls.model.__name__, id)
+            logger.debug("%s.update(pk=%s)", cls.model.__name__, pk_value)
             return obj

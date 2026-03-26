@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select, insert, delete, update, text
+from sqlalchemy import and_, or_, select, insert, delete, update, text
 from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
@@ -130,10 +130,12 @@ class MeetingDAO(BaseDAO):
     async def get_unsynced(cls) -> list[Meeting]:
         async with async_session_maker() as session:
             query = select(Meeting).where(
-                (Meeting.synced_at.is_(None))
-                | (
-                    Meeting.updated_at.isnot(None)
-                    & (Meeting.updated_at > Meeting.synced_at)
+                or_(
+                    Meeting.synced_at.is_(None),
+                    and_(
+                        Meeting.updated_at.isnot(None),
+                        Meeting.updated_at > Meeting.synced_at,
+                    ),
                 ),
             )
             result = await session.execute(query)

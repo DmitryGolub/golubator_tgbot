@@ -401,6 +401,10 @@ async def _save_question(message: Message, state: FSMContext):
 
 @router.callback_query(SurveyBuilderActionCB.filter(F.action == "add_question"))
 async def cb_add_more_question(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if "questions" not in data:
+        await callback.answer("Сессия устарела. Начните создание заново.")
+        return
     await state.set_state(SurveyBuilderFSM.adding_question_title)
     await callback.answer()
     await callback.message.edit_text(
@@ -415,6 +419,10 @@ async def cb_add_more_question(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(SurveyBuilderActionCB.filter(F.action == "finish"))
 async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
+    if not data.get("title") or not data.get("slug"):
+        await callback.answer("Сессия устарела. Начните создание заново.")
+        return
+
     questions = data.get("questions", [])
 
     if not questions:

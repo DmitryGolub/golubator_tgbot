@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -7,35 +6,27 @@ from aiogram.client.default import DefaultBotProperties
 
 from src.celery_app import celery_app
 from src.core.config import settings
-from src.tasks._db import celery_db
+from src.tasks._db import celery_db, run_async
 
 logger = logging.getLogger(__name__)
-
-
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 @celery_app.task(name="triggers.execute_action")
 def execute_trigger_action(execution_id: int) -> None:
     """Execute a single delayed trigger action."""
-    _run(_execute_action_async(execution_id))
+    run_async(_execute_action_async(execution_id))
 
 
 @celery_app.task(name="triggers.tick_periodic")
 def tick_periodic_triggers() -> None:
     """Check and fire periodic trigger rules. Runs every minute via beat."""
-    _run(_tick_periodic_async())
+    run_async(_tick_periodic_async())
 
 
 @celery_app.task(name="triggers.process_pending")
 def process_pending_executions() -> None:
     """Pick up pending executions that were missed (e.g. worker restart)."""
-    _run(_process_pending_async())
+    run_async(_process_pending_async())
 
 
 async def _execute_action_async(execution_id: int) -> None:
@@ -79,7 +70,7 @@ async def _execute_action_async(execution_id: int) -> None:
                 )
             except Exception as exc:
                 await TriggerExecutionDAO.mark_failed(execution_id, str(exc))
-                logger.error("Failed trigger execution %s: %s", execution_id, exc)
+                logger.exception("Failed trigger execution %s", execution_id)
         finally:
             await bot.session.close()
 
@@ -107,8 +98,8 @@ async def _tick_periodic_async() -> None:
                             bot=bot,
                         )
                         fired += 1
-                    except Exception as exc:
-                        logger.error("Error firing periodic rule %s: %s", rule.id, exc)
+                    except Exception:
+                        logger.exception("Error firing periodic rule %s", rule.id)
 
             if fired:
                 logger.info("Periodic triggers: %d/%d fired", fired, len(rules))
@@ -145,7 +136,7 @@ async def _process_pending_async() -> None:
                     await TriggerExecutionDAO.mark_sent(execution.id)
                 except Exception as exc:
                     await TriggerExecutionDAO.mark_failed(execution.id, str(exc))
-                    logger.error("Failed pending execution %s: %s", execution.id, exc)
+                    logger.exception("Failed pending execution %s", execution.id)
         finally:
             await bot.session.close()
 

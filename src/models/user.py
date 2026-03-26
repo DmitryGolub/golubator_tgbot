@@ -34,7 +34,7 @@ class State(enum.Enum):
 class User(Base):
     __tablename__ = "users"
 
-    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     username: Mapped[str] = mapped_column(
         String(255), unique=True, index=True, nullable=False
     )
@@ -101,7 +101,7 @@ class User(Base):
         "Meeting",
         secondary="meeting_users",
         back_populates="participants",
-        lazy="selectin",
+        lazy="raise",
     )
     cohort_cache: Mapped[list["NotionCohortCache"]] = relationship(
         "NotionCohortCache",
@@ -138,5 +138,5 @@ class User(Base):
         "Tag",
         secondary="user_tags",
         back_populates="users",
-        lazy="selectin",
+        lazy="raise",
     )

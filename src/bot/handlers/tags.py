@@ -10,6 +10,7 @@ from src.bot.callbacks.tags import (
     TagActionCB,
     TagAssignTagCB,
     TagAssignUserCB,
+    TagConfirmDeleteCB,
     TagDeleteCB,
     TagUnassignCB,
     TagUnassignUserCB,
@@ -17,6 +18,7 @@ from src.bot.callbacks.tags import (
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.tags import (
     cancel_keyboard,
+    confirm_delete_tag_keyboard,
     tag_assign_users_keyboard,
     tag_select_for_assign_keyboard,
     tag_select_for_unassign_keyboard,
@@ -116,7 +118,23 @@ async def on_tag_name(message: Message, state: FSMContext):
 
 
 @router.callback_query(TagDeleteCB.filter())
-async def cb_tag_delete(callback: CallbackQuery, callback_data: TagDeleteCB):
+async def cb_tag_delete_confirm(callback: CallbackQuery, callback_data: TagDeleteCB):
+    await callback.answer()
+    tag = await TagDAO.find_one_or_none(id=callback_data.tag_id)
+    if not tag:
+        await callback.message.edit_text(
+            "Тег не найден.",
+            reply_markup=tags_menu_keyboard(),
+        )
+        return
+    await callback.message.edit_text(
+        f"Удалить тег <b>{tag.name}</b>?",
+        reply_markup=confirm_delete_tag_keyboard(tag.id),
+    )
+
+
+@router.callback_query(TagConfirmDeleteCB.filter())
+async def cb_tag_delete(callback: CallbackQuery, callback_data: TagConfirmDeleteCB):
     await callback.answer()
     await TagDAO.delete(id=callback_data.tag_id)
     logger.info("Tag deleted: id=%s", callback_data.tag_id)

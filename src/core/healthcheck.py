@@ -37,7 +37,7 @@ async def _health_handler(_request: web.Request) -> web.Response:
 async def start_health_server() -> web.AppRunner:
     from src.api.notion_webhook import setup_webhook_routes
 
-    app = web.Application()
+    app = web.Application(client_max_size=1024 * 1024)  # 1 MB limit
     app.router.add_get("/health", _health_handler)
     setup_webhook_routes(app)
     runner = web.AppRunner(app, access_log=None)

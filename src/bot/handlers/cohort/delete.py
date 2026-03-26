@@ -72,6 +72,13 @@ async def do_delete_type(
 
     try:
         success = await notion.delete_cohort_type(type_name)
+    except Exception:
+        logger.exception("Failed to delete cohort type %s", type_name)
+        await callback.message.edit_text(
+            "Произошла ошибка при удалении типа. Попробуйте позже.",
+            reply_markup=await back_to_menu_keyboard(),
+        )
+        return
     finally:
         await notion.close()
 
@@ -119,6 +126,13 @@ async def delete_option(
 
     try:
         success = await notion.remove_option(type_name, option_name)
+    except Exception:
+        logger.exception("Failed to delete option %s from %s", option_name, type_name)
+        await callback.message.edit_text(
+            "Произошла ошибка при удалении опции. Попробуйте позже.",
+            reply_markup=await back_to_menu_keyboard(),
+        )
+        return
     finally:
         await notion.close()
 

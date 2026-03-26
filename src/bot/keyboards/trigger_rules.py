@@ -5,6 +5,7 @@ from src.bot.callbacks.trigger_rules import (
     TriggerActionCB,
     TriggerActionTypeCB,
     TriggerRecipientTypeCB,
+    TriggerRuleConfirmDeleteCB,
     TriggerRuleDeleteCB,
     TriggerRuleDetailCB,
     TriggerRuleSendCB,
@@ -125,6 +126,17 @@ def manual_send_rules_keyboard(rules: list[TriggerRule]) -> InlineKeyboardMarkup
     for r in rules:
         builder.button(text=r.name, callback_data=TriggerRuleSendCB(rule_id=r.id))
     builder.button(text="Назад", callback_data="menu_triggers")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def confirm_delete_rule_keyboard(rule_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="Да, удалить",
+        callback_data=TriggerRuleConfirmDeleteCB(rule_id=rule_id),
+    )
+    builder.button(text="Отмена", callback_data=TriggerActionCB(action="list"))
     builder.adjust(1)
     return builder.as_markup()
 

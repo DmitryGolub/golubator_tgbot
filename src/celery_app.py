@@ -27,6 +27,8 @@ celery_app = Celery(
 celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
     beat_schedule={
         # Legacy cohort sync (kept until full migration to v2)
         "notion.sync_cohorts": {

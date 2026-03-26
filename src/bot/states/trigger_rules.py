@@ -10,10 +10,3 @@ class TriggerRuleBuilderFSM(StatesGroup):
     choosing_recipient_type = State()
     configuring_recipients = State()
     setting_delay = State()
-    confirm = State()
-
-
-class ManualSendFSM(StatesGroup):
-    choosing_rule = State()
-    setting_schedule = State()
-    confirming = State()

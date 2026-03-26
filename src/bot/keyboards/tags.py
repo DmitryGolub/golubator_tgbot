@@ -5,6 +5,7 @@ from src.bot.callbacks.tags import (
     TagActionCB,
     TagAssignTagCB,
     TagAssignUserCB,
+    TagConfirmDeleteCB,
     TagDeleteCB,
     TagUnassignCB,
     TagUnassignUserCB,
@@ -85,6 +86,14 @@ def tag_select_for_unassign_keyboard(
             callback_data=TagUnassignCB(user_id=user_id, tag_id=tag.id),
         )
     builder.button(text="⬅️ Назад", callback_data="menu_tags")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def confirm_delete_tag_keyboard(tag_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Да, удалить", callback_data=TagConfirmDeleteCB(tag_id=tag_id))
+    builder.button(text="Отмена", callback_data="menu_tags")
     builder.adjust(1)
     return builder.as_markup()
 

@@ -8,6 +8,7 @@ from src.bot.callbacks.trigger_rules import (
     TriggerActionCB,
     TriggerActionTypeCB,
     TriggerRecipientTypeCB,
+    TriggerRuleConfirmDeleteCB,
     TriggerRuleDeleteCB,
     TriggerRuleDetailCB,
     TriggerRuleSendCB,
@@ -22,6 +23,7 @@ from src.bot.keyboards.trigger_rules import (
     TRIGGER_TYPE_LABELS,
     action_type_keyboard,
     cancel_keyboard,
+    confirm_delete_rule_keyboard,
     manual_send_rules_keyboard,
     recipient_type_keyboard,
     rule_detail_keyboard,
@@ -124,7 +126,27 @@ async def cb_toggle_rule(callback: CallbackQuery, callback_data: TriggerRuleTogg
 
 
 @router.callback_query(TriggerRuleDeleteCB.filter())
-async def cb_delete_rule(callback: CallbackQuery, callback_data: TriggerRuleDeleteCB):
+async def cb_delete_rule_confirm(
+    callback: CallbackQuery, callback_data: TriggerRuleDeleteCB
+):
+    await callback.answer()
+    rule = await TriggerRuleDAO.find_one_or_none(id=callback_data.rule_id)
+    if not rule:
+        await callback.message.edit_text(
+            await UiTextService.get("trigger.rule_not_found"),
+            reply_markup=trigger_menu_keyboard(),
+        )
+        return
+    await callback.message.edit_text(
+        f"Удалить правило <b>{e(rule.name)}</b>?",
+        reply_markup=confirm_delete_rule_keyboard(rule.id),
+    )
+
+
+@router.callback_query(TriggerRuleConfirmDeleteCB.filter())
+async def cb_delete_rule(
+    callback: CallbackQuery, callback_data: TriggerRuleConfirmDeleteCB
+):
     deleted = await TriggerRuleDAO.delete(callback_data.rule_id)
     if not deleted:
         await callback.answer(await UiTextService.get("trigger.rule_not_found"))

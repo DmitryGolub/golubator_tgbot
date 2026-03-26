@@ -39,13 +39,6 @@ _NOTION_TO_STATE: dict[str, State] = {
     "Archive": State.hold,
 }
 
-# Notion meeting status mapping
-_MEETING_STATUS_MAP: dict[str, str] = {
-    "Запланирован": "scheduled",
-    "Проведён": "completed",
-    "Отменён": "cancelled",
-}
-
 
 def _make_session_factory() -> tuple:
     engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
@@ -610,7 +603,10 @@ class NotionSyncServiceV2:
                                 meeting.mentor_telegram_id = mentor_id
                             if ev.link:
                                 meeting.meeting_link = ev.link
-                            if ev.status == "Проведён" and not meeting.completed_at:
+                            if (
+                                ev.status in ("Проведён", "Отменён")
+                                and not meeting.completed_at
+                            ):
                                 meeting.completed_at = now
                             meeting.synced_at = now
                             await _ensure_meeting_users(
@@ -641,7 +637,7 @@ class NotionSyncServiceV2:
                                 synced_at=now,
                                 mentor_telegram_id=mentor_id,
                             )
-                            if ev.status == "Проведён":
+                            if ev.status in ("Проведён", "Отменён"):
                                 new_meeting.completed_at = now
                             session.add(new_meeting)
                             await session.flush()
@@ -650,8 +646,8 @@ class NotionSyncServiceV2:
                             )
 
                         count += 1
-                    except Exception as exc:
-                        logger.error("Error syncing event %s: %s", ev.page_id, exc)
+                    except Exception:
+                        logger.exception("Error syncing event %s", ev.page_id)
 
                 await session.commit()
         finally:

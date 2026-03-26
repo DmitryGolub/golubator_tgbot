@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 from datetime import datetime
 from sqlalchemy import (
+    Index,
     Integer,
     BigInteger,
     Text,
@@ -89,4 +90,4 @@ class MeetingUser(Base):
         primary_key=True,
     )
 
-    __table_args__: tuple = ()
+    __table_args__ = (Index("ix_meeting_users_user_id", "user_id"),)

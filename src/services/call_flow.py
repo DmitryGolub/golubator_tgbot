@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass
 
+from sqlalchemy.exc import IntegrityError
+
 from src.dao.call import CallDAO
 from src.dao.meeting import MeetingDAO
 from src.models.call import Call
@@ -123,11 +125,22 @@ class CallFlowService:
         if not student:
             raise MeetingStudentNotFoundError
 
-        call = await CallDAO.create_for_meeting(
-            meeting_id=meeting_id,
-            mentor_id=mentor_id,
-            student_id=student.telegram_id,
-        )
+        try:
+            call = await CallDAO.create_for_meeting(
+                meeting_id=meeting_id,
+                mentor_id=mentor_id,
+                student_id=student.telegram_id,
+            )
+        except IntegrityError:
+            # Concurrent call creation — re-check state
+            existing = await CallDAO.get_active_for_mentor(mentor_id)
+            if existing:
+                raise ActiveCallAlreadyExistsError(existing)
+            existing = await CallDAO.get_by_meeting_id(meeting_id)
+            if existing:
+                raise CallAlreadyExistsError(existing)
+            raise
+
         logger.info(
             "Call started: call_id=%s meeting=%s mentor=%s student=%s",
             call.id,
@@ -180,7 +193,8 @@ class CallFlowService:
                         "student_id": finished_call.student_id,
                     },
                 )
-            except Exception as exc:
-                logger.error("Failed to emit call_ended event: %s", exc)
+            except Exception:
+                # Trigger failure is non-fatal: call was already ended successfully
+                logger.exception("Failed to emit call_ended event")
 
         return result

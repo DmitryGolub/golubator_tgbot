@@ -1,24 +1,11 @@
-import asyncio
 import logging
 
 from src.celery_app import celery_app
 from src.core.config import settings
 from src.services.notion.client import NotionDatabaseUnavailableError
+from src.tasks._db import run_async
 
 logger = logging.getLogger(__name__)
-
-
-def _run(coro) -> None:
-    loop = asyncio.new_event_loop()
-    try:
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(coro)
-    finally:
-        loop.close()
-        try:
-            asyncio.set_event_loop(None)
-        except Exception:
-            pass
 
 
 # ── Legacy task (kept for backward compatibility with existing beat) ───
@@ -47,7 +34,7 @@ async def _do_legacy_sync() -> None:
 
 @celery_app.task(name="notion.sync_cohorts")
 def sync_notion_cohorts() -> None:
-    _run(_do_legacy_sync())
+    run_async(_do_legacy_sync())
 
 
 # ── New bidirectional sync tasks ───────────────────────────────────────
@@ -72,7 +59,7 @@ def push_changes() -> None:
             logger.info("Push complete: %d users, %d events", users, events)
 
     try:
-        _run(_push())
+        run_async(_push())
     except NotionDatabaseUnavailableError as exc:
         logger.warning("push_changes skipped: %s", exc)
 
@@ -83,7 +70,7 @@ def backup_pull_users() -> None:
     if not sync:
         return
     try:
-        _run(sync.backup_pull_users())
+        run_async(sync.backup_pull_users())
     except NotionDatabaseUnavailableError as exc:
         logger.warning("backup_pull_users skipped: %s", exc)
 
@@ -94,6 +81,6 @@ def backup_pull_events() -> None:
     if not sync:
         return
     try:
-        _run(sync.backup_pull_events())
+        run_async(sync.backup_pull_events())
     except NotionDatabaseUnavailableError as exc:
         logger.warning("backup_pull_events skipped: %s", exc)

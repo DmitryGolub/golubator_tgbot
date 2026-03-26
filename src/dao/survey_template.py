@@ -115,6 +115,37 @@ class SurveyTemplateDAO:
             return question
 
     @classmethod
+    async def add_questions_batch(
+        cls,
+        *,
+        template_id: int,
+        questions: list[dict],
+    ) -> None:
+        async with async_session_maker() as session:
+            for i, q in enumerate(questions):
+                question = SurveyQuestion(
+                    template_id=template_id,
+                    sort_order=i + 1,
+                    title=q["title"],
+                    question_type=q["question_type"],
+                    is_required=q.get("is_required", True),
+                    config=q.get("config"),
+                )
+                session.add(question)
+                if q.get("options"):
+                    await session.flush()
+                    for j, opt in enumerate(q["options"]):
+                        session.add(
+                            SurveyQuestionOption(
+                                question_id=question.id,
+                                sort_order=j + 1,
+                                value=opt["value"],
+                                label=opt["label"],
+                            )
+                        )
+            await session.commit()
+
+    @classmethod
     async def get_question_by_id(cls, question_id: int) -> Optional[SurveyQuestion]:
         async with async_session_maker() as session:
             return await session.get(SurveyQuestion, question_id)

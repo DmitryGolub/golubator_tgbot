@@ -195,7 +195,7 @@ def upgrade() -> None:
     # ── 3. Users ──────────────────────────────────────────────────────────
     op.create_table(
         "users",
-        sa.Column("telegram_id", sa.BigInteger, primary_key=True, index=True),
+        sa.Column("telegram_id", sa.BigInteger, primary_key=True),
         sa.Column("username", sa.String(255), unique=True, nullable=False, index=True),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("role", role_enum, nullable=False, server_default="Студент"),
@@ -309,6 +309,7 @@ def upgrade() -> None:
             primary_key=True,
         ),
     )
+    op.create_index("ix_meeting_users_user_id", "meeting_users", ["user_id"])
     op.create_table(
         "calls",
         sa.Column("id", sa.Integer, primary_key=True),
@@ -350,6 +351,13 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=True,
         ),
+    )
+    op.create_index(
+        "ix_calls_active_mentor",
+        "calls",
+        ["mentor_id"],
+        unique=True,
+        postgresql_where=sa.text("ended_at IS NULL"),
     )
 
     # ── 6. (Legacy notifications & rules removed) ───────────────────────
@@ -587,6 +595,11 @@ def upgrade() -> None:
         sa.UniqueConstraint(
             "rule_id", "event_key", "recipient_id", name="uq_trigger_execution_unique"
         ),
+    )
+    op.create_index(
+        "ix_trigger_exec_pending",
+        "trigger_executions",
+        ["status", "scheduled_at"],
     )
 
     # ── 10. UI texts ───────────────────────────────────────────────────
