@@ -24,20 +24,17 @@ class MentorStatsDAO:
         Calculates averages from completed survey sessions (post_call_student template).
         """
         async with async_session_maker() as session:
-            base_filter = [
-                MeetingUser.user_id == mentor_id,
-                Meeting.completed_at.isnot(None),
-            ]
+            # Count all calls (regardless of completed_at)
+            calls_filter = [MeetingUser.user_id == mentor_id]
             if date_from is not None:
-                base_filter.append(Meeting.completed_at >= date_from)
+                calls_filter.append(Meeting.scheduled_at >= date_from)
             if date_to is not None:
-                base_filter.append(Meeting.completed_at <= date_to)
+                calls_filter.append(Meeting.scheduled_at <= date_to)
 
-            # Count total completed calls
             calls_query = (
                 select(func.count(Meeting.id))
                 .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
-                .where(*base_filter)
+                .where(*calls_filter)
             )
             total_calls = (await session.execute(calls_query)).scalar() or 0
 

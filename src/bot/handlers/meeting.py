@@ -121,7 +121,8 @@ def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:
 
 
 @router.callback_query(
-    PermissionFilter("manage_meetings"), F.data == "mentor_meetings_list"
+    PermissionFilter("manage_meetings"),
+    F.data.in_({"mentor_meetings_list", "mentor_meetings_menu"}),
 )
 async def cb_mentor_meetings(callback: CallbackQuery):
     await callback.answer()

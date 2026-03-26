@@ -1,6 +1,6 @@
 DC_FILE := docker-compose.yaml
 
-.PHONY: init up up-prod down logs ps test migrate reset clean
+.PHONY: init up up-prod down logs ps test migrate reset clean restart
 
 init: up logs
 
@@ -27,6 +27,8 @@ migrate:
 
 reset:
 	docker compose --profile dev --profile prod down -v --remove-orphans
+
+restart: reset up
 
 clean:
 	docker compose --profile dev --profile prod down -v --rmi local --remove-orphans

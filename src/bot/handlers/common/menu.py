@@ -13,6 +13,8 @@ from src.services.ui_text import UiTextService
 from src.dao.user import UserDAO
 from src.dao.role import RoleDAO
 from src.dao.mentee import MenteeDAO
+from src.dao.mentor import MentorDAO
+from src.dao.mentor_stats import MentorStatsDAO
 from src.dao.cohort import CohortDAO
 
 from src.core.config import settings
@@ -267,21 +269,12 @@ async def cmd_end_call(message: Message):
     await message.answer(text, reply_markup=await _mentor_meetings_menu_kb())
 
 
-async def _mentor_me_keyboard():
-    texts = await UiTextService.get_many(["menu.mentor_me.btn.stats", "menu.back"])
-    kb = InlineKeyboardBuilder()
-    kb.button(text=texts["menu.mentor_me.btn.stats"], callback_data="mentor_my_stats")
-    kb.button(text=texts["menu.back"], callback_data="back_to_menu")
-    kb.adjust(1)
-    return kb.as_markup()
-
-
 @router.callback_query(PermissionFilter("view_own_info"), F.data == "mentor_me_info")
 async def cb_mentor_me_info(callback: CallbackQuery):
     await callback.answer()
 
-    mentors = await UserDAO.get_all(telegram_id=callback.from_user.id)
-    mentor = mentors[0] if mentors else None
+    mentor_id = callback.from_user.id
+    mentor = await MentorDAO.find_by_telegram_id(mentor_id)
     if not mentor:
         text = await UiTextService.get("menu.not_found")
         await callback.message.edit_text(
@@ -289,17 +282,33 @@ async def cb_mentor_me_info(callback: CallbackQuery):
         )
         return
 
-    role_display = mentor.role_rel.display_name if mentor.role_rel else "—"
+    stats = await MentorStatsDAO.get_stats(mentor_id=mentor_id)
+
     title = await UiTextService.get("menu.me.title")
-    text = (
-        f"{title}\n\n"
-        f"Имя: <b>{e(mentor.name)}</b>\n"
-        f"Юзернейм: @{e(mentor.username)}\n"
-        f"Роль: <b>{e(role_display)}</b>\n"
-    )
+    lines = [
+        f"{title}\n",
+        f"Имя: <b>{e(mentor.name)}</b>",
+        f"Юзернейм: @{e(mentor.username)}",
+        "",
+        f"Созвоны: <b>{stats['total_calls']}</b>",
+        f"Опросы заполнено: <b>{stats['total_surveys']}</b>",
+    ]
+
+    if stats.get("avg_mentor_style") is not None:
+        lines.append(f"Средняя оценка стиля: <b>{stats['avg_mentor_style']}</b>")
+    if stats.get("avg_knowledge_depth") is not None:
+        lines.append(f"Средняя оценка знаний: <b>{stats['avg_knowledge_depth']}</b>")
+    if stats.get("avg_understanding") is not None:
+        lines.append(f"Средняя оценка понимания: <b>{stats['avg_understanding']}</b>")
+    if stats.get("avg_satisfaction") is not None:
+        lines.append(f"Общая удовлетворённость: <b>{stats['avg_satisfaction']}</b>")
+
+    text = "\n".join(lines)
 
     try:
-        await callback.message.edit_text(text, reply_markup=await _mentor_me_keyboard())
+        await callback.message.edit_text(
+            text, reply_markup=await back_to_menu_keyboard()
+        )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise

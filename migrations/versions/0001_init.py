@@ -655,7 +655,6 @@ def upgrade() -> None:
         ("all_permissions", "Полный доступ ко всем функциям"),
         ("manage_users", "Управление пользователями"),
         ("manage_cohorts", "Управление когортами"),
-        ("manage_mailings", "Управление рассылками"),
         ("manage_roles", "Управление ролями и пермишенами"),
         ("manage_surveys", "Управление шаблонами опросов"),
         ("manage_triggers", "Управление триггерными правилами"),
@@ -1019,7 +1018,6 @@ def upgrade() -> None:
         ("menu.access_denied", "Доступ запрещен.", "Access denied message"),
         ("menu.btn.users", "👥 Пользователи", "Menu button: users"),
         ("menu.btn.cohorts", "📂 Когорты", "Menu button: cohorts"),
-        ("menu.btn.mailings", "📨 Рассылки", "Menu button: mailings"),
         ("menu.btn.surveys", "📝 Опросы", "Menu button: surveys"),
         ("menu.btn.triggers", "⚡ Триггеры", "Menu button: triggers"),
         ("menu.btn.roles", "🛡 Роли", "Menu button: roles"),
@@ -1050,7 +1048,6 @@ def upgrade() -> None:
         # ── Submenu titles ──
         ("menu.users.title", "👥 Меню Пользователей", "Users submenu title"),
         ("menu.cohorts.title", "📂 Меню Когорт", "Cohorts submenu title"),
-        ("menu.mailings.title", "📨 Меню Рассылок", "Mailings submenu title"),
         ("menu.meetings.title", "📅 Созвоны:", "Meetings submenu title"),
         ("menu.students.title", "🎓 Ученики:", "Students submenu title"),
         # ── Mentor students ──

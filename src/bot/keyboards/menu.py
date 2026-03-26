@@ -7,7 +7,6 @@ from src.services.ui_text import UiTextService
 _ADMIN_BUTTONS = [
     ("manage_users", "menu.btn.users", "menu_users"),
     ("manage_cohorts", "menu.btn.cohorts", "menu_cohorts"),
-    ("manage_mailings", "menu.btn.mailings", "menu_mailings"),
     ("manage_surveys", "menu.btn.surveys", "menu_surveys"),
     ("manage_triggers", "menu.btn.triggers", "menu_triggers"),
     ("manage_roles", "menu.btn.roles", "menu_roles"),
