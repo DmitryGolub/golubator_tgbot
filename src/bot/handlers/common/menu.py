@@ -243,10 +243,12 @@ async def cb_mentor_students_list(callback: CallbackQuery):
         cohorts = cohorts_map.get(mentee.id, [])
         categories = [c.cohort.value for c in cohorts if c.cohort.type == "Category"]
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
+        statuses = [c.cohort.value for c in cohorts if c.cohort.type == "Status"]
+        status_display = ", ".join(statuses) if statuses else "—"
         lines.append(
             f"👤 <b>{e(display_name)}</b> {username_display}\n"
             f"   • Направления: <b>{e(cohort_display)}</b>\n"
-            f"   • Состояние: <b>{e(mentee.state.value if mentee.state else '—')}</b>\n"
+            f"   • Состояние: <b>{e(status_display)}</b>\n"
         )
 
     try:
@@ -359,7 +361,9 @@ async def cb_student_me_info(callback: CallbackQuery):
             mentor_name = mentee.mentor.name or "Отсутствует"
             if mentee.mentor.user and mentee.mentor.user.username:
                 mentor_username = f"@{mentee.mentor.user.username}"
-        mentee_state = mentee.state.value if mentee.state else "—"
+        cohorts = await CohortDAO.get_mentee_cohorts(mentee.id)
+        statuses = [c.cohort.value for c in cohorts if c.cohort.type == "Status"]
+        mentee_state = ", ".join(statuses) if statuses else "—"
 
     role_display = student.role_rel.display_name if student.role_rel else "—"
 

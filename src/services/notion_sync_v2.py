@@ -12,7 +12,7 @@ from src.models.meeting import Meeting, MeetingUser
 from src.models.mentee import Mentee
 from src.models.mentor import Mentor
 from src.models.cohort import Cohort, UserCohort
-from src.models.user import State, User
+from src.models.user import User
 from src.services.notion import (
     NotionClient,
     NotionEventRepo,
@@ -22,22 +22,24 @@ from src.services.notion import (
 
 logger = logging.getLogger(__name__)
 
-_STATE_TO_NOTION: dict[State | None, str] = {
-    State.greeting: "Greetings",
-    State.study: "study",
-    State.search: "Search",
-    State.offer: "Offer",
-    State.hold: "Lead",
+# Mapping from Notion Role select → DB role name
+_NOTION_ROLE_MAP: dict[str | None, str] = {
+    "Mentor": "mentor",
+    "Admin": "admin",
+    "Админ": "admin",
+    "Ментор": "mentor",
+    None: "student",
 }
 
-_NOTION_TO_STATE: dict[str, State] = {
-    "Greetings": State.greeting,
-    "study": State.study,
-    "Search": State.search,
-    "Offer": State.offer,
-    "Lead": State.hold,
-    "Archive": State.hold,
-}
+
+def _resolve_role_name(notion_role: str | None) -> str:
+    return _NOTION_ROLE_MAP.get(notion_role, "student")
+
+
+def _clean_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    return name.lstrip("@").strip() or None
 
 
 def _make_session_factory() -> tuple:
@@ -73,32 +75,79 @@ def _build_repos() -> tuple[
 
 
 async def _ensure_user_exists(
-    session: AsyncSession, telegram_id: int, name: str | None = None
+    session: AsyncSession,
+    telegram_id: int,
+    name: str | None = None,
+    role_name: str = "student",
 ) -> None:
+    from src.models.role import RoleModel
+
+    clean = _clean_name(name)
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
-    if not result.scalar_one_or_none():
-        session.add(User(telegram_id=telegram_id, name=name or str(telegram_id)))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        role_result = await session.execute(
+            select(RoleModel.id).where(RoleModel.name == role_name)
+        )
+        role_id = role_result.scalar_one_or_none()
+        session.add(
+            User(
+                telegram_id=telegram_id,
+                name=clean or str(telegram_id),
+                role_id=role_id,
+                registered_at=None,
+            )
+        )
         await session.flush()
+    else:
+        if user.role_id is None:
+            role_result = await session.execute(
+                select(RoleModel.id).where(RoleModel.name == role_name)
+            )
+            role_id = role_result.scalar_one_or_none()
+            if role_id:
+                user.role_id = role_id
 
 
 async def _resolve_mentor_id(
-    session: AsyncSession, mentor_name: str | None
+    session: AsyncSession, mentor_name: str | None, mentor_email: str | None = None
 ) -> int | None:
-    if not mentor_name:
+    if not mentor_name and not mentor_email:
         return None
-    result = await session.execute(select(Mentor.id).where(Mentor.name == mentor_name))
-    return result.scalar_one_or_none()
+    if mentor_name:
+        result = await session.execute(
+            select(Mentor.id).where(Mentor.name == mentor_name)
+        )
+        mid = result.scalar_one_or_none()
+        if mid:
+            return mid
+    if mentor_email:
+        result = await session.execute(
+            select(Mentor.id).where(Mentor.email == mentor_email)
+        )
+        return result.scalar_one_or_none()
+    return None
 
 
 async def _resolve_mentor_telegram_id(
-    session: AsyncSession, mentor_name: str | None
+    session: AsyncSession, mentor_name: str | None, mentor_email: str | None = None
 ) -> int | None:
-    if not mentor_name:
+    if not mentor_name and not mentor_email:
         return None
-    result = await session.execute(
-        select(Mentor.telegram_id).where(Mentor.name == mentor_name)
-    )
-    return result.scalar_one_or_none()
+    if mentor_name:
+        result = await session.execute(
+            select(Mentor.telegram_id).where(Mentor.name == mentor_name)
+        )
+        tid = result.scalar_one_or_none()
+        if tid:
+            return tid
+    if mentor_email:
+        result = await session.execute(
+            select(Mentor.telegram_id).where(Mentor.email == mentor_email)
+        )
+        return result.scalar_one_or_none()
+    return None
 
 
 async def _resolve_mentee_id(session: AsyncSession, tg_tag: str | None) -> int | None:
@@ -281,6 +330,8 @@ class NotionSyncServiceV2:
         mentor = result.scalar_one_or_none()
         now = datetime.now(timezone.utc)
 
+        role_name = _resolve_role_name(getattr(data, "role", None))
+
         if mentor:
             if (
                 mentor.synced_at
@@ -291,7 +342,6 @@ class NotionSyncServiceV2:
                 return
 
             mentor.name = data.name or mentor.name
-            mentor.role = getattr(data, "role", None) or mentor.role
             mentor.email = getattr(data, "email", None) or mentor.email
             mentor.about = getattr(data, "about", None) or mentor.about
             mentor.membership_type = (
@@ -300,20 +350,23 @@ class NotionSyncServiceV2:
             mentor.synced_at = now
 
             if data.telegram_id:
-                await _ensure_user_exists(session, data.telegram_id, data.name)
+                await _ensure_user_exists(
+                    session, data.telegram_id, data.name, role_name=role_name
+                )
                 mentor.telegram_id = data.telegram_id
         else:
             new_mentor = Mentor(
                 notion_page_id=page_id,
                 name=data.name,
-                role=getattr(data, "role", None),
                 email=getattr(data, "email", None),
                 about=getattr(data, "about", None),
                 membership_type=getattr(data, "membership_type", None),
                 synced_at=now,
             )
             if data.telegram_id:
-                await _ensure_user_exists(session, data.telegram_id, data.name)
+                await _ensure_user_exists(
+                    session, data.telegram_id, data.name, role_name=role_name
+                )
                 new_mentor.telegram_id = data.telegram_id
 
             session.add(new_mentor)
@@ -326,23 +379,35 @@ class NotionSyncServiceV2:
         now = datetime.now(timezone.utc)
 
         resolved_mentor_id = await _resolve_mentor_id(
-            session, getattr(data, "mentor_name", None)
+            session,
+            getattr(data, "mentor_name", None),
+            getattr(data, "mentor_email", None),
         )
 
         if mentee:
+            # Always try to fill missing mentor_id (handles out-of-order sync)
+            if resolved_mentor_id is not None and mentee.mentor_id is None:
+                mentee.mentor_id = resolved_mentor_id
+
             if (
                 mentee.synced_at
                 and data.last_edited_time
                 and mentee.synced_at >= data.last_edited_time
             ):
                 logger.debug("Skipping echo for mentee page %s", page_id)
+                # Still sync cohorts (may have changed independently)
+                await self._sync_cohorts(session, mentee.id, data, now)
                 return
 
             mentee.doc_name = data.doc_name or mentee.doc_name
-            if data.status:
-                mentee.state = _NOTION_TO_STATE.get(data.status, mentee.state)
             if resolved_mentor_id is not None:
                 mentee.mentor_id = resolved_mentor_id
+            elif resolved_mentor_id is None and getattr(data, "mentor_name", None):
+                logger.warning(
+                    "Mentor '%s' not found in DB for mentee page %s",
+                    data.mentor_name,
+                    page_id,
+                )
             mentee.contract = getattr(data, "contract", mentee.contract)
             mentee.intern = getattr(data, "intern", mentee.intern)
             mentee.contract_version = getattr(
@@ -355,14 +420,14 @@ class NotionSyncServiceV2:
             mentee.synced_at = now
 
             if data.telegram_id:
-                await _ensure_user_exists(session, data.telegram_id, data.doc_name)
+                await _ensure_user_exists(
+                    session, data.telegram_id, data.doc_name, role_name="student"
+                )
                 mentee.telegram_id = data.telegram_id
         else:
-            state = _NOTION_TO_STATE.get(data.status) if data.status else State.greeting
             new_mentee = Mentee(
                 notion_page_id=page_id,
                 doc_name=data.doc_name,
-                state=state,
                 mentor_id=resolved_mentor_id,
                 contract=getattr(data, "contract", False),
                 intern=getattr(data, "intern", None),
@@ -372,7 +437,9 @@ class NotionSyncServiceV2:
                 synced_at=now,
             )
             if data.telegram_id:
-                await _ensure_user_exists(session, data.telegram_id, data.doc_name)
+                await _ensure_user_exists(
+                    session, data.telegram_id, data.doc_name, role_name="student"
+                )
                 new_mentee.telegram_id = data.telegram_id
 
             session.add(new_mentee)
@@ -569,7 +636,16 @@ class NotionSyncServiceV2:
                             props["Doc name"] = {
                                 "title": [{"text": {"content": mentee.doc_name}}]
                             }
-                        notion_status = _STATE_TO_NOTION.get(mentee.state)
+                        # Read Status from cohorts
+                        status_result = await session.execute(
+                            select(Cohort.value)
+                            .join(UserCohort, UserCohort.cohort_id == Cohort.id)
+                            .where(
+                                UserCohort.mentee_id == mentee.id,
+                                Cohort.type == "Status",
+                            )
+                        )
+                        notion_status = status_result.scalar_one_or_none()
                         if notion_status:
                             props["Status"] = {"status": {"name": notion_status}}
                         if props:

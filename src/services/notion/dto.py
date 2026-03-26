@@ -30,6 +30,7 @@ class MenteeData:
     categories: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     mentor_name: str | None = None
+    mentor_email: str | None = None
     contract: bool = False
     intern: str | None = None
     contract_version: float | None = None

@@ -10,7 +10,7 @@ from src.bot.callbacks.update_user import (
     ChooseMentorCB,
     ChooseUserCB,
 )
-from src.models.user import State, User
+from src.models.user import User
 
 
 def user_actions_keyboard() -> InlineKeyboardMarkup:
@@ -76,15 +76,18 @@ async def roles_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def statuses_keyboard() -> InlineKeyboardMarkup:
+async def statuses_keyboard() -> InlineKeyboardMarkup:
+    from src.dao.cohort import CohortDAO
+
+    values = await CohortDAO.get_distinct_values("Status")
     kb = InlineKeyboardBuilder()
 
-    for status in State:
+    for status_value in values:
         kb.button(
-            text=status.value,
+            text=status_value,
             callback_data=ChooseEnumValueCB(
                 param=UpdateParam.STATUS,
-                value=status.name,
+                value=status_value,
             ).pack(),
         )
 

@@ -7,7 +7,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
-    Enum,
     Float,
     ForeignKey,
     Integer,
@@ -17,7 +16,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
-from src.models.user import State
 
 if TYPE_CHECKING:
     from src.models.mentor import Mentor
@@ -41,16 +39,6 @@ class Mentee(Base):
         String(50), unique=True, index=True, nullable=True
     )
     doc_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    state: Mapped[Optional[State]] = mapped_column(
-        Enum(
-            State,
-            name="state_enum",
-            values_callable=lambda enum_cls: [member.value for member in enum_cls],
-            create_type=False,
-        ),
-        nullable=True,
-        default=State.greeting,
-    )
     mentor_id: Mapped[Optional[int]] = mapped_column(
         Integer,
         ForeignKey("iam.mentors.id", ondelete="SET NULL"),
@@ -62,9 +50,6 @@ class Mentee(Base):
     contract_version: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     contract_expires: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     student_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    state_changed_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     synced_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -34,12 +34,13 @@ async def _ensure_user(tg_user) -> User:
 
     if not existing:
         role_obj = await RoleDAO.get_by_name("admin" if is_admin else "student")
+        now = datetime.now(timezone.utc)
         created = await UserDAO.add(
             telegram_id=user_id,
             username=tg_user.username,
             name=tg_user.full_name,
             role_id=role_obj.id if role_obj else None,
-            registered_at=datetime.now(timezone.utc),
+            registered_at=now,
         )
         if created:
             logger.info(
@@ -50,6 +51,11 @@ async def _ensure_user(tg_user) -> User:
             await schedule_onboarding_notifications(created)
         return created
     else:
+        if existing.registered_at is None:
+            await UserDAO.update(
+                telegram_id=user_id,
+                registered_at=datetime.now(timezone.utc),
+            )
         if is_admin and (
             existing.role_rel is None or existing.role_rel.name != "admin"
         ):

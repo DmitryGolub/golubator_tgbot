@@ -50,9 +50,12 @@ async def cb_user_list(callback: CallbackQuery):
         categories = [c.cohort.value for c in cohorts if c.cohort.type == "Category"]
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
 
+        statuses = [c.cohort.value for c in cohorts if c.cohort.type == "Status"]
         state_line = ""
-        if mentee and mentee.state:
-            state_line = f"   • Состояние: <b>{e(mentee.state.value)}</b>\n"
+        if statuses:
+            state_line = f"   • Состояние: <b>{e(', '.join(statuses))}</b>\n"
+
+        reg_date = f"{user.registered_at:%d.%m.%Y %H:%M}" if user.registered_at else "—"
 
         answer += (
             f"👤 <b>{e(user.name)}</b> @{e(user.username)}\n"
@@ -60,9 +63,7 @@ async def cb_user_list(callback: CallbackQuery):
             f"   • Направления: <b>{e(cohort_display)}</b>\n"
             f"   • Роль: <b>{e(role_display)}</b>\n"
             f"{state_line}"
-            f"   • Дата регистрации: {user.registered_at:%d.%m.%Y %H:%M}\n\n"
-            if user.registered_at
-            else "   • Дата регистрации: —\n\n"
+            f"   • Дата регистрации: {reg_date}\n\n"
         )
 
     chunks = split_message(answer)

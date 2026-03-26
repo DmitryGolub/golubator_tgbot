@@ -28,7 +28,6 @@ class Mentor(Base):
         String(50), unique=True, index=True, nullable=True
     )
     name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    role: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     about: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     membership_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

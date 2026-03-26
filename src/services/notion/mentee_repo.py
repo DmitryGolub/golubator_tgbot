@@ -48,6 +48,8 @@ class NotionMenteeRepo:
 
         mentor_persons = props.get("Mentor", {}).get("person") or []
         mentor_name = mentor_persons[0].get("name") if mentor_persons else None
+        mentor_person = mentor_persons[0].get("person", {}) if mentor_persons else {}
+        mentor_email = mentor_person.get("email") if mentor_person else None
 
         contract_data = props.get("Договор", {})
         contract = contract_data.get("checkbox", False)
@@ -70,6 +72,7 @@ class NotionMenteeRepo:
             categories=categories,
             tags=tags,
             mentor_name=mentor_name,
+            mentor_email=mentor_email,
             contract=contract,
             intern=intern,
             contract_version=contract_ver,

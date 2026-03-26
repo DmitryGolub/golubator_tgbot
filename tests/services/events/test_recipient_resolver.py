@@ -75,17 +75,16 @@ class TestByRole:
         assert result == []
 
 
-@patch("src.dao.mentee.MenteeDAO")
+@patch("src.dao.cohort.CohortDAO")
 class TestByState:
     async def test_fetches_users(self, mock_dao):
-        mock_dao.get_all_with_details = AsyncMock(
-            return_value=[SimpleNamespace(telegram_id=300)]
-        )
+        mock_dao.get_telegram_ids_in_cohort = AsyncMock(return_value=[300])
         result = await RecipientResolver.resolve(
             _rule(RecipientType.by_state, {"state": "Отбор"}),
             {},
         )
         assert result == [300]
+        mock_dao.get_telegram_ids_in_cohort.assert_called_once_with("Status", "Отбор")
 
     async def test_no_state(self, mock_dao):
         result = await RecipientResolver.resolve(

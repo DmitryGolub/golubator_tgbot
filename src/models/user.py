@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import enum
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -15,20 +14,6 @@ if TYPE_CHECKING:
     from src.models.mentee import Mentee
     from src.models.role import RoleModel
     from src.models.tag import Tag
-
-
-class Role(enum.Enum):
-    admin = "Админ"
-    mentor = "Ментор"
-    student = "Студент"
-
-
-class State(enum.Enum):
-    greeting = "Отбор"
-    hold = "В ожидании"
-    study = "Обучение"
-    search = "Поиск работы"
-    offer = "Оффер"
 
 
 class User(Base):
@@ -47,10 +32,14 @@ class User(Base):
     role_rel: Mapped["RoleModel | None"] = relationship(
         "RoleModel", back_populates="users", lazy="selectin"
     )
-    registered_at: Mapped[datetime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
+    )
+    registered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

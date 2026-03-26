@@ -19,15 +19,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 # ── Enums ──────────────────────────────────────────────────────────────────
 
-state_enum = pgEnum(
-    "Отбор",
-    "В ожидании",
-    "Обучение",
-    "Поиск работы",
-    "Оффер",
-    name="state_enum",
-    create_type=False,
-)
 regularity_enum = pgEnum(
     "day", "week", "fortnight", "month", name="regularity_enum", create_type=False
 )
@@ -167,7 +158,6 @@ def upgrade() -> None:
 
     # ── 1. Create enums ───────────────────────────────────────────────────
     for e in (
-        state_enum,
         regularity_enum,
         call_status_enum,
         question_type_enum,
@@ -227,10 +217,15 @@ def upgrade() -> None:
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("role_id", sa.Integer, sa.ForeignKey("iam.roles.id"), nullable=True),
         sa.Column(
-            "registered_at",
+            "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=False,
+        ),
+        sa.Column(
+            "registered_at",
+            sa.DateTime(timezone=True),
+            nullable=True,
         ),
         sa.Column(
             "updated_at",
@@ -257,7 +252,6 @@ def upgrade() -> None:
             "notion_page_id", sa.String(50), nullable=True, unique=True, index=True
         ),
         sa.Column("name", sa.String(255), nullable=True),
-        sa.Column("role", sa.String(50), nullable=True),
         sa.Column("email", sa.String(255), nullable=True),
         sa.Column("about", sa.Text, nullable=True),
         sa.Column("membership_type", sa.String(100), nullable=True),
@@ -287,7 +281,6 @@ def upgrade() -> None:
             "notion_page_id", sa.String(50), nullable=True, unique=True, index=True
         ),
         sa.Column("doc_name", sa.String(255), nullable=True),
-        sa.Column("state", state_enum, nullable=True),
         sa.Column(
             "mentor_id",
             sa.Integer,
@@ -300,7 +293,6 @@ def upgrade() -> None:
         sa.Column("contract_version", sa.Float, nullable=True),
         sa.Column("contract_expires", sa.String(100), nullable=True),
         sa.Column("student_score", sa.Float, nullable=True),
-        sa.Column("state_changed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("synced_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "updated_at",
@@ -1407,7 +1399,6 @@ def downgrade() -> None:
         question_type_enum,
         call_status_enum,
         regularity_enum,
-        state_enum,
     ):
         e.drop(conn, checkfirst=True)
 
