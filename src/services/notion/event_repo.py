@@ -37,6 +37,14 @@ class NotionEventRepo:
         date_data = props.get("Дата", {}).get("date")
         date = date_data.get("start") if date_data else None
 
+        if topic and not date:
+            try:
+                datetime.fromisoformat(topic.replace("Z", "+00:00"))
+                date = topic
+                topic = None
+            except (ValueError, TypeError):
+                pass
+
         type_sel = props.get("Тип", {}).get("select")
         event_type = type_sel.get("name") if type_sel else None
 

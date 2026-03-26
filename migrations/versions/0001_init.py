@@ -57,7 +57,6 @@ recipient_type_enum = pgEnum(
     "by_role",
     "by_cohort",
     "by_state",
-    "by_tag",
     "specific_users",
     name="recipient_type_enum",
     create_type=False,
@@ -299,37 +298,6 @@ def upgrade() -> None:
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=True,
-        ),
-        schema="iam",
-    )
-
-    # ── 4. Tags ───────────────────────────────────────────────────────────
-    op.create_table(
-        "tags",
-        sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("name", sa.String(255), unique=True, nullable=False, index=True),
-        sa.Column("synced_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=True,
-        ),
-        schema="iam",
-    )
-    op.create_table(
-        "user_tags",
-        sa.Column(
-            "user_id",
-            sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
-            primary_key=True,
-        ),
-        sa.Column(
-            "tag_id",
-            sa.Integer,
-            sa.ForeignKey("iam.tags.id", ondelete="CASCADE"),
-            primary_key=True,
         ),
         schema="iam",
     )
@@ -1144,7 +1112,6 @@ def upgrade() -> None:
         # ── Users ──
         ("user.btn.list", "Список пользователей", "Users: list btn"),
         ("user.btn.update", "Изменить пользователя", "Users: update btn"),
-        ("user.btn.tags", "Теги", "Users: tags btn"),
         ("user.btn.update_status", "🔄 Обновить статус", "Users: update status btn"),
         ("user.btn.update_role", "🛡 Обновить роль", "Users: update role btn"),
         ("user.btn.update_mentor", "👨‍🏫 Обновить ментора", "Users: update mentor btn"),
@@ -1243,21 +1210,6 @@ def upgrade() -> None:
             "✅ Экспорт завершён.\n\nСтрок: <b>{rows}</b>\nФайл: <b>{file}</b>\nЛист: <b>{sheet}</b>",
             "Export success",
         ),
-        # ── Tags ──
-        ("tags.btn.list", "Список тегов", "Tags: list btn"),
-        ("tags.btn.create", "Создать тег", "Tags: create btn"),
-        ("tags.btn.assign", "Назначить тег", "Tags: assign btn"),
-        ("tags.btn.unassign", "Снять тег", "Tags: unassign btn"),
-        ("tags.menu.title", "Управление тегами", "Tags menu title"),
-        ("tags.list.empty", "Тегов пока нет.", "Tags list empty"),
-        ("tags.create.enter_name", "Введите имя нового тега:", "Enter tag name"),
-        (
-            "tags.already_exists",
-            "Тег <b>{name}</b> уже существует.",
-            "Tag already exists",
-        ),
-        ("tags.created", "Тег <b>{name}</b> создан.", "Tag created"),
-        ("tags.deleted", "Тег удалён.", "Tag deleted"),
         # ── Triggers ──
         ("trigger.btn.create", "Создать правило", "Triggers: create btn"),
         ("trigger.btn.list", "Список правил", "Triggers: list btn"),
@@ -1300,7 +1252,6 @@ def upgrade() -> None:
         ("trigger.recipient.by_role", "По роли", "Recipient: by role"),
         ("trigger.recipient.by_cohort", "По когорте", "Recipient: by cohort"),
         ("trigger.recipient.by_state", "По статусу", "Recipient: by state"),
-        ("trigger.recipient.by_tag", "По тегу", "Recipient: by tag"),
         (
             "trigger.recipient.specific_users",
             "Конкретные пользователи",
@@ -1379,8 +1330,6 @@ def downgrade() -> None:
     op.drop_table("cohorts", schema="integrations")
     op.drop_table("meeting_users", schema="meetings")
     op.drop_table("meetings", schema="meetings")
-    op.drop_table("user_tags", schema="iam")
-    op.drop_table("tags", schema="iam")
     op.drop_table("mentees", schema="iam")
     op.drop_table("mentors", schema="iam")
     op.drop_table("role_permissions", schema="iam")

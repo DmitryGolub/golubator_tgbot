@@ -51,11 +51,6 @@ async def _ensure_user(tg_user) -> User:
             await schedule_onboarding_notifications(created)
         return created
     else:
-        if existing.registered_at is None:
-            await UserDAO.update(
-                telegram_id=user_id,
-                registered_at=datetime.now(timezone.utc),
-            )
         if is_admin and (
             existing.role_rel is None or existing.role_rel.name != "admin"
         ):

@@ -28,7 +28,6 @@ class MenteeData:
     telegram_id: int | None = None
     status: str | None = None
     categories: list[str] = field(default_factory=list)
-    tags: list[str] = field(default_factory=list)
     mentor_name: str | None = None
     mentor_email: str | None = None
     contract: bool = False

@@ -125,7 +125,7 @@ def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:
 )
 async def cb_mentor_meetings(callback: CallbackQuery):
     await callback.answer()
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
+    meetings = await MeetingDAO.get_for_user(callback.from_user.id)
 
     text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=True)
     await callback.message.edit_text(
@@ -138,7 +138,7 @@ async def cb_mentor_meetings(callback: CallbackQuery):
 )
 async def cb_student_meetings(callback: CallbackQuery):
     await callback.answer()
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
+    meetings = await MeetingDAO.get_for_user(callback.from_user.id)
 
     text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=False)
     try:
@@ -192,7 +192,7 @@ async def cb_start_meeting_call(
             "или команду /end_call."
         )
 
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
+    meetings = await MeetingDAO.get_for_user(callback.from_user.id)
     await callback.message.edit_text(
         text,
         reply_markup=mentor_meetings_keyboard(meetings),

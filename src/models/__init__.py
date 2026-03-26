@@ -19,7 +19,6 @@ from src.models.survey_session import (
     SurveySession as SurveySession,
     SurveyAnswer as SurveyAnswer,
 )
-from src.models.tag import Tag as Tag, user_tags as user_tags
 from src.models.ui_text import UiText as UiText
 from src.models.trigger import (
     TriggerRule as TriggerRule,

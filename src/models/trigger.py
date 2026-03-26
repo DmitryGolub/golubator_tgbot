@@ -49,7 +49,6 @@ class RecipientType(str, enum.Enum):
     by_role = "by_role"
     by_cohort = "by_cohort"
     by_state = "by_state"
-    by_tag = "by_tag"
     specific_users = "specific_users"
 
 

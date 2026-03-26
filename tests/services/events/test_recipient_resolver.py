@@ -92,22 +92,3 @@ class TestByState:
             {},
         )
         assert result == []
-
-
-@patch("src.services.events.recipient_resolver.UserDAO")
-class TestByTag:
-    async def test_fetches_users(self, mock_dao):
-        mock_dao.get_all = AsyncMock(return_value=[SimpleNamespace(telegram_id=400)])
-        result = await RecipientResolver.resolve(
-            _rule(RecipientType.by_tag, {"tag_id": "5"}),
-            {},
-        )
-        assert result == [400]
-        mock_dao.get_all.assert_called_once_with(tag_id=5)
-
-    async def test_no_tag_id(self, mock_dao):
-        result = await RecipientResolver.resolve(
-            _rule(RecipientType.by_tag, {}),
-            {},
-        )
-        assert result == []

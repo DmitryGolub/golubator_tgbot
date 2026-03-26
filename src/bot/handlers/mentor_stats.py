@@ -8,8 +8,8 @@ from src.bot.callbacks.mentor_stats import MentorStatsCB
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.mentor_stats import mentor_select_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.dao.mentor import MentorDAO
 from src.dao.mentor_stats import MentorStatsDAO
-from src.dao.user import UserDAO
 from src.services.ui_text import UiTextService
 from src.utils.escape import e
 
@@ -52,8 +52,7 @@ async def cb_mentor_my_stats(callback: CallbackQuery):
     await callback.answer()
 
     mentor_id = callback.from_user.id
-    mentors = await UserDAO.get_all(telegram_id=mentor_id)
-    mentor = mentors[0] if mentors else None
+    mentor = await MentorDAO.find_by_telegram_id(mentor_id)
     if not mentor:
         await callback.message.edit_text(
             await UiTextService.get("menu.not_found"),
@@ -78,8 +77,8 @@ async def cb_mentor_my_stats(callback: CallbackQuery):
 async def cb_admin_mentor_stats(callback: CallbackQuery):
     await callback.answer()
 
-    all_users = await UserDAO.get_all()
-    mentors = [u for u in all_users if u.role_rel and u.role_rel.is_mentor]
+    all_mentors = await MentorDAO.get_all_with_users()
+    mentors = [m for m in all_mentors if m.telegram_id is not None]
 
     if not mentors:
         await callback.message.edit_text(
@@ -106,8 +105,7 @@ async def cb_admin_view_mentor_stats(
     await callback.answer()
 
     mentor_id = callback_data.mentor_id
-    mentors = await UserDAO.get_all(telegram_id=mentor_id)
-    mentor = mentors[0] if mentors else None
+    mentor = await MentorDAO.find_by_telegram_id(mentor_id)
     if not mentor:
         await callback.message.edit_text(
             await UiTextService.get("mentor_stats.not_found"),

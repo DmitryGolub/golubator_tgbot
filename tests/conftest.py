@@ -63,7 +63,6 @@ def make_user(
         registered_at=registered_at or datetime.now(timezone.utc),
         updated_at=None,
         meetings=[],
-        tags=[],
         mentor_profile=None,
         mentee_profile=None,
     )

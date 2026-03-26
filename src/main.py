@@ -21,9 +21,8 @@ from src.bot.handlers.dynamic_survey import router as dynamic_survey_router
 from src.bot.handlers.trigger_rules import router as trigger_rules_router
 from src.bot.handlers.mentor_stats import router as mentor_stats_router
 from src.bot.handlers.export_feedback import router as export_feedback_router
-from src.bot.handlers.tags import router as tags_router
-
 from src.bot.middlewares.logging_middleware import LoggingMiddleware
+from src.bot.middlewares.user_sync_middleware import UserSyncMiddleware
 from src.core.config import settings
 from src.core.healthcheck import start_health_server
 from src.core.logging_config import setup_logging
@@ -46,6 +45,7 @@ async def main():
     storage = RedisStorage.from_url(settings.REDIS_URL)
     dp = Dispatcher(storage=storage)
     dp.update.outer_middleware(LoggingMiddleware())
+    dp.update.outer_middleware(UserSyncMiddleware())
 
     dp.include_routers(
         start_router,
@@ -63,7 +63,6 @@ async def main():
         trigger_rules_router,
         mentor_stats_router,
         export_feedback_router,
-        tags_router,
     )
 
     health_runner = await start_health_server()

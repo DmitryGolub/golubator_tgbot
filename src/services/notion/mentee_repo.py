@@ -43,9 +43,6 @@ class NotionMenteeRepo:
         category_items = props.get("Category", {}).get("multi_select") or []
         categories = [c["name"] for c in category_items if c.get("name")]
 
-        tags_items = props.get("Tags", {}).get("multi_select") or []
-        tags = [t["name"] for t in tags_items if t.get("name")]
-
         mentor_prop = props.get("Mentor", {})
         mentor_persons = mentor_prop.get("people") or mentor_prop.get("person") or []
         if not isinstance(mentor_persons, list):
@@ -74,7 +71,6 @@ class NotionMenteeRepo:
             telegram_id=telegram_id,
             status=status,
             categories=categories,
-            tags=tags,
             mentor_name=mentor_name,
             mentor_email=mentor_email,
             contract=contract,
@@ -132,17 +128,5 @@ class NotionMenteeRepo:
             page_id, {"Status": {"status": {"name": status}}}
         )
 
-    async def update_tags(self, page_id: str, tags: list[str]) -> bool:
-        return await self.update_properties(
-            page_id,
-            {"Tags": {"multi_select": [{"name": t} for t in tags]}},
-        )
-
     async def update_telegram_id(self, page_id: str, tg_id: int) -> bool:
         return await self.update_properties(page_id, {"Telegram ID": {"number": tg_id}})
-
-    async def create_tags_property(self) -> bool:
-        """Create the 'Tags' multi_select property in the Notion database."""
-        return await self._client.update_schema(
-            {"Tags": {"multi_select": {"options": []}}}
-        )

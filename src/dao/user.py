@@ -1,10 +1,9 @@
 from datetime import datetime
 
 from sqlalchemy import select, update
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
-from src.models.tag import Tag
 from src.models.user import User
 
 from src.core.database import async_session_maker
@@ -18,7 +17,6 @@ class UserDAO(BaseDAO):
         cls,
         *,
         role_name: str | None = None,
-        tag_id: int | None = None,
         registered_from: datetime | None = None,
         registered_to: datetime | None = None,
         **filter_by,
@@ -26,7 +24,6 @@ class UserDAO(BaseDAO):
         async with async_session_maker() as session:
             query = select(cls.model).options(
                 joinedload(cls.model.role_rel),
-                selectinload(cls.model.tags),
             )
             if filter_by:
                 query = query.filter_by(**filter_by)
@@ -36,8 +33,6 @@ class UserDAO(BaseDAO):
                 query = query.join(RoleModel, cls.model.role_id == RoleModel.id).where(
                     RoleModel.name == role_name
                 )
-            if tag_id is not None:
-                query = query.join(cls.model.tags).where(Tag.id == tag_id)
             if registered_from is not None:
                 query = query.where(cls.model.registered_at >= registered_from)
             if registered_to is not None:
@@ -58,42 +53,3 @@ class UserDAO(BaseDAO):
             result = await session.execute(query)
             await session.commit()
             return result.scalars().first()
-
-    @classmethod
-    async def assign_tag(cls, telegram_id: int, tag_id: int) -> User | None:
-        async with async_session_maker() as session:
-            user = await session.scalar(
-                select(cls.model)
-                .where(cls.model.telegram_id == telegram_id)
-                .options(selectinload(cls.model.tags))
-            )
-            if not user:
-                return None
-
-            tag = await session.scalar(select(Tag).where(Tag.id == tag_id))
-            if not tag:
-                return None
-
-            if all(existing_tag.id != tag.id for existing_tag in user.tags):
-                user.tags.append(tag)
-                await session.commit()
-
-            return user
-
-    @classmethod
-    async def unassign_tag(cls, telegram_id: int, tag_id: int) -> User | None:
-        async with async_session_maker() as session:
-            user = await session.scalar(
-                select(cls.model)
-                .where(cls.model.telegram_id == telegram_id)
-                .options(selectinload(cls.model.tags))
-            )
-            if not user:
-                return None
-
-            tag_to_remove = next((tag for tag in user.tags if tag.id == tag_id), None)
-            if tag_to_remove:
-                user.tags.remove(tag_to_remove)
-                await session.commit()
-
-            return user

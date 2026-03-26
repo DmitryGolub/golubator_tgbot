@@ -127,16 +127,11 @@ async def cb_menu_mailings(callback: CallbackQuery):
 async def _mentor_students_menu_kb():
     texts = await UiTextService.get_many(
         [
-            "menu.mentor_students.btn.list",
             "menu.mentor_students.btn.update",
             "menu.back",
         ]
     )
     kb = InlineKeyboardBuilder()
-    kb.button(
-        text=texts["menu.mentor_students.btn.list"],
-        callback_data="mentor_students_list",
-    )
     kb.button(
         text=texts["menu.mentor_students.btn.update"],
         callback_data="mentor_update_student",
@@ -201,22 +196,6 @@ async def _finish_active_call_text(mentor_id: int) -> str:
     PermissionFilter("view_students"), F.data == "mentor_students_menu"
 )
 async def cb_mentor_students_menu(callback: CallbackQuery):
-    await callback.answer()
-    text = await UiTextService.get("menu.students.title")
-    try:
-        await callback.message.edit_text(
-            text,
-            reply_markup=await _mentor_students_menu_kb(),
-        )
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
-
-
-@router.callback_query(
-    PermissionFilter("view_students"), F.data == "mentor_students_list"
-)
-async def cb_mentor_students_list(callback: CallbackQuery):
     await callback.answer()
 
     mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)

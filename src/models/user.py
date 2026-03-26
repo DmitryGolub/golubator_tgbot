@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from src.models.mentor import Mentor
     from src.models.mentee import Mentee
     from src.models.role import RoleModel
-    from src.models.tag import Tag
 
 
 class User(Base):
@@ -52,12 +51,6 @@ class User(Base):
         "Meeting",
         secondary="meetings.meeting_users",
         back_populates="participants",
-        lazy="raise",
-    )
-    tags: Mapped[list["Tag"]] = relationship(
-        "Tag",
-        secondary="iam.user_tags",
-        back_populates="users",
         lazy="raise",
     )
     mentor_profile: Mapped[Optional["Mentor"]] = relationship(

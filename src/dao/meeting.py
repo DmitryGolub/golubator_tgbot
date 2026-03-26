@@ -7,6 +7,7 @@ from sqlalchemy.orm import joinedload
 from src.core.dao import BaseDAO
 from src.core.database import async_session_maker
 from src.models.meeting import CallStatus, Meeting, MeetingUser
+from src.models.user import User
 
 
 class MeetingDAO(BaseDAO):
@@ -55,7 +56,7 @@ class MeetingDAO(BaseDAO):
             query = (
                 select(Meeting)
                 .where(Meeting.id == meeting.id)
-                .options(joinedload(Meeting.participants))
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
             )
             result = await session.execute(query)
             result = result.unique()
@@ -70,7 +71,7 @@ class MeetingDAO(BaseDAO):
                 select(Meeting)
                 .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
                 .where(MeetingUser.user_id == user_id)
-                .options(joinedload(Meeting.participants))
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
                 .order_by(Meeting.created_at.desc())
             )
             if hide_past:
@@ -85,7 +86,7 @@ class MeetingDAO(BaseDAO):
             query = (
                 select(Meeting)
                 .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants))
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
             )
             res = await session.execute(query)
             res = res.unique()
@@ -135,7 +136,7 @@ class MeetingDAO(BaseDAO):
                     Meeting.mentor_telegram_id == mentor_id,
                     Meeting.call_status == CallStatus.ongoing,
                 )
-                .options(joinedload(Meeting.participants))
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
                 .order_by(Meeting.scheduled_at.desc())
                 .limit(1)
             )
@@ -168,7 +169,7 @@ class MeetingDAO(BaseDAO):
             query = (
                 select(Meeting)
                 .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants))
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
             )
             res = await session.execute(query)
             res = res.unique()
@@ -201,7 +202,7 @@ class MeetingDAO(BaseDAO):
             query = (
                 select(Meeting)
                 .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants))
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
             )
             res = await session.execute(query)
             res = res.unique()
@@ -262,7 +263,9 @@ class MeetingDAO(BaseDAO):
                 query = (
                     select(Meeting)
                     .where(Meeting.id == meeting_id)
-                    .options(joinedload(Meeting.participants))
+                    .options(
+                        joinedload(Meeting.participants).selectinload(User.role_rel)
+                    )
                 )
                 res = await session.execute(query)
                 res = res.unique()
@@ -273,7 +276,7 @@ class MeetingDAO(BaseDAO):
             query = (
                 select(Meeting)
                 .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants))
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
             )
             res = await session.execute(query)
             res = res.unique()

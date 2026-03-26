@@ -18,7 +18,6 @@ def user_actions_keyboard() -> InlineKeyboardMarkup:
 
     kb.button(text="Список пользователей", callback_data="user_list")
     kb.button(text="Изменить пользователя", callback_data="user_update_menu")
-    kb.button(text="Теги", callback_data="menu_tags")
 
     kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
 

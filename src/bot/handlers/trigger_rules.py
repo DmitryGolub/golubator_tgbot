@@ -317,12 +317,11 @@ async def cb_recipient_type(
     await callback.answer()
 
     # For types that need config, ask for it
-    if rt in ("by_role", "by_state", "by_tag", "by_cohort", "specific_users"):
+    if rt in ("by_role", "by_state", "by_cohort", "specific_users"):
         await state.set_state(TriggerRuleBuilderFSM.configuring_recipients)
         hints = {
             "by_role": "Введите название роли (например: mentor):",
             "by_state": "Введите статус (greeting/hold/study/search/offer):",
-            "by_tag": "Введите ID тега:",
             "by_cohort": "Введите значение когорты:",
             "specific_users": "Введите Telegram ID пользователей через запятую:",
         }
@@ -346,12 +345,6 @@ async def msg_recipient_config(message: Message, state: FSMContext):
         config = {"role_name": text}
     elif rt == "by_state":
         config = {"state": text}
-    elif rt == "by_tag":
-        try:
-            config = {"tag_id": int(text)}
-        except ValueError:
-            await message.answer("Введите числовой ID тега.")
-            return
     elif rt == "by_cohort":
         config = {"cohort_value": text}
     elif rt == "specific_users":

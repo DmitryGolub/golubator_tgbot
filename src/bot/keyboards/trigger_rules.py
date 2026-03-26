@@ -35,7 +35,6 @@ RECIPIENT_TYPE_LABELS = {
     "by_role": "По роли",
     "by_cohort": "По когорте",
     "by_state": "По статусу",
-    "by_tag": "По тегу",
     "specific_users": "Конкретные пользователи",
 }
 

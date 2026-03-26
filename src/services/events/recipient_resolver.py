@@ -54,13 +54,5 @@ class RecipientResolver:
 
             return await CohortDAO.get_telegram_ids_in_cohort(cohort_type, cohort_value)
 
-        if rt == RecipientType.by_tag:
-            tag_id = config.get("tag_id")
-            if not tag_id:
-                logger.warning("TriggerRule %s: by_tag without tag_id", rule.id)
-                return []
-            users = await UserDAO.get_all(tag_id=int(tag_id))
-            return [u.telegram_id for u in users]
-
         logger.warning("Unknown recipient_type: %s", rt)
         return []
