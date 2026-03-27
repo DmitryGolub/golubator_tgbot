@@ -15,6 +15,7 @@ from src.bot.callbacks.meeting import (
     NavigateMeetingMonthCB,
     ChooseMeetingTimeCB,
 )
+from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.meeting import (
     mentor_meetings_keyboard,
@@ -528,4 +529,34 @@ async def cb_meeting_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "Создание созвона отменено.",
         reply_markup=await _menu_kb(callback.from_user.id),
+    )
+
+
+# Pagination: students list
+@router.callback_query(
+    PermissionFilter("manage_meetings"),
+    StateFilter(CreateMeetingFSM.choosing_student),
+    PageNavCB.filter(F.menu == "students"),
+)
+async def cb_students_page(
+    callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
+):
+    await callback.answer()
+    mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
+    await callback.message.edit_reply_markup(
+        reply_markup=meeting_students_keyboard(mentees, page=callback_data.page)
+    )
+
+
+# Pagination: meetings list
+@router.callback_query(
+    PermissionFilter("manage_meetings"),
+    PageNavCB.filter(F.menu == "meetings"),
+)
+async def cb_meetings_page(callback: CallbackQuery, callback_data: PageNavCB):
+    await callback.answer()
+    meetings = await MeetingDAO.get_for_user(callback.from_user.id)
+    text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=True)
+    await callback.message.edit_text(
+        text, reply_markup=mentor_meetings_keyboard(meetings, page=callback_data.page)
     )

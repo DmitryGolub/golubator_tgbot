@@ -1,5 +1,5 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from src.bot.callbacks.cohort import (
     CohortTypeCB,
@@ -10,6 +10,11 @@ from src.bot.callbacks.cohort import (
     OptionListCB,
     RenameCohortTypeCB,
     RenameOptionCB,
+)
+from src.bot.keyboards.pagination import (
+    DEFAULT_PAGE_SIZE,
+    get_page_slice,
+    paginate_buttons,
 )
 from src.services.notion_client import CohortTypeInfo
 
@@ -25,17 +30,34 @@ def cohort_actions_keyboard() -> InlineKeyboardMarkup:
 
 def cohort_types_keyboard(
     types: list[CohortTypeInfo],
+    page: int = 0,
 ) -> tuple[InlineKeyboardMarkup, dict[int, str]]:
     """Returns (keyboard, {idx: type_name}) mapping for FSM storage."""
-    kb = InlineKeyboardBuilder()
+    # Mapping uses global indices so FSM lookup works across pages
     mapping: dict[int, str] = {}
     for i, t in enumerate(types):
         mapping[i] = t.name
+
+    page_items, total_pages = get_page_slice(types, page)
+    kb = InlineKeyboardBuilder()
+
+    nav = paginate_buttons("cohorts", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    for i, t in enumerate(page_items):
+        global_idx = page * DEFAULT_PAGE_SIZE + i
         label = f"{t.name} ({t.notion_type}) [{len(t.options)}]"
-        kb.button(text=label, callback_data=CohortTypeCB(idx=i))
-    kb.button(text="➕ Создать тип", callback_data="cohort_create_type")
-    kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
-    kb.adjust(1)
+        kb.row(
+            InlineKeyboardButton(
+                text=label, callback_data=CohortTypeCB(idx=global_idx).pack()
+            )
+        )
+
+    kb.row(
+        InlineKeyboardButton(text="➕ Создать тип", callback_data="cohort_create_type")
+    )
+    kb.row(InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu"))
     return kb.as_markup(), mapping
 
 

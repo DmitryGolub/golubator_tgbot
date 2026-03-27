@@ -5,6 +5,7 @@ from aiogram.types import CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 
 from src.bot.callbacks.mentor_stats import MentorStatsCB
+from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.mentor_stats import mentor_select_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
@@ -123,3 +124,16 @@ async def cb_admin_view_mentor_stats(
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
+
+
+# Admin: paginate mentor list
+@router.callback_query(
+    PermissionFilter("manage_users"), PageNavCB.filter(F.menu == "mstats")
+)
+async def cb_mstats_page(callback: CallbackQuery, callback_data: PageNavCB):
+    await callback.answer()
+    all_mentors = await MentorDAO.get_all_with_users()
+    mentors = [m for m in all_mentors if m.telegram_id is not None]
+    await callback.message.edit_reply_markup(
+        reply_markup=mentor_select_keyboard(mentors, page=callback_data.page)
+    )

@@ -3,6 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 
 from src.bot.callbacks.cohort import CohortTypeCB, OptionListCB
+from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.cohort import (
     cohort_type_detail_keyboard,
@@ -149,3 +150,23 @@ async def show_options_list(
         f"Выберите опцию для {action_label} в <b>{e(type_name)}</b>:",
         reply_markup=markup,
     )
+
+
+# Pagination: cohort types list
+@router.callback_query(PageNavCB.filter(F.menu == "cohorts"))
+async def cb_cohorts_page(
+    callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
+):
+    await callback.answer()
+    notion = get_notion_service()
+    if not notion:
+        return
+
+    try:
+        types = await notion.get_cohort_types()
+    finally:
+        await notion.close()
+
+    markup, types_map = cohort_types_keyboard(types, page=callback_data.page)
+    await state.update_data(cohort_types_map=types_map)
+    await callback.message.edit_reply_markup(reply_markup=markup)

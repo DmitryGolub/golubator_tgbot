@@ -1,18 +1,31 @@
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.mentor_stats import MentorStatsCB
+from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
 from src.models.mentor import Mentor
 
 
-def mentor_select_keyboard(mentors: list[Mentor]) -> InlineKeyboardMarkup:
+def mentor_select_keyboard(
+    mentors: list[Mentor], page: int = 0
+) -> InlineKeyboardMarkup:
+    page_items, total_pages = get_page_slice(mentors, page)
     builder = InlineKeyboardBuilder()
-    for m in mentors:
+
+    nav = paginate_buttons("mstats", page, total_pages)
+    if nav:
+        builder.row(*nav)
+
+    for m in page_items:
         username = f" @{m.user.username}" if m.user and m.user.username else ""
-        builder.button(
-            text=f"{m.name}{username}",
-            callback_data=MentorStatsCB(mentor_id=m.telegram_id),
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{m.name}{username}",
+                callback_data=MentorStatsCB(mentor_id=m.telegram_id).pack(),
+            )
         )
-    builder.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
-    builder.adjust(1)
+
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu")
+    )
     return builder.as_markup()

@@ -5,7 +5,7 @@ from src.dao.user import UserDAO
 from src.dao.mentee import MenteeDAO
 from src.dao.cohort import CohortDAO
 from src.bot.filters.permission import PermissionFilter
-from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.bot.keyboards.user import user_list_keyboard
 from src.utils.escape import e
 from src.utils.telegram import split_message
 
@@ -70,9 +70,9 @@ async def cb_user_list(callback: CallbackQuery):
     # First chunk replaces the original message
     await callback.message.edit_text(
         chunks[0],
-        reply_markup=await back_to_menu_keyboard() if len(chunks) == 1 else None,
+        reply_markup=await user_list_keyboard() if len(chunks) == 1 else None,
     )
     # Remaining chunks as new messages
     for i, chunk in enumerate(chunks[1:], 1):
-        markup = await back_to_menu_keyboard() if i == len(chunks) - 1 else None
+        markup = await user_list_keyboard() if i == len(chunks) - 1 else None
         await callback.message.answer(chunk, reply_markup=markup)

@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import InlineKeyboardMarkup
 
 from src.bot.callbacks.update_user import (
     UpdateParam,
@@ -10,6 +10,7 @@ from src.bot.callbacks.update_user import (
     ChooseMentorCB,
     ChooseUserCB,
 )
+from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
 from src.models.user import User
 
 
@@ -81,27 +82,50 @@ async def statuses_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def mentors_keyboard(mentors: Sequence[User]) -> InlineKeyboardMarkup:
+async def user_list_keyboard() -> InlineKeyboardMarkup:
+    from src.services.ui_text import UiTextService
+
+    texts = await UiTextService.get_many(["user.btn.update", "menu.back"])
     kb = InlineKeyboardBuilder()
-
-    for mentor in mentors:
-        kb.button(
-            text=f"{mentor.name} {mentor.username}",
-            callback_data=ChooseMentorCB(mentor_id=mentor.telegram_id).pack(),
-        )
-
+    kb.button(text=texts["user.btn.update"], callback_data="user_update_menu")
+    kb.button(text=texts["menu.back"], callback_data="back_to_menu")
     kb.adjust(1)
     return kb.as_markup()
 
 
-def users_keyboard(users: Sequence[User]) -> InlineKeyboardMarkup:
+def mentors_keyboard(mentors: Sequence[User], page: int = 0) -> InlineKeyboardMarkup:
+    page_items, total_pages = get_page_slice(mentors, page)
     kb = InlineKeyboardBuilder()
 
-    for user in users:
-        kb.button(
-            text=f"{user.name} {user.username}",
-            callback_data=ChooseUserCB(user_id=user.telegram_id).pack(),
+    nav = paginate_buttons("mentors", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    for mentor in page_items:
+        kb.row(
+            InlineKeyboardButton(
+                text=f"{mentor.name} {mentor.username}",
+                callback_data=ChooseMentorCB(mentor_id=mentor.telegram_id).pack(),
+            )
         )
 
-    kb.adjust(1)
+    return kb.as_markup()
+
+
+def users_keyboard(users: Sequence[User], page: int = 0) -> InlineKeyboardMarkup:
+    page_items, total_pages = get_page_slice(users, page)
+    kb = InlineKeyboardBuilder()
+
+    nav = paginate_buttons("users", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    for user in page_items:
+        kb.row(
+            InlineKeyboardButton(
+                text=f"{user.name} {user.username}",
+                callback_data=ChooseUserCB(user_id=user.telegram_id).pack(),
+            )
+        )
+
     return kb.as_markup()

@@ -11,31 +11,52 @@ from src.bot.callbacks.meeting import (
     NavigateMeetingMonthCB,
     ChooseMeetingTimeCB,
 )
+from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
 from src.models.meeting import Meeting
 
 
 def mentor_meetings_keyboard(
     meetings: list[Meeting] | None = None,
+    page: int = 0,
 ) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="Добавить созвон", callback_data="meeting_create")
-    kb.button(text="Завершить активный созвон", callback_data="mentor_end_call")
-    kb.button(text="Заполнить фидбек", callback_data="menu_surveys")
 
+    # Dynamic meeting buttons for pagination
+    dynamic_buttons: list[tuple[str, str]] = []
     if meetings:
         for meeting in meetings:
             if meeting.completed_at is None:
-                kb.button(
-                    text=f"Начать созвон #{meeting.id}",
-                    callback_data=StartMeetingCallCB(meeting_id=meeting.id).pack(),
+                dynamic_buttons.append(
+                    (
+                        f"Начать созвон #{meeting.id}",
+                        StartMeetingCallCB(meeting_id=meeting.id).pack(),
+                    )
                 )
-            kb.button(
-                text=f"Удалить созвон #{meeting.id}",
-                callback_data=DeleteMeetingCB(meeting_id=meeting.id).pack(),
+            dynamic_buttons.append(
+                (
+                    f"Удалить созвон #{meeting.id}",
+                    DeleteMeetingCB(meeting_id=meeting.id).pack(),
+                )
             )
 
-    kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
-    kb.adjust(1)
+    page_items, total_pages = get_page_slice(dynamic_buttons, page)
+
+    nav = paginate_buttons("meetings", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    kb.row(InlineKeyboardButton(text="Добавить созвон", callback_data="meeting_create"))
+    kb.row(
+        InlineKeyboardButton(
+            text="Завершить активный созвон", callback_data="mentor_end_call"
+        )
+    )
+    kb.row(InlineKeyboardButton(text="Заполнить фидбек", callback_data="menu_surveys"))
+
+    for text, cb_data in page_items:
+        kb.row(InlineKeyboardButton(text=text, callback_data=cb_data))
+
+    kb.row(InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu"))
     return kb.as_markup()
 
 
@@ -46,23 +67,33 @@ def meeting_cancel_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def meeting_students_keyboard(students) -> InlineKeyboardMarkup:
+def meeting_students_keyboard(students, page: int = 0) -> InlineKeyboardMarkup:
     """Accept User or Mentee objects. Uses doc_name/name and telegram_id."""
+    page_items, total_pages = get_page_slice(list(students), page)
     kb = InlineKeyboardBuilder()
 
-    for student in students:
+    nav = paginate_buttons("students", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    for student in page_items:
         display_name = getattr(student, "doc_name", None) or student.name
         username = getattr(student, "username", None)
         if not username and hasattr(student, "user") and student.user:
             username = student.user.username
         label = f"{display_name} @{username}" if username else display_name
-        kb.button(
-            text=label,
-            callback_data=ChooseMeetingStudentCB(student_id=student.telegram_id).pack(),
+        kb.row(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=ChooseMeetingStudentCB(
+                    student_id=student.telegram_id
+                ).pack(),
+            )
         )
 
-    kb.button(text="❌ Отмена", callback_data="meeting_create_cancel")
-    kb.adjust(1)
+    kb.row(
+        InlineKeyboardButton(text="❌ Отмена", callback_data="meeting_create_cancel")
+    )
     return kb.as_markup()
 
 
