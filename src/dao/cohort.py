@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, distinct, select
+from sqlalchemy import delete, distinct, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.core.database import async_session_maker
@@ -96,4 +96,37 @@ class CohortDAO:
                         synced_at=now,
                     )
                 )
+            await session.commit()
+
+    @staticmethod
+    async def update_mentee_cohort_by_type(
+        mentee_id: int, cohort_type: str, cohort_value: str
+    ) -> None:
+        async with async_session_maker() as session:
+            await session.execute(
+                delete(UserCohort).where(
+                    UserCohort.mentee_id == mentee_id,
+                    UserCohort.cohort_id.in_(
+                        select(Cohort.id).where(Cohort.type == cohort_type)
+                    ),
+                )
+            )
+            now = datetime.now(timezone.utc)
+            await session.execute(
+                pg_insert(Cohort)
+                .values(type=cohort_type, value=cohort_value)
+                .on_conflict_do_nothing(constraint="uq_cohort_type_value")
+            )
+            result = await session.execute(
+                select(Cohort.id).where(
+                    Cohort.type == cohort_type, Cohort.value == cohort_value
+                )
+            )
+            cohort_id = result.scalar_one()
+            session.add(
+                UserCohort(mentee_id=mentee_id, cohort_id=cohort_id, synced_at=now)
+            )
+            await session.execute(
+                update(Mentee).where(Mentee.id == mentee_id).values(updated_at=now)
+            )
             await session.commit()

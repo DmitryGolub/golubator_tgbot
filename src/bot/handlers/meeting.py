@@ -30,11 +30,11 @@ from src.bot.keyboards.meeting import (
 from src.bot.keyboards.menu import menu_keyboard
 from src.bot.states.meeting import CreateMeetingFSM
 from src.dao.meeting import MeetingDAO
+from src.dao.mentor import MentorDAO
 from src.dao.user import UserDAO
 from src.dao.mentee import MenteeDAO
 from src.models.meeting import CallStatus
 from src.services.auth import AuthService
-from src.utils.roles import is_mentor, is_student
 from src.utils.escape import e
 import logging
 from src.tasks.meeting import (
@@ -63,14 +63,18 @@ async def _menu_kb(user_id: int):
     return await menu_keyboard(perms)
 
 
-def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:
+def _format_meetings(
+    meetings, viewer_id: int, viewer_is_mentor: bool, mentor_tg_ids: set[int]
+) -> str:
     if not meetings:
         return "Список созвонов пуст."
 
     lines = ["<b>Мои созвоны:</b>", ""]
     for meeting in meetings:
-        mentor = next((p for p in meeting.participants if is_mentor(p)), None)
-        student = next((p for p in meeting.participants if is_student(p)), None)
+        mentor = next(
+            (p for p in meeting.participants if p.telegram_id in mentor_tg_ids),
+            None,
+        )
 
         # fallback: identify mentor by meeting.mentor_telegram_id
         if not mentor and meeting.mentor_telegram_id:
@@ -83,16 +87,15 @@ def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:
                 None,
             )
 
-        # fallback: pick remaining participant as student
-        if not student:
-            student = next(
-                (
-                    p
-                    for p in meeting.participants
-                    if mentor and p.telegram_id != mentor.telegram_id
-                ),
-                None,
-            )
+        # student: remaining participant or mentee_telegram_tag
+        student = next(
+            (
+                p
+                for p in meeting.participants
+                if not mentor or p.telegram_id != mentor.telegram_id
+            ),
+            None,
+        )
 
         if viewer_is_mentor and mentor and mentor.telegram_id != viewer_id:
             continue
@@ -143,8 +146,13 @@ def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:
 async def cb_mentor_meetings(callback: CallbackQuery):
     await callback.answer()
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
-
-    text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=True)
+    mentor_tg_ids = await MentorDAO.get_telegram_ids()
+    text = _format_meetings(
+        meetings,
+        callback.from_user.id,
+        viewer_is_mentor=True,
+        mentor_tg_ids=mentor_tg_ids,
+    )
     await callback.message.edit_text(
         text, reply_markup=mentor_meetings_keyboard(meetings)
     )
@@ -156,8 +164,13 @@ async def cb_mentor_meetings(callback: CallbackQuery):
 async def cb_student_meetings(callback: CallbackQuery):
     await callback.answer()
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
-
-    text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=False)
+    mentor_tg_ids = await MentorDAO.get_telegram_ids()
+    text = _format_meetings(
+        meetings,
+        callback.from_user.id,
+        viewer_is_mentor=False,
+        mentor_tg_ids=mentor_tg_ids,
+    )
     try:
         await callback.message.edit_text(
             text, reply_markup=await _menu_kb(callback.from_user.id)
@@ -256,15 +269,6 @@ async def cb_choose_meeting_student(
         await state.clear()
         return
 
-    if mentee.telegram_id is None:
-        await callback.message.edit_text(
-            "У этого ученика нет привязанного Telegram аккаунта. "
-            "Попросите ученика зарегистрироваться через /start.",
-            reply_markup=await _menu_kb(callback.from_user.id),
-        )
-        await state.clear()
-        return
-
     await state.update_data(
         student_id=mentee.telegram_id,
         mentee_id=mentee.id,
@@ -288,7 +292,9 @@ async def cb_choose_meeting_type(
     state: FSMContext,
 ):
     await callback.answer()
-    await state.update_data(event_type=callback_data.event_type)
+    from src.bot.keyboards.meeting import MEETING_TYPES
+
+    await state.update_data(event_type=MEETING_TYPES[callback_data.type_idx])
     await state.set_state(CreateMeetingFSM.waiting_description)
 
     await callback.message.edit_text(
@@ -625,7 +631,13 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
         return
 
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
-    text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=True)
+    mentor_tg_ids = await MentorDAO.get_telegram_ids()
+    text = _format_meetings(
+        meetings,
+        callback.from_user.id,
+        viewer_is_mentor=True,
+        mentor_tg_ids=mentor_tg_ids,
+    )
     await callback.message.edit_text(
         f"Созвон #{callback_data.meeting_id} удалён.\n\n{text}",
         reply_markup=mentor_meetings_keyboard(meetings),
@@ -677,7 +689,13 @@ async def cb_students_page(
 async def cb_meetings_page(callback: CallbackQuery, callback_data: PageNavCB):
     await callback.answer()
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
-    text = _format_meetings(meetings, callback.from_user.id, viewer_is_mentor=True)
+    mentor_tg_ids = await MentorDAO.get_telegram_ids()
+    text = _format_meetings(
+        meetings,
+        callback.from_user.id,
+        viewer_is_mentor=True,
+        mentor_tg_ids=mentor_tg_ids,
+    )
     await callback.message.edit_text(
         text, reply_markup=mentor_meetings_keyboard(meetings, page=callback_data.page)
     )

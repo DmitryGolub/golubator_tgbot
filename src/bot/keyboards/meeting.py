@@ -177,7 +177,7 @@ MEETING_TYPES = [
 
 def meeting_type_keyboard(page: int = 0) -> InlineKeyboardMarkup:
     buttons: list[tuple[str, str]] = [
-        (t, ChooseMeetingTypeCB(event_type=t).pack()) for t in MEETING_TYPES
+        (t, ChooseMeetingTypeCB(type_idx=i).pack()) for i, t in enumerate(MEETING_TYPES)
     ]
     page_items, total_pages = get_page_slice(buttons, page, page_size=5)
 

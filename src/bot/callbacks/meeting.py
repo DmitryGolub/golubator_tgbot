@@ -30,4 +30,4 @@ class ChooseMeetingTimeCB(CallbackData, prefix="meeting_time"):
 
 
 class ChooseMeetingTypeCB(CallbackData, prefix="meeting_type"):
-    event_type: str
+    type_idx: int

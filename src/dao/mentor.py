@@ -24,6 +24,14 @@ class MentorDAO(BaseDAO):
             return result.scalars().one_or_none()
 
     @classmethod
+    async def get_telegram_ids(cls) -> set[int]:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(cls.model.telegram_id).where(cls.model.telegram_id.isnot(None))
+            )
+            return set(result.scalars().all())
+
+    @classmethod
     async def get_all_with_users(cls) -> list[Mentor]:
         async with async_session_maker() as session:
             query = select(cls.model).options(joinedload(cls.model.user))

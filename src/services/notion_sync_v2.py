@@ -762,6 +762,34 @@ class NotionSyncServiceV2:
                                         {"text": {"content": meeting.action_items}}
                                     ]
                                 }
+                            if meeting.event_type:
+                                props["Тип"] = {"select": {"name": meeting.event_type}}
+                            if meeting.mentee_telegram_tag:
+                                props["ТГ тег менти"] = {
+                                    "rich_text": [
+                                        {
+                                            "text": {
+                                                "content": meeting.mentee_telegram_tag
+                                            }
+                                        }
+                                    ]
+                                }
+                            if meeting.meeting_link:
+                                props["Ссылка"] = {"url": meeting.meeting_link}
+                            if meeting.scheduled_at:
+                                props["Дата"] = {
+                                    "date": {"start": meeting.scheduled_at.isoformat()}
+                                }
+                            mentor_notion_ids = await self._resolve_mentor_notion_ids(
+                                session, meeting.mentor_telegram_id
+                            )
+                            if mentor_notion_ids:
+                                props["Ментор"] = {
+                                    "people": [
+                                        {"object": "user", "id": uid}
+                                        for uid in mentor_notion_ids
+                                    ]
+                                }
                             if props:
                                 await self.event_repo.update_properties(
                                     meeting.notion_page_id, props

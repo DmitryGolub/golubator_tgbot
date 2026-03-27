@@ -317,8 +317,8 @@ async def cb_choose_user_for_update(
             value_human = chosen_value
 
             if mentee:
-                await CohortDAO.replace_mentee_cohorts(
-                    mentee.id, [("Status", chosen_value)]
+                await CohortDAO.update_mentee_cohort_by_type(
+                    mentee.id, "Status", chosen_value
                 )
             else:
                 value_human = f"{value_human} (профиль менти не найден)"
@@ -398,7 +398,7 @@ async def cb_choose_mentee_for_update(
             await state.clear()
             return
 
-    await CohortDAO.replace_mentee_cohorts(mentee.id, [("Status", chosen_value)])
+    await CohortDAO.update_mentee_cohort_by_type(mentee.id, "Status", chosen_value)
 
     display_name = mentee.doc_name or mentee.name or f"id={mentee.id}"
     username = ""
