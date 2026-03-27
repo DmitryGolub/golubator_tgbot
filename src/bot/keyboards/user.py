@@ -9,6 +9,7 @@ from src.bot.callbacks.update_user import (
     ChooseEnumValueCB,
     ChooseMentorCB,
     ChooseUserCB,
+    ChooseMenteeCB,
 )
 from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
 from src.models.user import User
@@ -93,6 +94,28 @@ async def user_list_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
+async def user_list_paginated_keyboard(
+    total_pages: int,
+    page: int = 0,
+) -> InlineKeyboardMarkup:
+    from src.services.ui_text import UiTextService
+
+    texts = await UiTextService.get_many(["user.btn.update", "menu.back"])
+    kb = InlineKeyboardBuilder()
+
+    nav = paginate_buttons("user_list", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    kb.row(
+        InlineKeyboardButton(
+            text=texts["user.btn.update"], callback_data="user_update_menu"
+        )
+    )
+    kb.row(InlineKeyboardButton(text=texts["menu.back"], callback_data="back_to_menu"))
+    return kb.as_markup()
+
+
 def mentors_keyboard(mentors: Sequence[User], page: int = 0) -> InlineKeyboardMarkup:
     page_items, total_pages = get_page_slice(mentors, page)
     kb = InlineKeyboardBuilder()
@@ -106,6 +129,30 @@ def mentors_keyboard(mentors: Sequence[User], page: int = 0) -> InlineKeyboardMa
             InlineKeyboardButton(
                 text=f"{mentor.name} {mentor.username}",
                 callback_data=ChooseMentorCB(mentor_id=mentor.telegram_id).pack(),
+            )
+        )
+
+    return kb.as_markup()
+
+
+def mentees_keyboard(mentees: Sequence, page: int = 0) -> InlineKeyboardMarkup:
+    page_items, total_pages = get_page_slice(mentees, page)
+    kb = InlineKeyboardBuilder()
+
+    nav = paginate_buttons("mentees", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    for mentee in page_items:
+        display_name = getattr(mentee, "doc_name", None) or mentee.name
+        username = None
+        if hasattr(mentee, "user") and mentee.user:
+            username = mentee.user.username
+        label = f"{display_name} @{username}" if username else display_name
+        kb.row(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=ChooseMenteeCB(mentee_id=mentee.id).pack(),
             )
         )
 

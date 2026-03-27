@@ -21,7 +21,7 @@ class MeetingDAO(BaseDAO):
         meeting_link: str | None,
         scheduled_at: datetime | None,
         mentor_id: int,
-        student_id: int,
+        student_id: int | None = None,
         topic: str | None = None,
         event_type: str | None = None,
         mentee_telegram_tag: str | None = None,
@@ -43,12 +43,10 @@ class MeetingDAO(BaseDAO):
             meeting_res = await session.execute(meeting_stmt)
             meeting: Meeting = meeting_res.scalar_one()
 
-            participants_stmt = insert(MeetingUser).values(
-                [
-                    {"meeting_id": meeting.id, "user_id": mentor_id},
-                    {"meeting_id": meeting.id, "user_id": student_id},
-                ]
-            )
+            participants = [{"meeting_id": meeting.id, "user_id": mentor_id}]
+            if student_id is not None:
+                participants.append({"meeting_id": meeting.id, "user_id": student_id})
+            participants_stmt = insert(MeetingUser).values(participants)
             await session.execute(participants_stmt)
             await session.commit()
 

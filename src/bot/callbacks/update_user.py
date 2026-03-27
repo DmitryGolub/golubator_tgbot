@@ -27,3 +27,8 @@ class ChooseMentorCB(CallbackData, prefix="upd_mentor"):
 # выбор пользователя, к которому применяем изменение
 class ChooseUserCB(CallbackData, prefix="upd_user"):
     user_id: int
+
+
+# выбор менти по Mentee.id (PK) — для менти без telegram_id
+class ChooseMenteeCB(CallbackData, prefix="upd_mentee"):
+    mentee_id: int

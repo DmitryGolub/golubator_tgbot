@@ -2,7 +2,7 @@ from aiogram.filters.callback_data import CallbackData
 
 
 class ChooseMeetingStudentCB(CallbackData, prefix="meeting_student"):
-    student_id: int
+    mentee_id: int
 
 
 class DeleteMeetingCB(CallbackData, prefix="meeting_del"):

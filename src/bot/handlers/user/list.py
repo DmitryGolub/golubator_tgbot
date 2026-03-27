@@ -1,41 +1,41 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup
 
-from src.dao.user import UserDAO
-from src.dao.mentee import MenteeDAO
-from src.dao.cohort import CohortDAO
+from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
-from src.bot.keyboards.user import user_list_keyboard
+from src.bot.keyboards.pagination import get_page_slice
+from src.bot.keyboards.user import user_list_paginated_keyboard
+from src.dao.cohort import CohortDAO
+from src.dao.mentee import MenteeDAO
+from src.dao.user import UserDAO
 from src.utils.escape import e
-from src.utils.telegram import split_message
 
 router = Router(name="user")
 router.callback_query.filter(PermissionFilter("manage_users"))
 
 
-@router.callback_query(F.data.in_({"user_list", "menu_users"}))
-async def cb_user_list(callback: CallbackQuery):
-    await callback.answer()
-
+async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarkup]:
     all_users = await UserDAO.get_all()
 
     if not all_users:
-        return await callback.message.edit_text("<b>Список пользователей пуст.</b>")
+        return "<b>Список пользователей пуст.</b>", await user_list_paginated_keyboard(
+            1, 0
+        )
 
-    # Load all mentee profiles for mentor/state info
     all_mentees = await MenteeDAO.get_all_with_details()
     mentee_by_tid: dict[int, object] = {}
     for mentee in all_mentees:
         if mentee.telegram_id:
             mentee_by_tid[mentee.telegram_id] = mentee
 
-    # Batch load cohorts to avoid N+1
     mentee_ids = [m.id for m in all_mentees]
     cohorts_map = await CohortDAO.get_cohorts_batch(mentee_ids)
 
+    page_users, total_pages = get_page_slice(all_users, page)
+
     answer = "<b>Список пользователей:</b>\n\n"
 
-    for user in all_users:
+    for user in page_users:
         mentee = mentee_by_tid.get(user.telegram_id)
         mentor_name = "Отсутствует"
         mentor_username = ""
@@ -66,13 +66,22 @@ async def cb_user_list(callback: CallbackQuery):
             f"   • Дата регистрации: {reg_date}\n\n"
         )
 
-    chunks = split_message(answer)
-    # First chunk replaces the original message
-    await callback.message.edit_text(
-        chunks[0],
-        reply_markup=await user_list_keyboard() if len(chunks) == 1 else None,
-    )
-    # Remaining chunks as new messages
-    for i, chunk in enumerate(chunks[1:], 1):
-        markup = await user_list_keyboard() if i == len(chunks) - 1 else None
-        await callback.message.answer(chunk, reply_markup=markup)
+    markup = await user_list_paginated_keyboard(total_pages, page)
+    return answer, markup
+
+
+@router.callback_query(F.data.in_({"user_list", "menu_users"}))
+async def cb_user_list(callback: CallbackQuery):
+    await callback.answer()
+    text, markup = await _build_user_list_page(page=0)
+    await callback.message.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(
+    PermissionFilter("manage_users"),
+    PageNavCB.filter(F.menu == "user_list"),
+)
+async def cb_user_list_page(callback: CallbackQuery, callback_data: PageNavCB):
+    await callback.answer()
+    text, markup = await _build_user_list_page(page=callback_data.page)
+    await callback.message.edit_text(text, reply_markup=markup)

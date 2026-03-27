@@ -38,7 +38,6 @@ class MenteeDAO(BaseDAO):
                 select(cls.model)
                 .join(Mentor, cls.model.mentor_id == Mentor.id)
                 .where(Mentor.telegram_id == mentor_telegram_id)
-                .where(cls.model.telegram_id.is_not(None))
             )
             result = await session.execute(query)
             return list(result.scalars().all())

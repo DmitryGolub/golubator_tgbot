@@ -20,6 +20,7 @@ from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.meeting import (
     mentor_meetings_keyboard,
     meeting_cancel_keyboard,
+    meeting_skip_cancel_keyboard,
     meeting_students_keyboard,
     meeting_calendar_keyboard,
     meeting_time_keyboard,
@@ -232,7 +233,19 @@ async def cb_choose_meeting_student(
 ):
     await callback.answer()
 
-    await state.update_data(student_id=callback_data.student_id)
+    mentee = await MenteeDAO.find_one_or_none(id=callback_data.mentee_id)
+    if not mentee:
+        await callback.message.edit_text(
+            "Ученик не найден.",
+            reply_markup=await _menu_kb(callback.from_user.id),
+        )
+        await state.clear()
+        return
+
+    await state.update_data(
+        student_id=mentee.telegram_id,
+        mentee_id=mentee.id,
+    )
     await state.set_state(CreateMeetingFSM.waiting_description)
 
     await callback.message.edit_text(
@@ -338,7 +351,7 @@ async def msg_meeting_time(message: Message, state: FSMContext):
 
     await message.answer(
         "Введите ссылку на встречу (Telemost, Zoom, Google Meet и т.д.):",
-        reply_markup=meeting_cancel_keyboard(),
+        reply_markup=meeting_skip_cancel_keyboard(),
     )
 
 
@@ -371,7 +384,7 @@ async def cb_meeting_choose_time(
 
     await callback.message.edit_text(
         "Введите ссылку на встречу (Telemost, Zoom, Google Meet и т.д.):",
-        reply_markup=meeting_cancel_keyboard(),
+        reply_markup=meeting_skip_cancel_keyboard(),
     )
 
 
@@ -442,11 +455,9 @@ async def _schedule_meeting_tasks(meeting, mentor_id: int, student_id: int) -> N
         )
 
 
-@router.message(
-    PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_link)
-)
-async def msg_meeting_link(message: Message, state: FSMContext):
-    link = message.text.strip() if message.text else ""
+async def _finalize_meeting(
+    user_id: int, state: FSMContext, link: str | None, reply_func
+):
     data = await state.get_data()
 
     student_id = data.get("student_id")
@@ -457,34 +468,69 @@ async def msg_meeting_link(message: Message, state: FSMContext):
         scheduled_at = _parse_datetime(scheduled_at_raw)
 
     if not scheduled_at:
-        await message.answer(
+        await reply_func(
             "Не удалось сохранить дату/время. Попробуйте создать созвон заново.",
-            reply_markup=await _menu_kb(message.from_user.id),
+            reply_markup=await _menu_kb(user_id),
         )
         await state.clear()
         return
 
     # Resolve student username for Notion sync
-    student = await UserDAO.find_one_or_none(telegram_id=student_id)
-    mentee_tag = f"@{student.username}" if student and student.username else None
+    mentee_tag = None
+    if student_id:
+        student = await UserDAO.find_one_or_none(telegram_id=student_id)
+        if student and student.username:
+            mentee_tag = f"@{student.username}"
+    if not mentee_tag:
+        mentee_id = data.get("mentee_id")
+        if mentee_id:
+            mentee = await MenteeDAO.find_one_or_none(id=mentee_id)
+            if mentee and mentee.doc_name:
+                mentee_tag = mentee.doc_name
 
     meeting = await MeetingDAO.create_with_participants(
         description=description,
         meeting_link=link,
         scheduled_at=scheduled_at,
-        mentor_id=message.from_user.id,
+        mentor_id=user_id,
         student_id=student_id,
         topic=description,
         mentee_telegram_tag=mentee_tag,
     )
-    await _schedule_meeting_tasks(
-        meeting, mentor_id=message.from_user.id, student_id=student_id
-    )
+    await _schedule_meeting_tasks(meeting, mentor_id=user_id, student_id=student_id)
     await state.clear()
 
-    await message.answer(
+    await reply_func(
         "Созвон успешно создан.",
-        reply_markup=await _menu_kb(message.from_user.id),
+        reply_markup=await _menu_kb(user_id),
+    )
+
+
+@router.message(
+    PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_link)
+)
+async def msg_meeting_link(message: Message, state: FSMContext):
+    link = message.text.strip() if message.text else ""
+    await _finalize_meeting(
+        user_id=message.from_user.id,
+        state=state,
+        link=link or None,
+        reply_func=message.answer,
+    )
+
+
+@router.callback_query(
+    PermissionFilter("manage_meetings"),
+    StateFilter(CreateMeetingFSM.waiting_link),
+    F.data == "meeting_skip_link",
+)
+async def cb_meeting_skip_link(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await _finalize_meeting(
+        user_id=callback.from_user.id,
+        state=state,
+        link=None,
+        reply_func=callback.message.edit_text,
     )
 
 

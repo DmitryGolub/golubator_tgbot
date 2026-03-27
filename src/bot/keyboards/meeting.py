@@ -67,6 +67,14 @@ def meeting_cancel_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
+def meeting_skip_cancel_keyboard() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⏩ Пропустить", callback_data="meeting_skip_link")
+    kb.button(text="❌ Отмена", callback_data="meeting_create_cancel")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
 def meeting_students_keyboard(students, page: int = 0) -> InlineKeyboardMarkup:
     """Accept User or Mentee objects. Uses doc_name/name and telegram_id."""
     page_items, total_pages = get_page_slice(list(students), page)
@@ -77,8 +85,6 @@ def meeting_students_keyboard(students, page: int = 0) -> InlineKeyboardMarkup:
         kb.row(*nav)
 
     for student in page_items:
-        if student.telegram_id is None:
-            continue
         display_name = getattr(student, "doc_name", None) or student.name
         username = getattr(student, "username", None)
         if not username and hasattr(student, "user") and student.user:
@@ -87,9 +93,7 @@ def meeting_students_keyboard(students, page: int = 0) -> InlineKeyboardMarkup:
         kb.row(
             InlineKeyboardButton(
                 text=label,
-                callback_data=ChooseMeetingStudentCB(
-                    student_id=student.telegram_id
-                ).pack(),
+                callback_data=ChooseMeetingStudentCB(mentee_id=student.id).pack(),
             )
         )
 

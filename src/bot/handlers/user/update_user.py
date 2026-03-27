@@ -13,11 +13,13 @@ from src.bot.keyboards.user import (
     statuses_keyboard,
     mentors_keyboard,
     users_keyboard,
+    mentees_keyboard,
 )
 from src.bot.callbacks.update_user import (
     ChooseParamCB,
     ChooseEnumValueCB,
     ChooseMentorCB,
+    ChooseMenteeCB,
     ChooseUserCB,
     UpdateParam,
 )
@@ -172,23 +174,33 @@ async def cb_choose_enum_value(
     data = await state.get_data()
     flow_perm = data.get("flow_perm", "manage_users")
 
+    human_param = "роль" if param == UpdateParam.ROLE else "статус"
+
     if flow_perm == "update_student_status":
         mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
-        users = [m.user for m in mentees if m.user is not None]
-        users_filter = "mentor_mentees"
-    else:
-        users = await UserDAO.get_all()
-        users_filter = "all"
+        if not mentees:
+            await _msg(callback).edit_text("Пользователи не найдены.")
+            await state.clear()
+            return
 
+        await state.set_state(UpdateUserFSM.choosing_user)
+        await state.update_data(users_filter="mentor_mentees")
+
+        await _msg(callback).edit_text(
+            f"Вы выбрали: обновить <b>{e(human_param)}</b> на <b>{e(value)}</b>.\n\n"
+            f"Теперь выберите ученика:",
+            reply_markup=mentees_keyboard(mentees),
+        )
+        return
+
+    users = await UserDAO.get_all()
     if not users:
         await _msg(callback).edit_text("Пользователи не найдены.")
         await state.clear()
         return
 
     await state.set_state(UpdateUserFSM.choosing_user)
-    await state.update_data(users_filter=users_filter)
-
-    human_param = "роль" if param == UpdateParam.ROLE else "статус"
+    await state.update_data(users_filter="all")
 
     await _msg(callback).edit_text(
         f"Вы выбрали: обновить <b>{e(human_param)}</b> на <b>{e(value)}</b>.\n\n"
@@ -350,12 +362,59 @@ async def cb_choose_user_for_update(
     await state.clear()
 
 
+@router.callback_query(
+    StateFilter(UpdateUserFSM.choosing_user),
+    ChooseMenteeCB.filter(),
+)
+async def cb_choose_mentee_for_update(
+    callback: CallbackQuery,
+    callback_data: ChooseMenteeCB,
+    state: FSMContext,
+):
+    perms = await AuthService.get_user_permissions(callback.from_user.id)
+    if not perms:
+        await callback.answer("Доступ запрещен.", show_alert=True)
+        await state.clear()
+        return
+
+    await callback.answer()
+
+    data = await state.get_data()
+    chosen_value = data["chosen_value"]
+
+    mentee = await MenteeDAO.find_one_or_none(id=callback_data.mentee_id)
+    if not mentee:
+        await _msg(callback).edit_text("Ученик не найден.")
+        await state.clear()
+        return
+
+    if data.get("flow_perm") == "update_student_status":
+        mentor_record = await MentorDAO.find_by_telegram_id(callback.from_user.id)
+        if mentee.mentor_id != (mentor_record.id if mentor_record else None):
+            await _msg(callback).edit_text(
+                "Можно обновлять только своих учеников.",
+                reply_markup=await back_to_menu_keyboard(),
+            )
+            await state.clear()
+            return
+
+    await CohortDAO.replace_mentee_cohorts(mentee.id, [("Status", chosen_value)])
+
+    display_name = mentee.doc_name or mentee.name or f"id={mentee.id}"
+    username = ""
+    if mentee.user and mentee.user.username:
+        username = f" @{e(mentee.user.username)}"
+
+    await _msg(callback).edit_text(
+        f"Ученик {e(display_name)}{username}\nСтатус обновлено на: {e(chosen_value)}",
+        reply_markup=await back_to_menu_keyboard(),
+    )
+    await state.clear()
+
+
 async def _load_users_by_filter(users_filter: str, caller_id: int) -> list:
     if users_filter == "students":
         return await UserDAO.get_all(role_name="student")
-    if users_filter == "mentor_mentees":
-        mentees = await MenteeDAO.get_by_mentor_telegram_id(caller_id)
-        return [m.user for m in mentees if m.user is not None]
     return await UserDAO.get_all()
 
 
@@ -372,6 +431,20 @@ async def cb_users_page(
     users = await _load_users_by_filter(users_filter, callback.from_user.id)
     await _msg(callback).edit_reply_markup(
         reply_markup=users_keyboard(users, page=callback_data.page)
+    )
+
+
+@router.callback_query(
+    StateFilter(UpdateUserFSM.choosing_user),
+    PageNavCB.filter(F.menu == "mentees"),
+)
+async def cb_mentees_page(
+    callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
+):
+    await callback.answer()
+    mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
+    await _msg(callback).edit_reply_markup(
+        reply_markup=mentees_keyboard(mentees, page=callback_data.page)
     )
 
 
