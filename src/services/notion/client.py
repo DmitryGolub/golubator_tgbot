@@ -77,6 +77,7 @@ class NotionClient:
         self._database_id = database_id
         self._data_source_id: str | None = None
         self._rate_limiter = _get_rate_limiter(token)
+        self._users_cache: dict[str, str] | None = None
 
     @property
     def database_id(self) -> str:
@@ -191,6 +192,25 @@ class NotionClient:
         except APIResponseError as e:
             logger.error("Notion update_schema failed: %s", e)
             return False
+
+    async def get_users(self) -> dict[str, str]:
+        """Return mapping {email: notion_user_id} for workspace users. Cached."""
+        if self._users_cache is not None:
+            return self._users_cache
+
+        result: dict[str, str] = {}
+        try:
+            await self._rate_limiter.acquire()
+            resp = await self._client.users.list()
+            for user in resp.get("results", []):
+                email = (user.get("person") or {}).get("email")
+                if email:
+                    result[email.lower()] = user["id"]
+        except APIResponseError as e:
+            logger.error("Notion get_users failed: %s", e)
+
+        self._users_cache = result
+        return result
 
     async def close(self) -> None:
         await self._client.aclose()

@@ -125,6 +125,7 @@ class NotionEventRepo:
         status: str = "Запланирован",
         mentee_tg_tag: str | None = None,
         link: str | None = None,
+        mentor_notion_user_ids: list[str] | None = None,
     ) -> str | None:
         properties: dict = {
             "Тема": {"title": [{"text": {"content": topic}}]},
@@ -140,6 +141,12 @@ class NotionEventRepo:
             }
         if link:
             properties["Ссылка"] = {"url": link}
+        if mentor_notion_user_ids:
+            properties["Ментор"] = {
+                "people": [
+                    {"object": "user", "id": uid} for uid in mentor_notion_user_ids
+                ]
+            }
 
         page = await self._client.create_page(properties)
         return page["id"] if page else None

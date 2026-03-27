@@ -561,6 +561,23 @@ class NotionSyncServiceV2:
         logger.info("Backup pull cohorts: %d synced", count)
         return count
 
+    async def _resolve_mentor_notion_ids(
+        self, session: AsyncSession, mentor_telegram_id: int | None
+    ) -> list[str] | None:
+        if not mentor_telegram_id or not self.event_repo:
+            return None
+        result = await session.execute(
+            select(Mentor.email).where(Mentor.telegram_id == mentor_telegram_id)
+        )
+        email = result.scalar_one_or_none()
+        if not email:
+            return None
+        users = await self.event_repo._client.get_users()
+        notion_uid = users.get(email.lower())
+        if notion_uid:
+            return [notion_uid]
+        return None
+
     # ── Push: PostgreSQL → Notion ──────────────────────────────────────
 
     async def push_mentors(self) -> int:
@@ -702,6 +719,9 @@ class NotionSyncServiceV2:
                 for meeting in meetings:
                     try:
                         if meeting.notion_page_id is None:
+                            mentor_notion_ids = await self._resolve_mentor_notion_ids(
+                                session, meeting.mentor_telegram_id
+                            )
                             page_id = await self.event_repo.create_event(
                                 topic=meeting.topic or meeting.description or "Встреча",
                                 date=(
@@ -717,6 +737,7 @@ class NotionSyncServiceV2:
                                 ),
                                 mentee_tg_tag=meeting.mentee_telegram_tag,
                                 link=meeting.meeting_link,
+                                mentor_notion_user_ids=mentor_notion_ids,
                             )
                             if page_id:
                                 meeting.notion_page_id = page_id

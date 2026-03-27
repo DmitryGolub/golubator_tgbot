@@ -9,6 +9,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 from src.bot.callbacks.meeting import (
     ChooseMeetingStudentCB,
+    ChooseMeetingTypeCB,
     DeleteMeetingCB,
     StartMeetingCallCB,
     ChooseMeetingDateCB,
@@ -22,6 +23,7 @@ from src.bot.keyboards.meeting import (
     meeting_cancel_keyboard,
     meeting_skip_cancel_keyboard,
     meeting_students_keyboard,
+    meeting_type_keyboard,
     meeting_calendar_keyboard,
     meeting_time_keyboard,
 )
@@ -70,7 +72,18 @@ def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:
         mentor = next((p for p in meeting.participants if is_mentor(p)), None)
         student = next((p for p in meeting.participants if is_student(p)), None)
 
-        # fallback: if role not loaded, pick the other participant
+        # fallback: identify mentor by meeting.mentor_telegram_id
+        if not mentor and meeting.mentor_telegram_id:
+            mentor = next(
+                (
+                    p
+                    for p in meeting.participants
+                    if p.telegram_id == meeting.mentor_telegram_id
+                ),
+                None,
+            )
+
+        # fallback: pick remaining participant as student
         if not student:
             student = next(
                 (
@@ -91,11 +104,12 @@ def _format_meetings(meetings, viewer_id: int, viewer_is_mentor: bool) -> str:
             if mentor
             else "Ментор: —"
         )
-        student_text = (
-            f"Ученик: <b>{e(student.name)}</b> @{e(student.username)}"
-            if student
-            else "Ученик: —"
-        )
+        if student:
+            student_text = f"Ученик: <b>{e(student.name)}</b> @{e(student.username)}"
+        elif meeting.mentee_telegram_tag:
+            student_text = f"Ученик: {e(meeting.mentee_telegram_tag)}"
+        else:
+            student_text = "Ученик: —"
         desc = e(meeting.description) if meeting.description else "—"
         link = e(meeting.meeting_link) if meeting.meeting_link else "—"
         if meeting.scheduled_at:
@@ -242,15 +256,73 @@ async def cb_choose_meeting_student(
         await state.clear()
         return
 
+    if mentee.telegram_id is None:
+        await callback.message.edit_text(
+            "У этого ученика нет привязанного Telegram аккаунта. "
+            "Попросите ученика зарегистрироваться через /start.",
+            reply_markup=await _menu_kb(callback.from_user.id),
+        )
+        await state.clear()
+        return
+
     await state.update_data(
         student_id=mentee.telegram_id,
         mentee_id=mentee.id,
     )
+    await state.set_state(CreateMeetingFSM.choosing_type)
+
+    await callback.message.edit_text(
+        "Выберите тип встречи:",
+        reply_markup=meeting_type_keyboard(),
+    )
+
+
+@router.callback_query(
+    PermissionFilter("manage_meetings"),
+    StateFilter(CreateMeetingFSM.choosing_type),
+    ChooseMeetingTypeCB.filter(),
+)
+async def cb_choose_meeting_type(
+    callback: CallbackQuery,
+    callback_data: ChooseMeetingTypeCB,
+    state: FSMContext,
+):
+    await callback.answer()
+    await state.update_data(event_type=callback_data.event_type)
     await state.set_state(CreateMeetingFSM.waiting_description)
 
     await callback.message.edit_text(
         "Введите описание встречи:",
         reply_markup=meeting_cancel_keyboard(),
+    )
+
+
+@router.callback_query(
+    PermissionFilter("manage_meetings"),
+    StateFilter(CreateMeetingFSM.choosing_type),
+    F.data == "meeting_skip_type",
+)
+async def cb_skip_meeting_type(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(CreateMeetingFSM.waiting_description)
+
+    await callback.message.edit_text(
+        "Введите описание встречи:",
+        reply_markup=meeting_cancel_keyboard(),
+    )
+
+
+@router.callback_query(
+    PermissionFilter("manage_meetings"),
+    StateFilter(CreateMeetingFSM.choosing_type),
+    PageNavCB.filter(F.menu == "meeting_types"),
+)
+async def cb_meeting_types_page(
+    callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
+):
+    await callback.answer()
+    await callback.message.edit_reply_markup(
+        reply_markup=meeting_type_keyboard(page=callback_data.page)
     )
 
 
@@ -462,6 +534,7 @@ async def _finalize_meeting(
 
     student_id = data.get("student_id")
     description = data.get("description")
+    event_type = data.get("event_type")
     scheduled_at_raw = data.get("scheduled_at")
     scheduled_at = None
     if scheduled_at_raw:
@@ -495,6 +568,7 @@ async def _finalize_meeting(
         mentor_id=user_id,
         student_id=student_id,
         topic=description,
+        event_type=event_type,
         mentee_telegram_tag=mentee_tag,
     )
     await _schedule_meeting_tasks(meeting, mentor_id=user_id, student_id=student_id)
@@ -562,6 +636,7 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
     PermissionFilter("manage_meetings"),
     StateFilter(
         CreateMeetingFSM.choosing_student,
+        CreateMeetingFSM.choosing_type,
         CreateMeetingFSM.waiting_description,
         CreateMeetingFSM.waiting_date,
         CreateMeetingFSM.waiting_time,

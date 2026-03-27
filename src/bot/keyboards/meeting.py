@@ -5,6 +5,7 @@ from datetime import date
 
 from src.bot.callbacks.meeting import (
     ChooseMeetingStudentCB,
+    ChooseMeetingTypeCB,
     DeleteMeetingCB,
     StartMeetingCallCB,
     ChooseMeetingDateCB,
@@ -158,6 +159,44 @@ def meeting_calendar_keyboard(current: date) -> InlineKeyboardMarkup:
     )
 
     return builder.as_markup()
+
+
+MEETING_TYPES = [
+    "Поиск работы",
+    "Синк",
+    "1:1",
+    "Планирование",
+    "Ретро",
+    "Интервью",
+    "Обучение",
+    "Знакомство",
+    "Поддержка на ИС",
+    "Консультация",
+]
+
+
+def meeting_type_keyboard(page: int = 0) -> InlineKeyboardMarkup:
+    buttons: list[tuple[str, str]] = [
+        (t, ChooseMeetingTypeCB(event_type=t).pack()) for t in MEETING_TYPES
+    ]
+    page_items, total_pages = get_page_slice(buttons, page, page_size=5)
+
+    kb = InlineKeyboardBuilder()
+
+    nav = paginate_buttons("meeting_types", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    for text, cb_data in page_items:
+        kb.row(InlineKeyboardButton(text=text, callback_data=cb_data))
+
+    kb.row(
+        InlineKeyboardButton(text="⏩ Пропустить", callback_data="meeting_skip_type")
+    )
+    kb.row(
+        InlineKeyboardButton(text="❌ Отмена", callback_data="meeting_create_cancel")
+    )
+    return kb.as_markup()
 
 
 def meeting_time_keyboard() -> InlineKeyboardMarkup:

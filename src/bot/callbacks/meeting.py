@@ -27,3 +27,7 @@ class NavigateMeetingMonthCB(CallbackData, prefix="meeting_nav"):
 
 class ChooseMeetingTimeCB(CallbackData, prefix="meeting_time"):
     t: str  # HHMM
+
+
+class ChooseMeetingTypeCB(CallbackData, prefix="meeting_type"):
+    event_type: str
