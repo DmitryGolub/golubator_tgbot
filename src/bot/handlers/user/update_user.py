@@ -76,8 +76,13 @@ async def cmd_start_update_user(callback: CallbackQuery, state: FSMContext):
 async def cmd_start_update_student_by_mentor(
     callback: CallbackQuery, state: FSMContext
 ):
-    await state.update_data(flow_perm="update_student_status")
-    await cmd_start_update_user(callback, state)
+    await callback.answer()
+    await state.update_data(flow_perm="update_student_status", param=UpdateParam.STATUS)
+    await state.set_state(UpdateUserFSM.choosing_value)
+    await _msg(callback).answer(
+        "Выберите новый статус:",
+        reply_markup=await statuses_keyboard(),
+    )
 
 
 @router.callback_query(
@@ -169,12 +174,7 @@ async def cb_choose_enum_value(
 
     if flow_perm == "update_student_status":
         mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
-        mentee_tids = [m.telegram_id for m in mentees if m.telegram_id]
-        users = (
-            [u for u in await UserDAO.get_all() if u.telegram_id in set(mentee_tids)]
-            if mentee_tids
-            else []
-        )
+        users = [m.user for m in mentees if m.user is not None]
         users_filter = "mentor_mentees"
     else:
         users = await UserDAO.get_all()
@@ -355,8 +355,7 @@ async def _load_users_by_filter(users_filter: str, caller_id: int) -> list:
         return await UserDAO.get_all(role_name="student")
     if users_filter == "mentor_mentees":
         mentees = await MenteeDAO.get_by_mentor_telegram_id(caller_id)
-        mentee_tids = {m.telegram_id for m in mentees if m.telegram_id}
-        return [u for u in await UserDAO.get_all() if u.telegram_id in mentee_tids]
+        return [m.user for m in mentees if m.user is not None]
     return await UserDAO.get_all()
 
 

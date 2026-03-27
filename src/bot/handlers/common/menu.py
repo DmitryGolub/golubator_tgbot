@@ -288,7 +288,9 @@ async def cb_mentor_me_info(callback: CallbackQuery):
     lines = [
         f"{title}\n",
         f"Имя: <b>{e(mentor.name)}</b>",
-        f"Юзернейм: @{e(mentor.username)}",
+        f"Юзернейм: @{e(mentor.user.username)}"
+        if mentor.user and mentor.user.username
+        else "",
         "",
         f"Созвоны: <b>{stats['total_calls']}</b>",
         f"Опросы заполнено: <b>{stats['total_surveys']}</b>",

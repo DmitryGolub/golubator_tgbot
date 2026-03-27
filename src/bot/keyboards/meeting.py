@@ -77,6 +77,8 @@ def meeting_students_keyboard(students, page: int = 0) -> InlineKeyboardMarkup:
         kb.row(*nav)
 
     for student in page_items:
+        if student.telegram_id is None:
+            continue
         display_name = getattr(student, "doc_name", None) or student.name
         username = getattr(student, "username", None)
         if not username and hasattr(student, "user") and student.user:
