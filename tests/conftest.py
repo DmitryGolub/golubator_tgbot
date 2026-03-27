@@ -31,16 +31,12 @@ def make_role(
     id: int = 1,
     name: str = "mentor",
     display_name: str = "Ментор",
-    is_mentor: bool = False,
-    is_student: bool = False,
     permissions: list | None = None,
 ):
     return SimpleNamespace(
         id=id,
         name=name,
         display_name=display_name,
-        is_mentor=is_mentor,
-        is_student=is_student,
         permissions=permissions or [],
         users=[],
     )

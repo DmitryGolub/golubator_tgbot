@@ -68,11 +68,3 @@ def confirm_delete_keyboard(role: RoleModel) -> InlineKeyboardMarkup:
     )
     kb.adjust(2)
     return kb.as_markup()
-
-
-def bool_keyboard(prefix: str) -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="Да", callback_data=f"{prefix}:yes")
-    kb.button(text="Нет", callback_data=f"{prefix}:no")
-    kb.adjust(2)
-    return kb.as_markup()

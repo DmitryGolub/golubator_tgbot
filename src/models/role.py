@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table
+from sqlalchemy import Column, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
@@ -57,8 +57,6 @@ class RoleModel(Base):
         String(50), unique=True, nullable=False, index=True
     )
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    is_mentor: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    is_student: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     permissions: Mapped[list[Permission]] = relationship(
         "Permission",

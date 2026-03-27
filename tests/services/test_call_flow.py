@@ -14,7 +14,7 @@ from src.services.call_flow import (
     _resolve_mentor,
     _resolve_student,
 )
-from tests.conftest import make_meeting, make_role, make_user
+from tests.conftest import make_meeting, make_user
 
 MENTOR_ID = 100
 STUDENT_ID = 200
@@ -22,23 +22,18 @@ MEETING_ID = 1
 
 
 def _mentor():
-    return make_user(
-        telegram_id=MENTOR_ID,
-        role_rel=make_role(is_mentor=True),
-    )
+    return make_user(telegram_id=MENTOR_ID)
 
 
 def _student():
-    return make_user(
-        telegram_id=STUDENT_ID,
-        role_rel=make_role(is_student=True, name="student"),
-    )
+    return make_user(telegram_id=STUDENT_ID)
 
 
 def _meeting(**kwargs):
     defaults = dict(
         id=MEETING_ID,
         participants=[_mentor(), _student()],
+        mentor_telegram_id=MENTOR_ID,
     )
     defaults.update(kwargs)
     return make_meeting(**defaults)
@@ -53,23 +48,27 @@ class TestResolveMentor:
         meeting = _meeting()
         assert _resolve_mentor(meeting, 999) is None
 
-    def test_not_mentor_role(self):
-        user = make_user(telegram_id=MENTOR_ID, role_rel=make_role(is_mentor=False))
-        meeting = make_meeting(participants=[user])
+    def test_mentor_telegram_id_mismatch(self):
+        meeting = make_meeting(
+            participants=[make_user(telegram_id=MENTOR_ID)],
+            mentor_telegram_id=999,
+        )
         assert _resolve_mentor(meeting, MENTOR_ID) is None
 
 
 class TestResolveStudent:
-    def test_found_by_role(self):
-        meeting = _meeting()
+    def test_found_by_student_telegram_id(self):
+        meeting = _meeting(student_telegram_id=STUDENT_ID)
         result = _resolve_student(meeting)
         assert result is not None
         assert result.telegram_id == STUDENT_ID
 
     def test_fallback_non_mentor(self):
-        mentor = _mentor()
-        other = make_user(telegram_id=300, role_rel=None)
-        meeting = make_meeting(participants=[mentor, other])
+        other = make_user(telegram_id=300)
+        meeting = make_meeting(
+            participants=[_mentor(), other],
+            mentor_telegram_id=MENTOR_ID,
+        )
         result = _resolve_student(meeting)
         assert result is not None
         assert result.telegram_id == 300
@@ -135,7 +134,10 @@ class TestStartCall:
             )
 
     async def test_no_student(self, mock_meeting_dao):
-        meeting = make_meeting(participants=[_mentor()])
+        meeting = make_meeting(
+            participants=[_mentor()],
+            mentor_telegram_id=MENTOR_ID,
+        )
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=meeting)
         mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=None)
         with pytest.raises(MeetingStudentNotFoundError):

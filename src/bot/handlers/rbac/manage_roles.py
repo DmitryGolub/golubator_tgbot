@@ -14,7 +14,6 @@ from src.bot.callbacks.rbac import (
 )
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.rbac import (
-    bool_keyboard,
     confirm_delete_keyboard,
     permissions_keyboard,
     role_detail_keyboard,
@@ -54,16 +53,9 @@ async def cb_role_detail(callback: CallbackQuery, callback_data: RoleDetailCB):
 
     user_count = await RoleDAO.count_users(role.id)
     perm_names = ", ".join(e(p.codename) for p in role.permissions) or "нет"
-    flags = []
-    if role.is_mentor:
-        flags.append("менторская")
-    if role.is_student:
-        flags.append("студенческая")
-    flags_text = ", ".join(flags) or "нет"
 
     text = (
         f"<b>Роль: {e(role.display_name)}</b> (<code>{e(role.name)}</code>)\n\n"
-        f"Флаги: {flags_text}\n"
         f"Пользователей: {user_count}\n"
         f"Пермишены: {perm_names}"
     )
@@ -213,49 +205,17 @@ async def msg_role_display_name(message: Message, state: FSMContext):
         await message.answer("Название должно быть от 1 до 100 символов.")
         return
 
-    await state.update_data(display_name=display_name)
-    await state.set_state(CreateRoleFSM.waiting_is_mentor)
-    await message.answer(
-        "Это менторская роль? (пользователи с этой ролью будут считаться менторами в созвонах)",
-        reply_markup=bool_keyboard("rbac_is_mentor"),
-    )
-
-
-@router.callback_query(
-    StateFilter(CreateRoleFSM.waiting_is_mentor),
-    F.data.startswith("rbac_is_mentor:"),
-)
-async def cb_is_mentor(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    is_mentor = callback.data.endswith(":yes")
-    await state.update_data(is_mentor=is_mentor)
-    await state.set_state(CreateRoleFSM.waiting_is_student)
-    await callback.message.edit_text(
-        "Это студенческая роль? (пользователи с этой ролью будут считаться учениками в созвонах)",
-        reply_markup=bool_keyboard("rbac_is_student"),
-    )
-
-
-@router.callback_query(
-    StateFilter(CreateRoleFSM.waiting_is_student),
-    F.data.startswith("rbac_is_student:"),
-)
-async def cb_is_student(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    is_student = callback.data.endswith(":yes")
     data = await state.get_data()
     await state.clear()
 
     role = await RoleDAO.add(
         name=data["name"],
-        display_name=data["display_name"],
-        is_mentor=data["is_mentor"],
-        is_student=is_student,
+        display_name=display_name,
     )
     logger.info("Role created: %s (%s)", role.name, role.display_name)
 
     roles = await RoleDAO.get_all()
-    await callback.message.edit_text(
+    await message.answer(
         f"Роль <b>{e(role.display_name)}</b> (<code>{e(role.name)}</code>) создана.",
         reply_markup=roles_list_keyboard(roles),
     )

@@ -8,13 +8,11 @@ def _permission(codename):
     return SimpleNamespace(codename=codename, id=1)
 
 
-def _role(*, name="mentor", is_mentor=True, is_student=False, permissions=None):
+def _role(*, name="mentor", permissions=None):
     return SimpleNamespace(
         id=1,
         name=name,
         display_name="Ментор",
-        is_mentor=is_mentor,
-        is_student=is_student,
         permissions=permissions or [],
     )
 
@@ -51,9 +49,7 @@ class TestGetUserPermissions:
 
     async def test_user_no_role(self, mock_user_dao, mock_get_cache, mock_set_cache):
         mock_get_cache.return_value = None
-        mock_user_dao.find_one_or_none = AsyncMock(
-            return_value=_user(role_rel=None)
-        )
+        mock_user_dao.find_one_or_none = AsyncMock(return_value=_user(role_rel=None))
         result = await AuthService.get_user_permissions(100)
         assert result == set()
 
@@ -65,7 +61,11 @@ class TestGetUserPermissions:
         role = _role(permissions=[_permission("all_permissions")])
         mock_user_dao.find_one_or_none = AsyncMock(return_value=_user(role_rel=role))
         mock_perm_dao.get_all = AsyncMock(
-            return_value=[_permission("view"), _permission("edit"), _permission("admin")]
+            return_value=[
+                _permission("view"),
+                _permission("edit"),
+                _permission("admin"),
+            ]
         )
         result = await AuthService.get_user_permissions(100)
         assert result == {"view", "edit", "admin"}
@@ -93,8 +93,6 @@ class TestGetUserRole:
             "id": 1,
             "name": "mentor",
             "display_name": "Ментор",
-            "is_mentor": True,
-            "is_student": False,
         }
         role = await AuthService.get_user_role(100)
         assert role is not None

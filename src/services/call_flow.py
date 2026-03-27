@@ -6,7 +6,6 @@ from sqlalchemy.exc import IntegrityError
 from src.dao.meeting import MeetingDAO
 from src.models.meeting import Meeting
 from src.models.user import User
-from src.utils.roles import is_mentor, is_student
 
 logger = logging.getLogger(__name__)
 
@@ -54,38 +53,30 @@ class EndCallResult:
 
 
 def _resolve_mentor(meeting: Meeting, mentor_id: int) -> User | None:
+    if meeting.mentor_telegram_id != mentor_id:
+        return None
     return next(
-        (
-            participant
-            for participant in meeting.participants
-            if participant.telegram_id == mentor_id and is_mentor(participant)
-        ),
+        (p for p in meeting.participants if p.telegram_id == mentor_id),
         None,
     )
 
 
 def _resolve_student(meeting: Meeting) -> User | None:
-    student = next(
-        (
-            participant
-            for participant in meeting.participants
-            if is_student(participant)
-        ),
-        None,
-    )
-    if student:
-        return student
-
-    mentor = next(
-        (participant for participant in meeting.participants if is_mentor(participant)),
-        None,
-    )
-    if mentor:
+    if meeting.student_telegram_id:
         return next(
             (
-                participant
-                for participant in meeting.participants
-                if participant.telegram_id != mentor.telegram_id
+                p
+                for p in meeting.participants
+                if p.telegram_id == meeting.student_telegram_id
+            ),
+            None,
+        )
+    if meeting.mentor_telegram_id:
+        return next(
+            (
+                p
+                for p in meeting.participants
+                if p.telegram_id != meeting.mentor_telegram_id
             ),
             None,
         )

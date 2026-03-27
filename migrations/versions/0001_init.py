@@ -87,8 +87,6 @@ roles_t = sa.table(
     sa.column("id", sa.Integer),
     sa.column("name", sa.String),
     sa.column("display_name", sa.String),
-    sa.column("is_mentor", sa.Boolean),
-    sa.column("is_student", sa.Boolean),
     schema="iam",
 )
 role_perms_t = sa.table(
@@ -183,12 +181,6 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
         sa.Column("name", sa.String(50), unique=True, nullable=False, index=True),
         sa.Column("display_name", sa.String(100), nullable=False),
-        sa.Column(
-            "is_mentor", sa.Boolean, nullable=False, server_default=sa.text("false")
-        ),
-        sa.Column(
-            "is_student", sa.Boolean, nullable=False, server_default=sa.text("false")
-        ),
         schema="iam",
     )
     op.create_table(
@@ -680,24 +672,9 @@ def upgrade() -> None:
 
     # ── 10b. Seed: roles ─────────────────────────────────────────────────
     ROLES = [
-        {
-            "name": "admin",
-            "display_name": "Админ",
-            "is_mentor": False,
-            "is_student": False,
-        },
-        {
-            "name": "mentor",
-            "display_name": "Ментор",
-            "is_mentor": True,
-            "is_student": False,
-        },
-        {
-            "name": "student",
-            "display_name": "Студент",
-            "is_mentor": False,
-            "is_student": True,
-        },
+        {"name": "admin", "display_name": "Админ"},
+        {"name": "mentor", "display_name": "Ментор"},
+        {"name": "student", "display_name": "Студент"},
     ]
     for role in ROLES:
         conn.execute(roles_t.insert().values(**role))

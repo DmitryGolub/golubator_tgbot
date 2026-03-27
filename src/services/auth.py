@@ -47,8 +47,6 @@ class AuthService:
             role.id = cached["id"]
             role.name = cached["name"]
             role.display_name = cached["display_name"]
-            role.is_mentor = cached["is_mentor"]
-            role.is_student = cached["is_student"]
             return role
 
         user = await UserDAO.find_one_or_none(telegram_id=user_id)
@@ -62,8 +60,6 @@ class AuthService:
                 "id": role.id,
                 "name": role.name,
                 "display_name": role.display_name,
-                "is_mentor": role.is_mentor,
-                "is_student": role.is_student,
             },
         )
         return role

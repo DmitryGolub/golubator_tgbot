@@ -14,7 +14,6 @@ from src.core.config import settings
 from src.models.meeting import Meeting
 from src.models.user import User
 from src.tasks._db import run_async
-from src.utils.roles import is_mentor, is_student
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +27,24 @@ def _format_dt(dt: Optional[datetime]) -> str:
 
 
 def _split_participants(meeting: Meeting) -> tuple[Optional[User], Optional[User]]:
-    mentor = next((p for p in meeting.participants if is_mentor(p)), None)
-    student = next((p for p in meeting.participants if is_student(p)), None)
+    mentor = next(
+        (
+            p
+            for p in meeting.participants
+            if p.telegram_id == meeting.mentor_telegram_id
+        ),
+        None,
+    )
+    student = None
+    if meeting.student_telegram_id:
+        student = next(
+            (
+                p
+                for p in meeting.participants
+                if p.telegram_id == meeting.student_telegram_id
+            ),
+            None,
+        )
     if not student and mentor:
         student = next(
             (p for p in meeting.participants if p.telegram_id != mentor.telegram_id),
@@ -78,7 +93,7 @@ async def _load_meeting(meeting_id: int) -> Optional[Meeting]:
                 select(Meeting)
                 .where(Meeting.id == meeting_id)
                 .options(
-                    joinedload(Meeting.participants).joinedload(User.role_rel),
+                    joinedload(Meeting.participants),
                 )
             )
             res = await session.execute(query)

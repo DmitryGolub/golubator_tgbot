@@ -35,7 +35,6 @@ from src.utils.onboarding import (
     schedule_onboarding_for_mentor,
     notify_student_new_mentor,
 )
-from src.utils.roles import is_student
 from src.utils.escape import e
 
 router = Router(name="update-user-fsm")
@@ -335,7 +334,7 @@ async def cb_choose_user_for_update(
             await MenteeDAO.update(mentee.id, mentor_id=mentor_record.id)
             value_human = mentor_record.name or f"id={chosen_value}"
 
-            if is_student(user):
+            if mentee:
                 # Check if mentee is in "Greetings" status cohort
                 cohort_tids = await CohortDAO.get_telegram_ids_in_cohort(
                     "Status", "Greetings"
