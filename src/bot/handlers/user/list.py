@@ -28,8 +28,8 @@ async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarku
         if mentee.telegram_id:
             mentee_by_tid[mentee.telegram_id] = mentee
 
-    mentee_ids = [m.id for m in all_mentees]
-    cohorts_map = await CohortDAO.get_cohorts_batch(mentee_ids)
+    mentee_tids = [m.telegram_id for m in all_mentees if m.telegram_id is not None]
+    cohorts_map = await CohortDAO.get_cohorts_batch(mentee_tids)
 
     page_users, total_pages = get_page_slice(all_users, page)
 
@@ -46,7 +46,11 @@ async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarku
 
         role_display = user.role_rel.display_name if user.role_rel else "—"
 
-        cohorts = cohorts_map.get(mentee.id, []) if mentee else []
+        cohorts = (
+            cohorts_map.get(mentee.telegram_id, [])
+            if mentee and mentee.telegram_id
+            else []
+        )
         categories = [c.cohort.value for c in cohorts if c.cohort.type == "Category"]
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
 
@@ -57,8 +61,11 @@ async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarku
 
         reg_date = f"{user.registered_at:%d.%m.%Y %H:%M}" if user.registered_at else "—"
 
+        placeholder_badge = " [Нет Telegram]" if user.is_placeholder else ""
+        username_display = f"@{e(user.username)}" if user.username else ""
+
         answer += (
-            f"👤 <b>{e(user.name)}</b> @{e(user.username)}\n"
+            f"👤 <b>{e(user.name)}</b> {username_display}{placeholder_badge}\n"
             f"   • Ментор: <b>{e(mentor_name)}</b> {e(mentor_username)}\n"
             f"   • Направления: <b>{e(cohort_display)}</b>\n"
             f"   • Роль: <b>{e(role_display)}</b>\n"

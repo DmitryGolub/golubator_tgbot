@@ -203,13 +203,13 @@ async def cb_mentor_students_menu(callback: CallbackQuery):
 
     header = await UiTextService.get("menu.students.header")
     lines = [header, ""]
-    mentee_ids = [m.id for m in mentees]
-    cohorts_map = await CohortDAO.get_cohorts_batch(mentee_ids)
+    mentee_tids = [m.telegram_id for m in mentees if m.telegram_id is not None]
+    cohorts_map = await CohortDAO.get_cohorts_batch(mentee_tids)
     for mentee in mentees:
         display_name = mentee.doc_name or (mentee.user.name if mentee.user else "—")
         username = mentee.user.username if mentee.user else None
         username_display = f"@{e(username)}" if username else ""
-        cohorts = cohorts_map.get(mentee.id, [])
+        cohorts = cohorts_map.get(mentee.telegram_id, []) if mentee.telegram_id else []
         categories = [c.cohort.value for c in cohorts if c.cohort.type == "Category"]
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
         statuses = [c.cohort.value for c in cohorts if c.cohort.type == "Status"]
@@ -339,7 +339,11 @@ async def cb_student_me_info(callback: CallbackQuery):
             mentor_name = mentee.mentor.name or "Отсутствует"
             if mentee.mentor.user and mentee.mentor.user.username:
                 mentor_username = f"@{mentee.mentor.user.username}"
-        cohorts = await CohortDAO.get_mentee_cohorts(mentee.id)
+        cohorts = (
+            await CohortDAO.get_user_cohorts(mentee.telegram_id)
+            if mentee.telegram_id
+            else []
+        )
         statuses = [c.cohort.value for c in cohorts if c.cohort.type == "Status"]
         mentee_state = ", ".join(statuses) if statuses else "—"
 

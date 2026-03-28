@@ -153,6 +153,14 @@ def upgrade() -> None:
     for schema in ("iam", "meetings", "surveys", "triggers", "integrations"):
         op.execute(sa.text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
 
+    # ── 0b. Placeholder user sequence ────────────────────────────────────
+    op.execute(
+        sa.text(
+            "CREATE SEQUENCE iam.placeholder_user_seq "
+            "START WITH -1 INCREMENT BY -1 NO MAXVALUE NO CYCLE"
+        )
+    )
+
     # ── 1. Create enums ───────────────────────────────────────────────────
     for e in (
         regularity_enum,
@@ -206,6 +214,12 @@ def upgrade() -> None:
         sa.Column("telegram_id", sa.BigInteger, primary_key=True),
         sa.Column("username", sa.String(255), unique=True, nullable=True, index=True),
         sa.Column("name", sa.String(255), nullable=False),
+        sa.Column(
+            "is_placeholder",
+            sa.Boolean,
+            server_default=sa.text("false"),
+            nullable=False,
+        ),
         sa.Column("role_id", sa.Integer, sa.ForeignKey("iam.roles.id"), nullable=True),
         sa.Column(
             "created_at",
@@ -234,7 +248,9 @@ def upgrade() -> None:
         sa.Column(
             "telegram_id",
             sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+            sa.ForeignKey(
+                "iam.users.telegram_id", ondelete="SET NULL", onupdate="CASCADE"
+            ),
             nullable=True,
             unique=True,
             index=True,
@@ -263,7 +279,9 @@ def upgrade() -> None:
         sa.Column(
             "telegram_id",
             sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+            sa.ForeignKey(
+                "iam.users.telegram_id", ondelete="SET NULL", onupdate="CASCADE"
+            ),
             nullable=True,
             unique=True,
             index=True,
@@ -316,7 +334,9 @@ def upgrade() -> None:
         sa.Column(
             "mentor_telegram_id",
             sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+            sa.ForeignKey(
+                "iam.users.telegram_id", ondelete="SET NULL", onupdate="CASCADE"
+            ),
             nullable=True,
         ),
         sa.Column("mentee_telegram_tag", sa.String(255), nullable=True),
@@ -329,7 +349,9 @@ def upgrade() -> None:
         sa.Column(
             "student_telegram_id",
             sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+            sa.ForeignKey(
+                "iam.users.telegram_id", ondelete="SET NULL", onupdate="CASCADE"
+            ),
             nullable=True,
         ),
         sa.Column(
@@ -351,7 +373,9 @@ def upgrade() -> None:
         sa.Column(
             "user_id",
             sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
+            sa.ForeignKey(
+                "iam.users.telegram_id", ondelete="CASCADE", onupdate="CASCADE"
+            ),
             primary_key=True,
         ),
         schema="meetings",
@@ -382,9 +406,11 @@ def upgrade() -> None:
     op.create_table(
         "user_cohorts",
         sa.Column(
-            "mentee_id",
-            sa.Integer,
-            sa.ForeignKey("iam.mentees.id", ondelete="CASCADE"),
+            "user_telegram_id",
+            sa.BigInteger,
+            sa.ForeignKey(
+                "iam.users.telegram_id", ondelete="CASCADE", onupdate="CASCADE"
+            ),
             primary_key=True,
         ),
         sa.Column(
@@ -427,7 +453,9 @@ def upgrade() -> None:
         sa.Column(
             "created_by",
             sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+            sa.ForeignKey(
+                "iam.users.telegram_id", ondelete="SET NULL", onupdate="CASCADE"
+            ),
             nullable=True,
         ),
         sa.Column(
@@ -492,7 +520,9 @@ def upgrade() -> None:
         sa.Column(
             "respondent_id",
             sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
+            sa.ForeignKey(
+                "iam.users.telegram_id", ondelete="CASCADE", onupdate="CASCADE"
+            ),
             nullable=False,
         ),
         sa.Column("context_type", sa.String(32), nullable=True),
@@ -575,7 +605,9 @@ def upgrade() -> None:
         sa.Column(
             "created_by",
             sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+            sa.ForeignKey(
+                "iam.users.telegram_id", ondelete="SET NULL", onupdate="CASCADE"
+            ),
             nullable=True,
         ),
         sa.Column(
@@ -600,7 +632,9 @@ def upgrade() -> None:
         sa.Column(
             "recipient_id",
             sa.BigInteger,
-            sa.ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
+            sa.ForeignKey(
+                "iam.users.telegram_id", ondelete="CASCADE", onupdate="CASCADE"
+            ),
             nullable=False,
         ),
         sa.Column(
@@ -1308,6 +1342,7 @@ def downgrade() -> None:
     op.drop_table("mentors", schema="iam")
     op.drop_table("role_permissions", schema="iam")
     op.drop_table("users", schema="iam")
+    op.execute(sa.text("DROP SEQUENCE IF EXISTS iam.placeholder_user_seq"))
     op.drop_table("roles", schema="iam")
     op.drop_table("permissions", schema="iam")
 

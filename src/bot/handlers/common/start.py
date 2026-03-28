@@ -94,6 +94,18 @@ async def cmd_help(message: Message):
     await message.answer(title, reply_markup=await menu_keyboard(permissions))
 
 
+async def _merge_placeholder(telegram_id: int, placeholder_id: int) -> None:
+    """Delete placeholder User and relink Mentor/Mentee to the real User."""
+    await UserDAO.delete(telegram_id=placeholder_id)
+    # Update any Mentor/Mentee that pointed to the placeholder
+    mentor = await MentorDAO.find_by_telegram_id(placeholder_id)
+    if mentor:
+        await MentorDAO.update(mentor.id, telegram_id=telegram_id)
+    mentee = await MenteeDAO.find_by_telegram_id(placeholder_id)
+    if mentee:
+        await MenteeDAO.update(mentee.id, telegram_id=telegram_id)
+
+
 async def _link_notion_page(telegram_id: int, username: str) -> None:
     if not settings.NOTION_TOKEN:
         return
@@ -123,7 +135,19 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                 mentor_repo = NotionMentorRepo(mentor_client)
                 notion_mentor = await mentor_repo.find_by_telegram_id(telegram_id)
                 if notion_mentor:
-                    if mentor_record:
+                    # Check if there's a placeholder mentor for this notion page
+                    existing_mentor = await MentorDAO.find_by_notion_page_id(
+                        notion_mentor.page_id
+                    )
+                    if (
+                        existing_mentor
+                        and existing_mentor.telegram_id is not None
+                        and existing_mentor.telegram_id < 0
+                    ):
+                        await _merge_placeholder(
+                            telegram_id, existing_mentor.telegram_id
+                        )
+                    elif mentor_record:
                         await MentorDAO.update(
                             mentor_record.id, telegram_id=telegram_id
                         )
@@ -160,7 +184,19 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                     notion_mentee = await mentee_repo.find_by_username(username)
 
                 if notion_mentee:
-                    if mentee_record:
+                    # Check if there's a placeholder mentee for this notion page
+                    existing_mentee = await MenteeDAO.find_by_notion_page_id(
+                        notion_mentee.page_id
+                    )
+                    if (
+                        existing_mentee
+                        and existing_mentee.telegram_id is not None
+                        and existing_mentee.telegram_id < 0
+                    ):
+                        await _merge_placeholder(
+                            telegram_id, existing_mentee.telegram_id
+                        )
+                    elif mentee_record:
                         await MenteeDAO.update(
                             mentee_record.id, telegram_id=telegram_id
                         )

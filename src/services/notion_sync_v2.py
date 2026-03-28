@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import selectinload
 
 from src.core.config import settings
 from src.models.meeting import Meeting, MeetingUser
@@ -28,6 +29,11 @@ _NOTION_ROLE_MAP: dict[str, str] = {
     "admin": "admin",
     "админ": "admin",
     "ментор": "mentor",
+}
+
+_DB_ROLE_TO_NOTION: dict[str, str] = {
+    "mentor": "mentor",
+    "admin": "admin",
 }
 
 
@@ -77,38 +83,111 @@ def _build_repos() -> tuple[
 
 async def _ensure_user_exists(
     session: AsyncSession,
-    telegram_id: int,
+    telegram_id: int | None,
     name: str | None = None,
     role_name: str = "student",
-) -> None:
+    current_placeholder_id: int | None = None,
+) -> int:
+    """Ensure a User record exists, creating a placeholder if telegram_id is None.
+
+    Returns the telegram_id (real or placeholder) of the User.
+    """
     from src.models.role import RoleModel
 
     clean = _clean_name(name)
-    result = await session.execute(select(User).where(User.telegram_id == telegram_id))
-    user = result.scalar_one_or_none()
 
-    if not user:
-        role_result = await session.execute(
-            select(RoleModel.id).where(RoleModel.name == role_name)
-        )
-        role_id = role_result.scalar_one_or_none()
-        session.add(
-            User(
-                telegram_id=telegram_id,
-                name=clean or str(telegram_id),
-                role_id=role_id,
-                registered_at=None,
+    if telegram_id is not None:
+        # Real telegram_id provided
+        if current_placeholder_id is not None and current_placeholder_id < 0:
+            # Mentor/Mentee already has a placeholder User — merge
+            existing_real = await session.execute(
+                select(User).where(User.telegram_id == telegram_id)
             )
-        )
-        await session.flush()
-    else:
-        if role_name != "student" or user.role_id is None:
-            role_result = await session.execute(
-                select(RoleModel.id).where(RoleModel.name == role_name)
+            real_user = existing_real.scalar_one_or_none()
+
+            if not real_user:
+                # No real user yet — update placeholder PK (CASCADE updates all FKs)
+                await session.execute(
+                    update(User)
+                    .where(User.telegram_id == current_placeholder_id)
+                    .values(telegram_id=telegram_id, is_placeholder=False)
+                )
+                await session.flush()
+            else:
+                # Real user already exists — delete placeholder
+                placeholder = await session.execute(
+                    select(User).where(User.telegram_id == current_placeholder_id)
+                )
+                ph_user = placeholder.scalar_one_or_none()
+                if ph_user:
+                    await session.delete(ph_user)
+                    await session.flush()
+                # Update role if needed
+                if role_name != "student" or real_user.role_id is None:
+                    role_result = await session.execute(
+                        select(RoleModel.id).where(RoleModel.name == role_name)
+                    )
+                    role_id = role_result.scalar_one_or_none()
+                    if role_id and real_user.role_id != role_id:
+                        real_user.role_id = role_id
+        else:
+            # No placeholder — normal upsert
+            result = await session.execute(
+                select(User).where(User.telegram_id == telegram_id)
             )
-            role_id = role_result.scalar_one_or_none()
-            if role_id and user.role_id != role_id:
-                user.role_id = role_id
+            user = result.scalar_one_or_none()
+
+            if not user:
+                role_result = await session.execute(
+                    select(RoleModel.id).where(RoleModel.name == role_name)
+                )
+                role_id = role_result.scalar_one_or_none()
+                session.add(
+                    User(
+                        telegram_id=telegram_id,
+                        name=clean or str(telegram_id),
+                        role_id=role_id,
+                        registered_at=None,
+                    )
+                )
+                await session.flush()
+            else:
+                if role_name != "student" or user.role_id is None:
+                    role_result = await session.execute(
+                        select(RoleModel.id).where(RoleModel.name == role_name)
+                    )
+                    role_id = role_result.scalar_one_or_none()
+                    if role_id and user.role_id != role_id:
+                        user.role_id = role_id
+
+        return telegram_id
+
+    # telegram_id is None — need a placeholder
+    if current_placeholder_id is not None and current_placeholder_id < 0:
+        return current_placeholder_id
+
+    # Create new placeholder
+    from sqlalchemy import text as sa_text
+
+    seq_result = await session.execute(
+        sa_text("SELECT nextval('iam.placeholder_user_seq')")
+    )
+    placeholder_id = seq_result.scalar()
+    role_result = await session.execute(
+        select(RoleModel.id).where(RoleModel.name == role_name)
+    )
+    role_id = role_result.scalar_one_or_none()
+    session.add(
+        User(
+            telegram_id=placeholder_id,
+            name=clean or "Placeholder",
+            role_id=role_id,
+            is_placeholder=True,
+            registered_at=None,
+        )
+    )
+    await session.flush()
+    return placeholder_id
 
 
 async def _resolve_mentor_id(
@@ -354,11 +433,19 @@ class NotionSyncServiceV2:
             )
             mentor.synced_at = now
 
-            if data.telegram_id:
-                await _ensure_user_exists(
-                    session, data.telegram_id, data.name, role_name=role_name
-                )
-                mentor.telegram_id = data.telegram_id
+            current_ph = (
+                mentor.telegram_id
+                if mentor.telegram_id is not None and mentor.telegram_id < 0
+                else None
+            )
+            user_tid = await _ensure_user_exists(
+                session,
+                telegram_id=data.telegram_id,
+                name=data.name,
+                role_name=role_name,
+                current_placeholder_id=current_ph,
+            )
+            mentor.telegram_id = user_tid
         else:
             new_mentor = Mentor(
                 notion_page_id=page_id,
@@ -368,13 +455,16 @@ class NotionSyncServiceV2:
                 membership_type=getattr(data, "membership_type", None),
                 synced_at=now,
             )
-            if data.telegram_id:
-                await _ensure_user_exists(
-                    session, data.telegram_id, data.name, role_name=role_name
-                )
-                new_mentor.telegram_id = data.telegram_id
-
             session.add(new_mentor)
+            await session.flush()
+
+            user_tid = await _ensure_user_exists(
+                session,
+                telegram_id=data.telegram_id,
+                name=data.name,
+                role_name=role_name,
+            )
+            new_mentor.telegram_id = user_tid
 
     async def _upsert_mentee(self, session: AsyncSession, data, page_id: str) -> None:
         result = await session.execute(
@@ -401,7 +491,7 @@ class NotionSyncServiceV2:
             ):
                 logger.debug("Skipping echo for mentee page %s", page_id)
                 # Still sync cohorts (may have changed independently)
-                await self._sync_cohorts(session, mentee.id, data, now)
+                await self._sync_cohorts(session, mentee.telegram_id, data, now)
                 return
 
             mentee.doc_name = data.doc_name or mentee.doc_name
@@ -424,11 +514,19 @@ class NotionSyncServiceV2:
             mentee.student_score = getattr(data, "student_score", mentee.student_score)
             mentee.synced_at = now
 
-            if data.telegram_id:
-                await _ensure_user_exists(
-                    session, data.telegram_id, data.doc_name, role_name="student"
-                )
-                mentee.telegram_id = data.telegram_id
+            current_ph = (
+                mentee.telegram_id
+                if mentee.telegram_id is not None and mentee.telegram_id < 0
+                else None
+            )
+            user_tid = await _ensure_user_exists(
+                session,
+                telegram_id=data.telegram_id,
+                name=data.doc_name,
+                role_name="student",
+                current_placeholder_id=current_ph,
+            )
+            mentee.telegram_id = user_tid
         else:
             new_mentee = Mentee(
                 notion_page_id=page_id,
@@ -441,29 +539,31 @@ class NotionSyncServiceV2:
                 student_score=getattr(data, "student_score", None),
                 synced_at=now,
             )
-            if data.telegram_id:
-                await _ensure_user_exists(
-                    session, data.telegram_id, data.doc_name, role_name="student"
-                )
-                new_mentee.telegram_id = data.telegram_id
-
             session.add(new_mentee)
             await session.flush()
 
+            user_tid = await _ensure_user_exists(
+                session,
+                telegram_id=data.telegram_id,
+                name=data.doc_name,
+                role_name="student",
+            )
+            new_mentee.telegram_id = user_tid
+
         mentee_record = mentee or new_mentee  # type: ignore[possibly-undefined]
-        await self._sync_cohorts(session, mentee_record.id, data, now)
+        await self._sync_cohorts(session, mentee_record.telegram_id, data, now)
 
     async def _sync_cohorts(
         self,
         session: AsyncSession,
-        mentee_id: int,
+        user_telegram_id: int,
         data,
         now: datetime,
     ) -> None:
         from sqlalchemy import delete
 
         await session.execute(
-            delete(UserCohort).where(UserCohort.mentee_id == mentee_id)
+            delete(UserCohort).where(UserCohort.user_telegram_id == user_telegram_id)
         )
 
         entries: list[tuple[str, str]] = []
@@ -490,7 +590,7 @@ class NotionSyncServiceV2:
             cohort_id = result.scalar_one()
             session.add(
                 UserCohort(
-                    mentee_id=mentee_id,
+                    user_telegram_id=user_telegram_id,
                     cohort_id=cohort_id,
                     synced_at=now,
                 )
@@ -525,7 +625,13 @@ class NotionSyncServiceV2:
                     return
 
                 now = datetime.now(timezone.utc)
-                await self._sync_cohorts(session, mentee.id, data, now)
+                if mentee.telegram_id is None:
+                    logger.warning(
+                        "Automation cohort page %s: mentee has no telegram_id",
+                        page_id,
+                    )
+                    return
+                await self._sync_cohorts(session, mentee.telegram_id, data, now)
                 await session.commit()
         finally:
             await engine.dispose()
@@ -545,11 +651,11 @@ class NotionSyncServiceV2:
                             select(Mentee).where(Mentee.notion_page_id == m.page_id)
                         )
                         mentee = result.scalar_one_or_none()
-                        if not mentee:
+                        if not mentee or mentee.telegram_id is None:
                             continue
 
                         now = datetime.now(timezone.utc)
-                        await self._sync_cohorts(session, mentee.id, m, now)
+                        await self._sync_cohorts(session, mentee.telegram_id, m, now)
                         count += 1
                     except Exception:
                         logger.exception("Error syncing cohort for %s", m.page_id)
@@ -598,7 +704,9 @@ class NotionSyncServiceV2:
         try:
             async with factory() as session:
                 result = await session.execute(
-                    select(Mentor).where(
+                    select(Mentor)
+                    .options(selectinload(Mentor.user).selectinload(User.role_rel))
+                    .where(
                         Mentor.notion_page_id.isnot(None),
                         Mentor.updated_at.isnot(None),
                         (Mentor.synced_at.is_(None))
@@ -615,6 +723,12 @@ class NotionSyncServiceV2:
                             props["Name"] = {
                                 "title": [{"text": {"content": mentor.name}}]
                             }
+                        if mentor.user and mentor.user.role_rel:
+                            notion_role = _DB_ROLE_TO_NOTION.get(
+                                mentor.user.role_rel.name
+                            )
+                            if notion_role:
+                                props["Role"] = {"select": {"name": notion_role}}
                         if props:
                             await self.mentor_repo.update_properties(
                                 mentor.notion_page_id, props
@@ -672,7 +786,7 @@ class NotionSyncServiceV2:
                             select(Cohort.value)
                             .join(UserCohort, UserCohort.cohort_id == Cohort.id)
                             .where(
-                                UserCohort.mentee_id == mentee.id,
+                                UserCohort.user_telegram_id == mentee.telegram_id,
                                 Cohort.type == "Status",
                             )
                         )

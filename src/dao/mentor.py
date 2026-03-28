@@ -1,4 +1,6 @@
-from sqlalchemy import select
+from datetime import datetime, timezone
+
+from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
@@ -37,3 +39,14 @@ class MentorDAO(BaseDAO):
             query = select(cls.model).options(joinedload(cls.model.user))
             result = await session.execute(query)
             return list(result.scalars().all())
+
+    @classmethod
+    async def touch_updated_at(cls, telegram_id: int) -> bool:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                update(cls.model)
+                .where(cls.model.telegram_id == telegram_id)
+                .values(updated_at=datetime.now(timezone.utc))
+            )
+            await session.commit()
+            return result.rowcount > 0

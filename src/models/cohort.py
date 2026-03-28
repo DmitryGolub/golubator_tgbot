@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    BigInteger,
     DateTime,
     ForeignKey,
     Index,
@@ -39,9 +40,9 @@ class UserCohort(Base):
         {"schema": "integrations"},
     )
 
-    mentee_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("iam.mentees.id", ondelete="CASCADE"),
+    user_telegram_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("iam.users.telegram_id", ondelete="CASCADE", onupdate="CASCADE"),
         primary_key=True,
     )
     cohort_id: Mapped[int] = mapped_column(

@@ -21,6 +21,10 @@ class SendSurveyAction(BaseAction):
         context: dict,
         bot,
     ) -> None:
+        if recipient_id < 0:
+            logger.debug("Skipping placeholder user %s", recipient_id)
+            return
+
         template_id = rule.action_config.get("survey_template_id")
         if not template_id:
             logger.warning("TriggerRule %s missing survey_template_id", rule.id)

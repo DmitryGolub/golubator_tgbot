@@ -20,7 +20,6 @@ from src.core.database import Base
 
 if TYPE_CHECKING:
     from src.models.mentor import Mentor
-    from src.models.cohort import UserCohort
     from src.models.user import User
 
 
@@ -73,10 +72,4 @@ class Mentee(Base):
         "Mentor",
         foreign_keys=[mentor_id],
         lazy="selectin",
-    )
-    cohorts: Mapped[list["UserCohort"]] = relationship(
-        "UserCohort",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        lazy="noload",
     )

@@ -292,6 +292,7 @@ async def cb_choose_user_for_update(
             if role_obj:
                 await UserDAO.update(telegram_id=user_id, role_id=role_obj.id)
                 await AuthService.invalidate_user(user_id)
+                await MentorDAO.touch_updated_at(user_id)
                 value_human = role_obj.display_name
             else:
                 value_human = chosen_value
@@ -315,9 +316,9 @@ async def cb_choose_user_for_update(
 
             value_human = chosen_value
 
-            if mentee:
-                await CohortDAO.update_mentee_cohort_by_type(
-                    mentee.id, "Status", chosen_value
+            if mentee and mentee.telegram_id:
+                await CohortDAO.update_user_cohort_by_type(
+                    mentee.telegram_id, "Status", chosen_value
                 )
             else:
                 value_human = f"{value_human} (профиль менти не найден)"
@@ -397,7 +398,9 @@ async def cb_choose_mentee_for_update(
             await state.clear()
             return
 
-    await CohortDAO.update_mentee_cohort_by_type(mentee.id, "Status", chosen_value)
+    await CohortDAO.update_user_cohort_by_type(
+        mentee.telegram_id, "Status", chosen_value
+    )
 
     display_name = mentee.doc_name or mentee.name or f"id={mentee.id}"
     username = ""

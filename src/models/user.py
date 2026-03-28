@@ -3,7 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import String, DateTime, func, ForeignKey, Integer, BigInteger
+from sqlalchemy import (
+    Boolean,
+    String,
+    DateTime,
+    func,
+    ForeignKey,
+    Integer,
+    BigInteger,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
@@ -24,6 +33,9 @@ class User(Base):
         String(255), unique=True, index=True, nullable=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_placeholder: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
 
     role_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("iam.roles.id"), nullable=True

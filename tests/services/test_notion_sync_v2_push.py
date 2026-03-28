@@ -9,6 +9,7 @@ from src.services.notion_sync_v2 import NotionSyncServiceV2
 def _mentee(
     *,
     id: int = 1,
+    telegram_id: int = 100,
     doc_name: str = "Test Mentee",
     notion_page_id: str = "page-1",
     mentor_id: int | None = 200,
@@ -20,6 +21,7 @@ def _mentee(
         mentor = SimpleNamespace(telegram_id=mentor_id, email="mentor@example.com")
     return SimpleNamespace(
         id=id,
+        telegram_id=telegram_id,
         doc_name=doc_name,
         notion_page_id=notion_page_id,
         mentor_id=mentor_id,

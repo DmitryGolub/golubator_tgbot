@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.core.database import async_session_maker
 from src.models.cohort import Cohort, UserCohort
-from src.models.mentee import Mentee
+from src.models.user import User
 
 
 class CohortDAO:
@@ -15,39 +15,42 @@ class CohortDAO:
     ) -> list[int]:
         async with async_session_maker() as session:
             result = await session.execute(
-                select(Mentee.telegram_id)
-                .join(UserCohort, UserCohort.mentee_id == Mentee.id)
+                select(UserCohort.user_telegram_id)
                 .join(Cohort, Cohort.id == UserCohort.cohort_id)
                 .where(
                     Cohort.type == cohort_type,
                     Cohort.value == cohort_value,
-                    Mentee.telegram_id.isnot(None),
+                    UserCohort.user_telegram_id > 0,
                 )
             )
             return list(result.scalars().all())
 
     @staticmethod
-    async def get_mentee_cohorts(mentee_id: int) -> list[UserCohort]:
+    async def get_user_cohorts(user_telegram_id: int) -> list[UserCohort]:
         async with async_session_maker() as session:
             result = await session.execute(
-                select(UserCohort).where(UserCohort.mentee_id == mentee_id)
+                select(UserCohort).where(
+                    UserCohort.user_telegram_id == user_telegram_id
+                )
             )
             return list(result.scalars().all())
 
     @staticmethod
     async def get_cohorts_batch(
-        mentee_ids: list[int],
+        user_telegram_ids: list[int],
     ) -> dict[int, list[UserCohort]]:
-        if not mentee_ids:
+        if not user_telegram_ids:
             return {}
         async with async_session_maker() as session:
             result = await session.execute(
-                select(UserCohort).where(UserCohort.mentee_id.in_(mentee_ids))
+                select(UserCohort).where(
+                    UserCohort.user_telegram_id.in_(user_telegram_ids)
+                )
             )
             rows = result.scalars().all()
             mapping: dict[int, list[UserCohort]] = {}
             for uc in rows:
-                mapping.setdefault(uc.mentee_id, []).append(uc)
+                mapping.setdefault(uc.user_telegram_id, []).append(uc)
             return mapping
 
     @staticmethod
@@ -69,12 +72,14 @@ class CohortDAO:
             return list(result.scalars().all())
 
     @staticmethod
-    async def replace_mentee_cohorts(
-        mentee_id: int, memberships: list[tuple[str, str]]
+    async def replace_user_cohorts(
+        user_telegram_id: int, memberships: list[tuple[str, str]]
     ) -> None:
         async with async_session_maker() as session:
             await session.execute(
-                delete(UserCohort).where(UserCohort.mentee_id == mentee_id)
+                delete(UserCohort).where(
+                    UserCohort.user_telegram_id == user_telegram_id
+                )
             )
             now = datetime.now(timezone.utc)
             for cohort_type, cohort_value in memberships:
@@ -91,7 +96,7 @@ class CohortDAO:
                 cohort_id = result.scalar_one()
                 session.add(
                     UserCohort(
-                        mentee_id=mentee_id,
+                        user_telegram_id=user_telegram_id,
                         cohort_id=cohort_id,
                         synced_at=now,
                     )
@@ -99,13 +104,13 @@ class CohortDAO:
             await session.commit()
 
     @staticmethod
-    async def update_mentee_cohort_by_type(
-        mentee_id: int, cohort_type: str, cohort_value: str
+    async def update_user_cohort_by_type(
+        user_telegram_id: int, cohort_type: str, cohort_value: str
     ) -> None:
         async with async_session_maker() as session:
             await session.execute(
                 delete(UserCohort).where(
-                    UserCohort.mentee_id == mentee_id,
+                    UserCohort.user_telegram_id == user_telegram_id,
                     UserCohort.cohort_id.in_(
                         select(Cohort.id).where(Cohort.type == cohort_type)
                     ),
@@ -124,9 +129,15 @@ class CohortDAO:
             )
             cohort_id = result.scalar_one()
             session.add(
-                UserCohort(mentee_id=mentee_id, cohort_id=cohort_id, synced_at=now)
+                UserCohort(
+                    user_telegram_id=user_telegram_id,
+                    cohort_id=cohort_id,
+                    synced_at=now,
+                )
             )
             await session.execute(
-                update(Mentee).where(Mentee.id == mentee_id).values(updated_at=now)
+                update(User)
+                .where(User.telegram_id == user_telegram_id)
+                .values(updated_at=now)
             )
             await session.commit()

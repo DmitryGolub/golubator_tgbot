@@ -18,6 +18,10 @@ class SendNotificationAction(BaseAction):
         context: dict,
         bot,
     ) -> None:
+        if recipient_id < 0:
+            logger.debug("Skipping placeholder user %s", recipient_id)
+            return
+
         text = rule.action_config.get("text", "")
         if not text:
             logger.warning("TriggerRule %s has empty notification text", rule.id)
