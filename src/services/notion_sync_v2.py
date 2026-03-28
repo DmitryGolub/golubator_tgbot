@@ -241,7 +241,18 @@ async def _resolve_mentee_id(session: AsyncSession, tg_tag: str | None) -> int |
     result = await session.execute(
         select(User.telegram_id).where(User.username == clean)
     )
-    return result.scalar_one_or_none()
+    tid = result.scalar_one_or_none()
+    if tid is not None:
+        return tid
+    # Fallback: look up by doc_name in mentees (covers unregistered students)
+    for pattern in (f"@{clean}", clean):
+        result = await session.execute(
+            select(Mentee.telegram_id).where(Mentee.doc_name == pattern)
+        )
+        tid = result.scalar_one_or_none()
+        if tid is not None:
+            return tid
+    return None
 
 
 async def _ensure_meeting_users(

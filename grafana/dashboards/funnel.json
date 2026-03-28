@@ -10,7 +10,7 @@
       {
         "name": "cohort_type",
         "type": "query",
-        "datasource": { "type": "postgres", "uid": "PBFA97CFB590B2093" },
+        "datasource": { "type": "postgres", "uid": "pg-mentoring" },
         "query": "SELECT DISTINCT type FROM integrations.cohorts ORDER BY type",
         "current": { "text": "Status", "value": "Status" },
         "refresh": 2
@@ -23,7 +23,7 @@
       "title": "Люди по стадиям",
       "type": "barchart",
       "gridPos": { "h": 10, "w": 12, "x": 0, "y": 0 },
-      "datasource": { "type": "postgres", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
           "rawSql": "SELECT c.value AS stage, COUNT(uc.user_telegram_id) AS count\nFROM integrations.cohorts c\nJOIN integrations.user_cohorts uc ON uc.cohort_id = c.id\nWHERE c.type = '$cohort_type'\nGROUP BY c.value\nORDER BY count DESC",
@@ -31,6 +31,10 @@
           "refId": "A"
         }
       ],
+      "options": {
+        "xTickLabelRotation": -45,
+        "xTickLabelMaxLength": 25
+      },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" }
@@ -42,7 +46,7 @@
       "title": "Переходы за период",
       "type": "timeseries",
       "gridPos": { "h": 10, "w": 12, "x": 12, "y": 0 },
-      "datasource": { "type": "postgres", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
           "rawSql": "SELECT\n  date_trunc('week', st.created_at) AS time,\n  st.new_value AS metric,\n  COUNT(*) AS value\nFROM integrations.stage_transitions st\nWHERE st.cohort_type = '$cohort_type'\n  AND st.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1, 2\nORDER BY 1",
@@ -61,7 +65,7 @@
       "title": "Конверсия (FROM → TO)",
       "type": "table",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
-      "datasource": { "type": "postgres", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
           "rawSql": "SELECT\n  COALESCE(st.old_value, '(новый)') AS \"Из\",\n  st.new_value AS \"В\",\n  COUNT(*) AS \"Переходов\",\n  ROUND(COUNT(*)::numeric / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY st.old_value), 0) * 100, 1) AS \"% от источника\"\nFROM integrations.stage_transitions st\nWHERE st.cohort_type = '$cohort_type'\n  AND st.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY st.old_value, st.new_value\nORDER BY \"Переходов\" DESC",
