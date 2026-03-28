@@ -16,31 +16,39 @@ from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
 from src.models.meeting import Meeting
 
 
+MEETINGS_PAGE_SIZE = 5
+
+
 def mentor_meetings_keyboard(
     meetings: list[Meeting] | None = None,
     page: int = 0,
 ) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
-    # Dynamic meeting buttons for pagination
-    dynamic_buttons: list[tuple[str, str]] = []
-    if meetings:
-        for meeting in meetings:
-            if meeting.completed_at is None:
-                dynamic_buttons.append(
-                    (
-                        f"Начать созвон #{meeting.id}",
-                        StartMeetingCallCB(meeting_id=meeting.id).pack(),
-                    )
-                )
-            dynamic_buttons.append(
-                (
-                    f"Удалить созвон #{meeting.id}",
-                    DeleteMeetingCB(meeting_id=meeting.id).pack(),
+    page_size = MEETINGS_PAGE_SIZE
+    all_meetings = meetings or []
+    total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
+    page = max(0, min(page, total_pages - 1))
+    start = page * page_size
+    page_meetings = all_meetings[start : start + page_size]
+
+    for local_idx, meeting in enumerate(page_meetings):
+        global_idx = start + local_idx + 1
+        row: list[InlineKeyboardButton] = []
+        if meeting.completed_at is None:
+            row.append(
+                InlineKeyboardButton(
+                    text=f"Начать #{global_idx}",
+                    callback_data=StartMeetingCallCB(meeting_id=meeting.id).pack(),
                 )
             )
-
-    page_items, total_pages = get_page_slice(dynamic_buttons, page)
+        row.append(
+            InlineKeyboardButton(
+                text=f"Удалить #{global_idx}",
+                callback_data=DeleteMeetingCB(meeting_id=meeting.id).pack(),
+            )
+        )
+        kb.row(*row)
 
     nav = paginate_buttons("meetings", page, total_pages)
     if nav:
@@ -53,10 +61,6 @@ def mentor_meetings_keyboard(
         )
     )
     kb.row(InlineKeyboardButton(text="Заполнить фидбек", callback_data="menu_surveys"))
-
-    for text, cb_data in page_items:
-        kb.row(InlineKeyboardButton(text=text, callback_data=cb_data))
-
     kb.row(InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu"))
     return kb.as_markup()
 

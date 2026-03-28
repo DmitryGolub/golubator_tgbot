@@ -17,6 +17,8 @@ from src.dao.mentor import MentorDAO
 from src.dao.mentor_stats import MentorStatsDAO
 from src.dao.cohort import CohortDAO
 
+from src.bot.keyboards.meeting import mentor_meetings_keyboard
+from src.dao.meeting import MeetingDAO
 from src.services.call_flow import ActiveCallNotFoundError, CallFlowService
 from src.utils.escape import e
 
@@ -135,38 +137,6 @@ async def _mentor_students_menu_kb():
     return kb.as_markup()
 
 
-async def _mentor_meetings_menu_kb():
-    texts = await UiTextService.get_many(
-        [
-            "menu.mentor_meetings.btn.list",
-            "menu.mentor_meetings.btn.create",
-            "menu.mentor_meetings.btn.end_call",
-            "menu.mentor_meetings.btn.feedback",
-            "menu.back",
-        ]
-    )
-    kb = InlineKeyboardBuilder()
-    kb.button(
-        text=texts["menu.mentor_meetings.btn.list"],
-        callback_data="mentor_meetings_list",
-    )
-    kb.button(
-        text=texts["menu.mentor_meetings.btn.create"],
-        callback_data="meeting_create",
-    )
-    kb.button(
-        text=texts["menu.mentor_meetings.btn.end_call"],
-        callback_data="mentor_end_call",
-    )
-    kb.button(
-        text=texts["menu.mentor_meetings.btn.feedback"],
-        callback_data="menu_surveys",
-    )
-    kb.button(text=texts["menu.back"], callback_data="back_to_menu")
-    kb.adjust(1)
-    return kb.as_markup()
-
-
 async def _finish_active_call_text(mentor_id: int) -> str:
     service = CallFlowService()
     try:
@@ -246,31 +216,39 @@ async def cb_mentor_students_add(callback: CallbackQuery):
     )
 
 
-@router.callback_query(
-    PermissionFilter("manage_meetings"), F.data == "mentor_meetings_menu"
-)
-async def cb_mentor_meetings_menu(callback: CallbackQuery):
-    await callback.answer()
-    text = await UiTextService.get("menu.meetings.title")
-    await callback.message.edit_text(
-        text,
-        reply_markup=await _mentor_meetings_menu_kb(),
-    )
-
-
 @router.callback_query(PermissionFilter("end_call"), F.data == "mentor_end_call")
 async def cb_mentor_end_call(callback: CallbackQuery):
     await callback.answer()
     text = await _finish_active_call_text(callback.from_user.id)
+    meetings = await MeetingDAO.get_for_user(callback.from_user.id)
+    mentor_tg_ids = await MentorDAO.get_telegram_ids()
+    from src.bot.handlers.meeting import _filter_visible_meetings
+
+    visible = _filter_visible_meetings(
+        meetings,
+        callback.from_user.id,
+        viewer_is_mentor=True,
+        mentor_tg_ids=mentor_tg_ids,
+    )
     await callback.message.edit_text(
-        text, reply_markup=await _mentor_meetings_menu_kb()
+        text, reply_markup=mentor_meetings_keyboard(visible, page=0)
     )
 
 
 @router.message(PermissionFilter("end_call"), Command("end_call"))
 async def cmd_end_call(message: Message):
     text = await _finish_active_call_text(message.from_user.id)
-    await message.answer(text, reply_markup=await _mentor_meetings_menu_kb())
+    meetings = await MeetingDAO.get_for_user(message.from_user.id)
+    mentor_tg_ids = await MentorDAO.get_telegram_ids()
+    from src.bot.handlers.meeting import _filter_visible_meetings
+
+    visible = _filter_visible_meetings(
+        meetings,
+        message.from_user.id,
+        viewer_is_mentor=True,
+        mentor_tg_ids=mentor_tg_ids,
+    )
+    await message.answer(text, reply_markup=mentor_meetings_keyboard(visible, page=0))
 
 
 @router.callback_query(PermissionFilter("view_own_info"), F.data == "mentor_me_info")

@@ -63,20 +63,18 @@ async def _menu_kb(user_id: int):
     return await menu_keyboard(perms)
 
 
-def _format_meetings(
-    meetings, viewer_id: int, viewer_is_mentor: bool, mentor_tg_ids: set[int]
-) -> str:
-    if not meetings:
-        return "Список созвонов пуст."
+MEETINGS_PAGE_SIZE = 5
 
-    lines = ["<b>Мои созвоны:</b>", ""]
+
+def _filter_visible_meetings(
+    meetings, viewer_id: int, viewer_is_mentor: bool, mentor_tg_ids: set[int]
+) -> list:
+    result = []
     for meeting in meetings:
         mentor = next(
             (p for p in meeting.participants if p.telegram_id in mentor_tg_ids),
             None,
         )
-
-        # fallback: identify mentor by meeting.mentor_telegram_id
         if not mentor and meeting.mentor_telegram_id:
             mentor = next(
                 (
@@ -86,8 +84,6 @@ def _format_meetings(
                 ),
                 None,
             )
-
-        # student: remaining participant or mentee_telegram_tag
         student = next(
             (
                 p
@@ -96,11 +92,51 @@ def _format_meetings(
             ),
             None,
         )
-
         if viewer_is_mentor and mentor and mentor.telegram_id != viewer_id:
             continue
         if not viewer_is_mentor and student and student.telegram_id != viewer_id:
             continue
+        result.append(meeting)
+    return result
+
+
+def _format_meetings(
+    meetings,
+    mentor_tg_ids: set[int],
+    page: int = 0,
+    page_size: int = MEETINGS_PAGE_SIZE,
+) -> str:
+    if not meetings:
+        return "Список созвонов пуст."
+
+    start = page * page_size
+    page_meetings = meetings[start : start + page_size]
+
+    lines = ["<b>Мои созвоны:</b>", ""]
+    for local_idx, meeting in enumerate(page_meetings):
+        display_idx = start + local_idx + 1
+
+        mentor = next(
+            (p for p in meeting.participants if p.telegram_id in mentor_tg_ids),
+            None,
+        )
+        if not mentor and meeting.mentor_telegram_id:
+            mentor = next(
+                (
+                    p
+                    for p in meeting.participants
+                    if p.telegram_id == meeting.mentor_telegram_id
+                ),
+                None,
+            )
+        student = next(
+            (
+                p
+                for p in meeting.participants
+                if not mentor or p.telegram_id != mentor.telegram_id
+            ),
+            None,
+        )
 
         mentor_text = (
             f"Ментор: <b>{e(mentor.name)}</b>"
@@ -129,7 +165,7 @@ def _format_meetings(
             date_str = "—"
 
         lines.append(
-            f"🗓 Созвон #{meeting.id}\n"
+            f"🗓 Созвон #{display_idx}\n"
             f"{mentor_text}\n"
             f"{student_text}\n"
             f"Когда: {date_str}\n"
@@ -147,14 +183,15 @@ async def cb_mentor_meetings(callback: CallbackQuery):
     await callback.answer()
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    text = _format_meetings(
+    visible = _filter_visible_meetings(
         meetings,
         callback.from_user.id,
         viewer_is_mentor=True,
         mentor_tg_ids=mentor_tg_ids,
     )
+    text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=0)
     await callback.message.edit_text(
-        text, reply_markup=mentor_meetings_keyboard(meetings)
+        text, reply_markup=mentor_meetings_keyboard(visible, page=0)
     )
 
 
@@ -165,12 +202,13 @@ async def cb_student_meetings(callback: CallbackQuery):
     await callback.answer()
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    text = _format_meetings(
+    visible = _filter_visible_meetings(
         meetings,
         callback.from_user.id,
         viewer_is_mentor=False,
         mentor_tg_ids=mentor_tg_ids,
     )
+    text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids)
     try:
         await callback.message.edit_text(
             text, reply_markup=await _menu_kb(callback.from_user.id)
@@ -223,9 +261,16 @@ async def cb_start_meeting_call(
         )
 
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
+    mentor_tg_ids = await MentorDAO.get_telegram_ids()
+    visible = _filter_visible_meetings(
+        meetings,
+        callback.from_user.id,
+        viewer_is_mentor=True,
+        mentor_tg_ids=mentor_tg_ids,
+    )
     await callback.message.edit_text(
         text,
-        reply_markup=mentor_meetings_keyboard(meetings),
+        reply_markup=mentor_meetings_keyboard(visible, page=0),
     )
 
 
@@ -653,15 +698,16 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
 
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    text = _format_meetings(
+    visible = _filter_visible_meetings(
         meetings,
         callback.from_user.id,
         viewer_is_mentor=True,
         mentor_tg_ids=mentor_tg_ids,
     )
+    text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=0)
     await callback.message.edit_text(
         f"Созвон #{callback_data.meeting_id} удалён.\n\n{text}",
-        reply_markup=mentor_meetings_keyboard(meetings),
+        reply_markup=mentor_meetings_keyboard(visible, page=0),
     )
 
 
@@ -711,12 +757,14 @@ async def cb_meetings_page(callback: CallbackQuery, callback_data: PageNavCB):
     await callback.answer()
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    text = _format_meetings(
+    visible = _filter_visible_meetings(
         meetings,
         callback.from_user.id,
         viewer_is_mentor=True,
         mentor_tg_ids=mentor_tg_ids,
     )
+    page = callback_data.page
+    text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=page)
     await callback.message.edit_text(
-        text, reply_markup=mentor_meetings_keyboard(meetings, page=callback_data.page)
+        text, reply_markup=mentor_meetings_keyboard(visible, page=page)
     )
