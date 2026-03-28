@@ -719,10 +719,6 @@ class NotionSyncServiceV2:
                 for mentor in mentors:
                     try:
                         props: dict = {}
-                        if mentor.name:
-                            props["Name"] = {
-                                "title": [{"text": {"content": mentor.name}}]
-                            }
                         if mentor.user and mentor.user.role_rel:
                             notion_role = _DB_ROLE_TO_NOTION.get(
                                 mentor.user.role_rel.name
