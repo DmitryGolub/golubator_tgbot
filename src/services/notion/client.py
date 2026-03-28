@@ -160,14 +160,39 @@ class NotionClient:
             logger.error("Notion get_page %s failed: %s", page_id, e)
             return None
 
-    async def create_page(self, properties: dict) -> dict | None:
+    async def get_block_children(self, block_id: str) -> list[dict]:
+        blocks: list[dict] = []
+        try:
+            cursor: str | None = None
+            while True:
+                await self._rate_limiter.acquire()
+                resp = await self._ensure_client().blocks.children.list(
+                    block_id=block_id, start_cursor=cursor, page_size=100
+                )
+                blocks.extend(resp.get("results", []))
+                if not resp.get("has_more"):
+                    break
+                cursor = resp.get("next_cursor")
+        except APIResponseError as e:
+            logger.error("Notion get_block_children %s failed: %s", block_id, e)
+        return blocks
+
+    async def create_page(
+        self,
+        properties: dict,
+        *,
+        children: list[dict] | None = None,
+    ) -> dict | None:
         try:
             ds_id = await self._resolve_data_source_id()
             await self._rate_limiter.acquire()
-            return await self._ensure_client().pages.create(
-                parent={"data_source_id": ds_id},
-                properties=properties,
-            )
+            kwargs: dict = {
+                "parent": {"data_source_id": ds_id},
+                "properties": properties,
+            }
+            if children:
+                kwargs["children"] = children
+            return await self._ensure_client().pages.create(**kwargs)
         except APIResponseError as e:
             logger.error("Notion create_page failed: %s", e)
             return None

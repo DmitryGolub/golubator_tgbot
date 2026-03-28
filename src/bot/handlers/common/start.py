@@ -168,6 +168,7 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                         await MenteeDAO.add(
                             telegram_id=telegram_id,
                             notion_page_id=notion_mentee.page_id,
+                            doc_name=f"@{username}" if username else None,
                         )
                     await mentee_repo.update_telegram_id(
                         notion_mentee.page_id, telegram_id
@@ -186,6 +187,7 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                         await MenteeDAO.add(
                             telegram_id=telegram_id,
                             notion_page_id=page_id,
+                            doc_name=f"@{username}",
                         )
                         logger.info(
                             "Notion mentee created: user=%s page=%s",

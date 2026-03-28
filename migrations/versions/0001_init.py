@@ -279,7 +279,7 @@ def upgrade() -> None:
             nullable=True,
             index=True,
         ),
-        sa.Column("contract", sa.Boolean, nullable=True),
+        sa.Column("contract", sa.Boolean, nullable=False, server_default=sa.false()),
         sa.Column("intern", sa.String(255), nullable=True),
         sa.Column("contract_version", sa.Float, nullable=True),
         sa.Column("contract_expires", sa.String(100), nullable=True),

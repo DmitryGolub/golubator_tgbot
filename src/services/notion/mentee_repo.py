@@ -109,13 +109,50 @@ class NotionMenteeRepo:
         page = await self._client.get_page(page_id)
         return self._parse_page(page) if page else None
 
+    _STRIP_KEYS = frozenset(
+        {
+            "id",
+            "created_time",
+            "last_edited_time",
+            "created_by",
+            "last_edited_by",
+            "has_children",
+            "archived",
+            "in_trash",
+            "parent",
+            "object",
+            "request_id",
+        }
+    )
+
+    @staticmethod
+    def _clean_block(block: dict) -> dict:
+        block_type = block["type"]
+        return {"type": block_type, block_type: block[block_type]}
+
+    async def _fetch_template_children(self) -> list[dict]:
+        from src.core.config import settings
+
+        template_id = settings.NOTION_MENTEE_TEMPLATE_PAGE_ID
+        if not template_id:
+            return []
+        try:
+            blocks = await self._client.get_block_children(template_id)
+            return [self._clean_block(b) for b in blocks]
+        except Exception:
+            logger.exception("Failed to fetch template blocks from %s", template_id)
+            return []
+
     async def create_page(self, username: str, telegram_id: int) -> str | None:
         clean = username.lstrip("@")
+        children = await self._fetch_template_children()
         page = await self._client.create_page(
             {
                 "Doc name": {"title": [{"text": {"content": f"@{clean}"}}]},
                 "Telegram ID": {"number": telegram_id},
-            }
+                "Status": {"status": {"name": "Lead"}},
+            },
+            children=children,
         )
         return page["id"] if page else None
 

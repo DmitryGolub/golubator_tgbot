@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     NOTION_MENTOR_DB_ID: str | None = None
     NOTION_MENTEE_DB_ID: str | None = None
     NOTION_EVENT_DB_ID: str | None = None
+    NOTION_MENTEE_TEMPLATE_PAGE_ID: str | None = None
     # Push interval: PostgreSQL → Notion (seconds)
     NOTION_PUSH_INTERVAL: int = 30
     # Backup polling intervals: Notion → PostgreSQL (seconds)

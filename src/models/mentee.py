@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
+import sqlalchemy as sa
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -45,7 +46,9 @@ class Mentee(Base):
         nullable=True,
         index=True,
     )
-    contract: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    contract: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa.false()
+    )
     intern: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     contract_version: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     contract_expires: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
