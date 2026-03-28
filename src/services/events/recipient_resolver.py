@@ -21,6 +21,10 @@ class RecipientResolver:
             mentor_id = context.get("mentor_id")
             return [mentor_id] if mentor_id else []
 
+        if rt == RecipientType.event_user:
+            uid = context.get("user_telegram_id")
+            return [uid] if uid else []
+
         if rt == RecipientType.specific_users:
             user_ids = config.get("user_ids", [])
             return [int(uid) for uid in user_ids]

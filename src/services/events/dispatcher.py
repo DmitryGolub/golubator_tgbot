@@ -32,6 +32,8 @@ class EventDispatcher:
         logger.info("Event %s: %d rule(s) matched", trigger_type.value, len(rules))
 
         for rule in rules:
+            if not cls._matches_trigger_config(rule, trigger_type, context):
+                continue
             try:
                 await cls._process_rule(rule, context, bot)
             except Exception:
@@ -158,6 +160,34 @@ class EventDispatcher:
         )
 
     @classmethod
+    def _matches_trigger_config(
+        cls, rule: TriggerRule, trigger_type: TriggerType, context: dict
+    ) -> bool:
+        if trigger_type != TriggerType.cohort_changed:
+            return True
+
+        config = rule.trigger_config
+        if not config:
+            return True
+
+        cfg_cohort_type = config.get("cohort_type", "*")
+        cfg_from = config.get("from_value", "*")
+        cfg_to = config.get("to_value", "*")
+
+        ctx_cohort_type = context.get("cohort_type", "")
+        ctx_old = context.get("old_value")
+        ctx_new = context.get("new_value", "")
+
+        if cfg_cohort_type != "*" and cfg_cohort_type != ctx_cohort_type:
+            return False
+        if cfg_from != "*" and cfg_from != ctx_old:
+            return False
+        if cfg_to != "*" and cfg_to != ctx_new:
+            return False
+
+        return True
+
+    @classmethod
     def _build_event_key(cls, rule: TriggerRule, context: dict) -> str | None:
         trigger = rule.trigger_type
 
@@ -172,6 +202,12 @@ class EventDispatcher:
         if trigger == TriggerType.periodic_cron:
             now_key = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
             return f"periodic:{now_key}:{rule.id}"
+
+        if trigger == TriggerType.cohort_changed:
+            user_id = context.get("user_telegram_id", "")
+            cohort_type = context.get("cohort_type", "")
+            new_value = context.get("new_value", "")
+            return f"cohort_changed:{user_id}:{cohort_type}:{new_value}:{rule.id}"
 
         if trigger == TriggerType.manual:
             # No dedup for manual triggers

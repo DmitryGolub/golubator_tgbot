@@ -29,7 +29,7 @@ class TriggerType(str, enum.Enum):
     meeting_created = "meeting_created"
     call_ended = "call_ended"
     periodic_cron = "periodic_cron"
-    user_state_changed = "user_state_changed"
+    cohort_changed = "cohort_changed"
     manual = "manual"
 
 
@@ -46,6 +46,7 @@ class DelayMode(str, enum.Enum):
 class RecipientType(str, enum.Enum):
     event_student = "event_student"
     event_mentor = "event_mentor"
+    event_user = "event_user"
     by_role = "by_role"
     by_cohort = "by_cohort"
     by_state = "by_state"
@@ -122,6 +123,9 @@ class TriggerRule(Base):
 
     # Action payload
     action_config: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    # Trigger-specific config (e.g. cohort_changed conditions)
+    trigger_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Audit
     created_by: Mapped[Optional[int]] = mapped_column(

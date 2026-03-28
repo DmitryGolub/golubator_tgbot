@@ -12,5 +12,8 @@ class TriggerRuleBuilderFSM(StatesGroup):
     configuring_action_text = State()
     choosing_survey_template = State()
     choosing_recipient_type = State()
+    choosing_cohort_type = State()
+    choosing_cohort_from = State()
+    choosing_cohort_to = State()
     configuring_recipients = State()
     setting_delay = State()

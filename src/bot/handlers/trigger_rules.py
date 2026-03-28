@@ -8,6 +8,8 @@ from aiogram.fsm.context import FSMContext
 from src.bot.callbacks.trigger_rules import (
     TriggerActionCB,
     TriggerActionTypeCB,
+    TriggerCohortTypeCB,
+    TriggerCohortValueCB,
     TriggerRecipientTypeCB,
     TriggerRegularityCB,
     TriggerRuleConfirmDeleteCB,
@@ -26,6 +28,9 @@ from src.bot.keyboards.trigger_rules import (
     TRIGGER_TYPE_LABELS,
     action_type_keyboard,
     cancel_keyboard,
+    cohort_type_keyboard,
+    cohort_value_keyboard,
+    cohort_wildcard_keyboard,
     confirm_delete_rule_keyboard,
     manual_send_rules_keyboard,
     recipient_type_keyboard,
@@ -110,6 +115,21 @@ async def cb_rule_detail(callback: CallbackQuery, callback_data: TriggerRuleDeta
 
     if rule.cron_expression:
         text += f"\nCron: <code>{e(rule.cron_expression)}</code>"
+
+    if rule.trigger_config:
+        cfg = rule.trigger_config
+        ct = cfg.get("cohort_type", "*")
+        fv = cfg.get("from_value", "*")
+        tv = cfg.get("to_value", "*")
+        ct_label = "Любой" if ct == "*" else ct
+        fv_label = "Любой" if fv == "*" else fv
+        tv_label = "Любой" if tv == "*" else tv
+        text += (
+            f"\n\nУсловия когорты:\n"
+            f"  Тип: {e(ct_label)}\n"
+            f"  Из: {e(fv_label)}\n"
+            f"  В: {e(tv_label)}"
+        )
 
     await callback.answer()
     await callback.message.edit_text(text, reply_markup=rule_detail_keyboard(rule))
@@ -247,6 +267,15 @@ async def cb_trigger_type(
             "Выберите способ задания расписания:",
             reply_markup=schedule_mode_keyboard(),
         )
+    elif callback_data.value == "cohort_changed":
+        from src.dao.cohort import CohortDAO
+
+        types = await CohortDAO.get_distinct_types()
+        await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_type)
+        await callback.message.edit_text(
+            "Выберите тип когорты для отслеживания:",
+            reply_markup=cohort_type_keyboard(types),
+        )
     else:
         await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
         await callback.message.edit_text(
@@ -277,6 +306,83 @@ async def cb_schedule_mode(
         await callback.message.edit_text(
             "Выберите регулярность:", reply_markup=regularity_keyboard()
         )
+
+
+@router.callback_query(
+    TriggerRuleBuilderFSM.choosing_cohort_type, TriggerCohortTypeCB.filter()
+)
+async def cb_cohort_type(
+    callback: CallbackQuery, callback_data: TriggerCohortTypeCB, state: FSMContext
+):
+    cohort_type = callback_data.value
+    await state.update_data(cohort_config_type=cohort_type)
+    await callback.answer()
+
+    if cohort_type == "*":
+        await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_from)
+        await callback.message.edit_text(
+            "Начальное значение (from):", reply_markup=cohort_wildcard_keyboard()
+        )
+    else:
+        from src.dao.cohort import CohortDAO
+
+        values = await CohortDAO.get_distinct_values(cohort_type)
+        await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_from)
+        await callback.message.edit_text(
+            "Выберите начальное значение (from):",
+            reply_markup=cohort_value_keyboard(values),
+        )
+
+
+@router.callback_query(
+    TriggerRuleBuilderFSM.choosing_cohort_from, TriggerCohortValueCB.filter()
+)
+async def cb_cohort_from(
+    callback: CallbackQuery, callback_data: TriggerCohortValueCB, state: FSMContext
+):
+    from_value = callback_data.value
+    await state.update_data(cohort_config_from=from_value)
+    await callback.answer()
+
+    data = await state.get_data()
+    cohort_type = data.get("cohort_config_type", "*")
+
+    if cohort_type == "*":
+        await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_to)
+        await callback.message.edit_text(
+            "Конечное значение (to):", reply_markup=cohort_wildcard_keyboard()
+        )
+    else:
+        from src.dao.cohort import CohortDAO
+
+        values = await CohortDAO.get_distinct_values(cohort_type)
+        await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_to)
+        await callback.message.edit_text(
+            "Выберите конечное значение (to):",
+            reply_markup=cohort_value_keyboard(values),
+        )
+
+
+@router.callback_query(
+    TriggerRuleBuilderFSM.choosing_cohort_to, TriggerCohortValueCB.filter()
+)
+async def cb_cohort_to(
+    callback: CallbackQuery, callback_data: TriggerCohortValueCB, state: FSMContext
+):
+    to_value = callback_data.value
+    data = await state.get_data()
+    trigger_config = {
+        "cohort_type": data.get("cohort_config_type", "*"),
+        "from_value": data.get("cohort_config_from", "*"),
+        "to_value": to_value,
+    }
+    await state.update_data(trigger_config=trigger_config)
+    await callback.answer()
+
+    await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
+    await callback.message.edit_text(
+        "Выберите действие:", reply_markup=action_type_keyboard()
+    )
 
 
 @router.message(TriggerRuleBuilderFSM.entering_cron_expression)
@@ -472,6 +578,8 @@ async def msg_delay(message: Message, state: FSMContext):
         delay_seconds=delay,
         created_by=message.from_user.id,
     )
+    if data.get("trigger_config"):
+        create_kwargs["trigger_config"] = data["trigger_config"]
     if data.get("cron_expression"):
         create_kwargs["cron_expression"] = data["cron_expression"]
     if data.get("regularity"):

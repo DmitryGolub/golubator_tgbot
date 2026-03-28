@@ -37,7 +37,7 @@ trigger_type_enum = pgEnum(
     "meeting_created",
     "call_ended",
     "periodic_cron",
-    "user_state_changed",
+    "cohort_changed",
     "manual",
     name="trigger_type_enum",
     create_type=False,
@@ -51,10 +51,12 @@ delay_mode_enum = pgEnum(
 recipient_type_enum = pgEnum(
     "event_student",
     "event_mentor",
+    "event_user",
     "by_role",
     "by_cohort",
     "by_state",
     "specific_users",
+    "direction_lead",
     name="recipient_type_enum",
     create_type=False,
 )
@@ -598,6 +600,7 @@ def upgrade() -> None:
         sa.Column("recipient_type", recipient_type_enum, nullable=False),
         sa.Column("recipient_config", sa.JSON, nullable=True),
         sa.Column("action_config", sa.JSON, nullable=False),
+        sa.Column("trigger_config", sa.JSON, nullable=True),
         sa.Column(
             "created_by",
             sa.BigInteger,

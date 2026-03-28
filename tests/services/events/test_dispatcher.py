@@ -29,10 +29,15 @@ class TestBuildEventKey:
         rule = SimpleNamespace(id=4, trigger_type=TriggerType.manual)
         assert EventDispatcher._build_event_key(rule, {}) is None
 
-    def test_unknown_type(self):
-        rule = SimpleNamespace(id=5, trigger_type=TriggerType.user_state_changed)
-        key = EventDispatcher._build_event_key(rule, {})
-        assert key == "user_state_changed:5"
+    def test_cohort_changed(self):
+        rule = SimpleNamespace(id=5, trigger_type=TriggerType.cohort_changed)
+        context = {
+            "user_telegram_id": 123,
+            "cohort_type": "Status",
+            "new_value": "Study",
+        }
+        key = EventDispatcher._build_event_key(rule, context)
+        assert key == "cohort_changed:123:Status:Study:5"
 
 
 class TestCalculateEta:

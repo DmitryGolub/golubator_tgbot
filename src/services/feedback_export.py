@@ -6,8 +6,8 @@ from typing import Any, Optional
 from src.dao.feedback_export import FeedbackExportDAO
 from src.models.meeting import Meeting
 from src.models.survey_session import SurveySession
-from src.models.user import User
 from src.services.yandex_sheets import CellValue, YandexSheetTarget, YandexSheetsWriter
+from src.utils.roles import is_mentor
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +23,6 @@ FEEDBACK_EXPORT_HEADERS: tuple[str, ...] = (
     "mentor_feedback_status",
     "mentor_feedback_created_at",
 )
-
-
-def _role_name(user: User | Any | None) -> str | None:
-    if user is None:
-        return None
-    role_rel = getattr(user, "role_rel", None)
-    if role_rel is not None:
-        return role_rel.name
-    return None
 
 
 @dataclass(slots=True)
@@ -174,7 +165,7 @@ class FeedbackExportService:
 
         if not mentor:
             mentor = next(
-                (p for p in participants if _role_name(p) == "mentor"),
+                (p for p in participants if is_mentor(p)),
                 None,
             )
         if not student:

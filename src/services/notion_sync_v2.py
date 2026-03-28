@@ -293,11 +293,19 @@ class NotionSyncServiceV2:
         engine, factory = _make_session_factory()
         try:
             async with factory() as session:
+                diffs: list[dict] = []
                 if source_db == "mentor":
                     await self._upsert_mentor(session, data, page_id)
                 else:
-                    await self._upsert_mentee(session, data, page_id)
+                    diffs = await self._upsert_mentee(session, data, page_id)
                 await session.commit()
+
+                if diffs:
+                    from src.models.trigger import TriggerType
+                    from src.services.events.dispatcher import EventDispatcher
+
+                    for diff in diffs:
+                        await EventDispatcher.emit(TriggerType.cohort_changed, diff)
         finally:
             await engine.dispose()
 
@@ -466,7 +474,9 @@ class NotionSyncServiceV2:
             )
             new_mentor.telegram_id = user_tid
 
-    async def _upsert_mentee(self, session: AsyncSession, data, page_id: str) -> None:
+    async def _upsert_mentee(
+        self, session: AsyncSession, data, page_id: str
+    ) -> list[dict]:
         result = await session.execute(
             select(Mentee).where(Mentee.notion_page_id == page_id)
         )
@@ -491,8 +501,7 @@ class NotionSyncServiceV2:
             ):
                 logger.debug("Skipping echo for mentee page %s", page_id)
                 # Still sync cohorts (may have changed independently)
-                await self._sync_cohorts(session, mentee.telegram_id, data, now)
-                return
+                return await self._sync_cohorts(session, mentee.telegram_id, data, now)
 
             mentee.doc_name = data.doc_name or mentee.doc_name
             if resolved_mentor_id is not None:
@@ -551,7 +560,7 @@ class NotionSyncServiceV2:
             new_mentee.telegram_id = user_tid
 
         mentee_record = mentee or new_mentee  # type: ignore[possibly-undefined]
-        await self._sync_cohorts(session, mentee_record.telegram_id, data, now)
+        return await self._sync_cohorts(session, mentee_record.telegram_id, data, now)
 
     async def _sync_cohorts(
         self,
@@ -559,8 +568,17 @@ class NotionSyncServiceV2:
         user_telegram_id: int,
         data,
         now: datetime,
-    ) -> None:
+    ) -> list[dict]:
+        """Sync cohorts and return list of diffs for changed cohorts."""
         from sqlalchemy import delete
+
+        # Snapshot current cohorts before delete
+        old_result = await session.execute(
+            select(Cohort.type, Cohort.value)
+            .join(UserCohort, UserCohort.cohort_id == Cohort.id)
+            .where(UserCohort.user_telegram_id == user_telegram_id)
+        )
+        old_map: dict[str, str] = {row[0]: row[1] for row in old_result.all()}
 
         await session.execute(
             delete(UserCohort).where(UserCohort.user_telegram_id == user_telegram_id)
@@ -576,7 +594,9 @@ class NotionSyncServiceV2:
         if intern := getattr(data, "intern", None):
             entries.append(("Стажор", intern))
 
+        new_map: dict[str, str] = {}
         for cohort_type, cohort_value in entries:
+            new_map[cohort_type] = cohort_value
             await session.execute(
                 pg_insert(Cohort)
                 .values(type=cohort_type, value=cohort_value)
@@ -595,6 +615,22 @@ class NotionSyncServiceV2:
                     synced_at=now,
                 )
             )
+
+        diffs: list[dict] = []
+        all_types = set(old_map) | set(new_map)
+        for ct in all_types:
+            old_val = old_map.get(ct)
+            new_val = new_map.get(ct)
+            if old_val != new_val and new_val is not None:
+                diffs.append(
+                    {
+                        "user_telegram_id": user_telegram_id,
+                        "cohort_type": ct,
+                        "old_value": old_val,
+                        "new_value": new_val,
+                    }
+                )
+        return diffs
 
     # ── Cohort sync (standalone stream) ─────────────────────────────────
 
@@ -631,8 +667,15 @@ class NotionSyncServiceV2:
                         page_id,
                     )
                     return
-                await self._sync_cohorts(session, mentee.telegram_id, data, now)
+                diffs = await self._sync_cohorts(session, mentee.telegram_id, data, now)
                 await session.commit()
+
+                if diffs:
+                    from src.models.trigger import TriggerType
+                    from src.services.events.dispatcher import EventDispatcher
+
+                    for diff in diffs:
+                        await EventDispatcher.emit(TriggerType.cohort_changed, diff)
         finally:
             await engine.dispose()
 
@@ -642,6 +685,7 @@ class NotionSyncServiceV2:
 
         mentees_data = await self.mentee_repo.get_all()
         count = 0
+        all_diffs: list[dict] = []
         engine, factory = _make_session_factory()
         try:
             async with factory() as session:
@@ -655,12 +699,22 @@ class NotionSyncServiceV2:
                             continue
 
                         now = datetime.now(timezone.utc)
-                        await self._sync_cohorts(session, mentee.telegram_id, m, now)
+                        diffs = await self._sync_cohorts(
+                            session, mentee.telegram_id, m, now
+                        )
+                        all_diffs.extend(diffs)
                         count += 1
                     except Exception:
                         logger.exception("Error syncing cohort for %s", m.page_id)
 
                 await session.commit()
+
+            if all_diffs:
+                from src.models.trigger import TriggerType
+                from src.services.events.dispatcher import EventDispatcher
+
+                for diff in all_diffs:
+                    await EventDispatcher.emit(TriggerType.cohort_changed, diff)
         finally:
             await engine.dispose()
 
@@ -977,17 +1031,26 @@ class NotionSyncServiceV2:
 
         mentees_data = await self.mentee_repo.get_all()
         count = 0
+        all_diffs: list[dict] = []
         engine, factory = _make_session_factory()
         try:
             async with factory() as session:
                 for m in mentees_data:
                     try:
-                        await self._upsert_mentee(session, m, m.page_id)
+                        diffs = await self._upsert_mentee(session, m, m.page_id)
+                        all_diffs.extend(diffs)
                         count += 1
                     except Exception:
                         logger.exception("Error syncing mentee %s", m.page_id)
 
                 await session.commit()
+
+            if all_diffs:
+                from src.models.trigger import TriggerType
+                from src.services.events.dispatcher import EventDispatcher
+
+                for diff in all_diffs:
+                    await EventDispatcher.emit(TriggerType.cohort_changed, diff)
         finally:
             await engine.dispose()
 

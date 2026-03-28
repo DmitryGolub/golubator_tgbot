@@ -4,6 +4,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from src.bot.callbacks.trigger_rules import (
     TriggerActionCB,
     TriggerActionTypeCB,
+    TriggerCohortTypeCB,
+    TriggerCohortValueCB,
     TriggerRecipientTypeCB,
     TriggerRegularityCB,
     TriggerRuleConfirmDeleteCB,
@@ -22,6 +24,7 @@ TRIGGER_TYPE_LABELS = {
     "meeting_created": "Создание встречи",
     "call_ended": "Завершение созвона",
     "periodic_cron": "По расписанию",
+    "cohort_changed": "Смена когорты",
     "manual": "Ручной",
 }
 
@@ -45,10 +48,12 @@ ACTION_TYPE_LABELS = {
 RECIPIENT_TYPE_LABELS = {
     "event_student": "Ученик из события",
     "event_mentor": "Ментор из события",
+    "event_user": "Пользователь события",
     "by_role": "По роли",
     "by_cohort": "По когорте",
     "by_state": "По статусу",
     "specific_users": "Конкретные пользователи",
+    "direction_lead": "Руководитель направления",
 }
 
 
@@ -166,6 +171,34 @@ def regularity_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for value, label in REGULARITY_LABELS.items():
         builder.button(text=label, callback_data=TriggerRegularityCB(value=value))
+    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def cohort_type_keyboard(types: list[str]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Любой тип", callback_data=TriggerCohortTypeCB(value="*"))
+    for t in types:
+        builder.button(text=t, callback_data=TriggerCohortTypeCB(value=t))
+    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def cohort_value_keyboard(values: list[str]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Любой", callback_data=TriggerCohortValueCB(value="*"))
+    for v in values:
+        builder.button(text=v, callback_data=TriggerCohortValueCB(value=v))
+    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def cohort_wildcard_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Любой", callback_data=TriggerCohortValueCB(value="*"))
     builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()

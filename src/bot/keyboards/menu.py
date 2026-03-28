@@ -73,7 +73,7 @@ async def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
             needed_keys.append(key)
             buttons_spec.append((key, cb))
 
-    if "view_own_info" in permissions:
+    if "view_own_info" in permissions and "view_students" in permissions:
         needed_keys.append("menu.btn.my_info")
         buttons_spec.append(("menu.btn.my_info", "mentor_me_info"))
 

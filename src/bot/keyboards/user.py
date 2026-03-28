@@ -10,6 +10,7 @@ from src.bot.callbacks.update_user import (
     ChooseMentorCB,
     ChooseUserCB,
     ChooseMenteeCB,
+    ChooseCohortTypeCB,
 )
 from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
 from src.models.user import User
@@ -29,6 +30,10 @@ def update_param_keyboard() -> InlineKeyboardMarkup:
     kb.button(
         text="👨‍🏫 Обновить ментора",
         callback_data=ChooseParamCB(param=UpdateParam.MENTOR).pack(),
+    )
+    kb.button(
+        text="📋 Обновить когорту",
+        callback_data=ChooseParamCB(param=UpdateParam.COHORT).pack(),
     )
 
     kb.adjust(1)
@@ -76,6 +81,43 @@ async def statuses_keyboard() -> InlineKeyboardMarkup:
             callback_data=ChooseEnumValueCB(
                 param=UpdateParam.STATUS,
                 value=status_value,
+            ).pack(),
+        )
+
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+async def cohort_types_keyboard() -> InlineKeyboardMarkup:
+    from src.dao.cohort import CohortDAO
+
+    types = await CohortDAO.get_distinct_types()
+    kb = InlineKeyboardBuilder()
+
+    for cohort_type in types:
+        if cohort_type == "Status":
+            continue
+        kb.button(
+            text=cohort_type,
+            callback_data=ChooseCohortTypeCB(cohort_type=cohort_type).pack(),
+        )
+
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+async def cohort_values_keyboard(cohort_type: str) -> InlineKeyboardMarkup:
+    from src.dao.cohort import CohortDAO
+
+    values = await CohortDAO.get_distinct_values(cohort_type)
+    kb = InlineKeyboardBuilder()
+
+    for value in values:
+        kb.button(
+            text=value,
+            callback_data=ChooseEnumValueCB(
+                param=UpdateParam.COHORT,
+                value=value,
             ).pack(),
         )
 

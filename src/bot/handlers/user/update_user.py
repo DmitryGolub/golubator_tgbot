@@ -14,6 +14,8 @@ from src.bot.keyboards.user import (
     mentors_keyboard,
     users_keyboard,
     mentees_keyboard,
+    cohort_types_keyboard,
+    cohort_values_keyboard,
 )
 from src.bot.callbacks.update_user import (
     ChooseParamCB,
@@ -21,6 +23,7 @@ from src.bot.callbacks.update_user import (
     ChooseMentorCB,
     ChooseMenteeCB,
     ChooseUserCB,
+    ChooseCohortTypeCB,
     UpdateParam,
 )
 from src.bot.callbacks.pagination import PageNavCB
@@ -144,6 +147,36 @@ async def cb_choose_param(
             reply_markup=mentors_keyboard(mentors),
         )
 
+    elif param == UpdateParam.COHORT:
+        kb = await cohort_types_keyboard()
+        await state.set_state(UpdateUserFSM.choosing_cohort_type)
+        await _msg(callback).edit_text(
+            "Вы выбрали: обновить <b>когорту</b>.\n\nВыберите тип когорты:",
+            reply_markup=kb,
+        )
+
+
+@router.callback_query(
+    StateFilter(UpdateUserFSM.choosing_cohort_type),
+    ChooseCohortTypeCB.filter(),
+)
+async def cb_choose_cohort_type(
+    callback: CallbackQuery,
+    callback_data: ChooseCohortTypeCB,
+    state: FSMContext,
+):
+    await callback.answer()
+
+    cohort_type = callback_data.cohort_type
+    await state.update_data(cohort_type=cohort_type)
+
+    kb = await cohort_values_keyboard(cohort_type)
+    await state.set_state(UpdateUserFSM.choosing_value)
+    await _msg(callback).edit_text(
+        f"Тип когорты: <b>{e(cohort_type)}</b>.\n\nТеперь выберите значение:",
+        reply_markup=kb,
+    )
+
 
 @router.callback_query(
     StateFilter(UpdateUserFSM.choosing_value),
@@ -173,7 +206,11 @@ async def cb_choose_enum_value(
     data = await state.get_data()
     flow_perm = data.get("flow_perm", "manage_users")
 
-    human_param = "роль" if param == UpdateParam.ROLE else "статус"
+    human_param = {
+        UpdateParam.ROLE: "роль",
+        UpdateParam.STATUS: "статус",
+        UpdateParam.COHORT: "когорта",
+    }.get(param, str(param))
 
     if flow_perm == "update_student_status":
         mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
@@ -284,6 +321,7 @@ async def cb_choose_user_for_update(
         UpdateParam.STATUS: "статус",
         UpdateParam.ROLE: "роль",
         UpdateParam.MENTOR: "ментор",
+        UpdateParam.COHORT: "когорта",
     }[param]
 
     if chosen_value_type == "enum":
@@ -317,11 +355,44 @@ async def cb_choose_user_for_update(
             value_human = chosen_value
 
             if mentee and mentee.telegram_id:
-                await CohortDAO.update_user_cohort_by_type(
+                old_val, new_val = await CohortDAO.update_user_cohort_by_type(
                     mentee.telegram_id, "Status", chosen_value
                 )
+                if old_val != new_val:
+                    from src.models.trigger import TriggerType
+                    from src.services.events.dispatcher import EventDispatcher
+
+                    await EventDispatcher.emit(
+                        TriggerType.cohort_changed,
+                        {
+                            "user_telegram_id": mentee.telegram_id,
+                            "cohort_type": "Status",
+                            "old_value": old_val,
+                            "new_value": new_val,
+                        },
+                    )
             else:
                 value_human = f"{value_human} (профиль менти не найден)"
+
+        elif param == UpdateParam.COHORT:
+            cohort_type = data.get("cohort_type", "")
+            old_val, new_val = await CohortDAO.update_user_cohort_by_type(
+                user_id, cohort_type, chosen_value
+            )
+            value_human = f"{cohort_type}: {chosen_value}"
+            if old_val != new_val:
+                from src.models.trigger import TriggerType
+                from src.services.events.dispatcher import EventDispatcher
+
+                await EventDispatcher.emit(
+                    TriggerType.cohort_changed,
+                    {
+                        "user_telegram_id": user_id,
+                        "cohort_type": cohort_type,
+                        "old_value": old_val,
+                        "new_value": new_val,
+                    },
+                )
 
         else:
             value_human = chosen_value
@@ -406,9 +477,22 @@ async def cb_choose_mentee_for_update(
         await state.clear()
         return
 
-    await CohortDAO.update_user_cohort_by_type(
+    old_val, new_val = await CohortDAO.update_user_cohort_by_type(
         mentee.telegram_id, "Status", chosen_value
     )
+    if old_val != new_val:
+        from src.models.trigger import TriggerType
+        from src.services.events.dispatcher import EventDispatcher
+
+        await EventDispatcher.emit(
+            TriggerType.cohort_changed,
+            {
+                "user_telegram_id": mentee.telegram_id,
+                "cohort_type": "Status",
+                "old_value": old_val,
+                "new_value": new_val,
+            },
+        )
 
     display_name = mentee.doc_name or mentee.name or f"id={mentee.id}"
     username = ""

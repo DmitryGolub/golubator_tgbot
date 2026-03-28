@@ -47,3 +47,11 @@ class TriggerScheduleModeCB(CallbackData, prefix="tr_smode"):
 
 class TriggerRegularityCB(CallbackData, prefix="tr_reg"):
     value: str
+
+
+class TriggerCohortTypeCB(CallbackData, prefix="tr_ctype"):
+    value: str
+
+
+class TriggerCohortValueCB(CallbackData, prefix="tr_cval"):
+    value: str

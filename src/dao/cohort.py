@@ -192,8 +192,22 @@ class CohortDAO:
     @staticmethod
     async def update_user_cohort_by_type(
         user_telegram_id: int, cohort_type: str, cohort_value: str
-    ) -> None:
+    ) -> tuple[str | None, str]:
+        """Update user cohort and return (old_value, new_value)."""
         async with async_session_maker() as session:
+            old_result = await session.execute(
+                select(Cohort.value)
+                .join(UserCohort, UserCohort.cohort_id == Cohort.id)
+                .where(
+                    UserCohort.user_telegram_id == user_telegram_id,
+                    Cohort.type == cohort_type,
+                )
+            )
+            old_value = old_result.scalar_one_or_none()
+
+            if old_value == cohort_value:
+                return old_value, cohort_value
+
             await session.execute(
                 delete(UserCohort).where(
                     UserCohort.user_telegram_id == user_telegram_id,
@@ -227,3 +241,4 @@ class CohortDAO:
                 .values(updated_at=now)
             )
             await session.commit()
+            return old_value, cohort_value

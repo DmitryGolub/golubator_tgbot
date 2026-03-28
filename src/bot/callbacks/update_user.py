@@ -6,6 +6,7 @@ class UpdateParam(StrEnum):
     STATUS = "status"
     ROLE = "role"
     MENTOR = "mentor"
+    COHORT = "cohort"
 
 
 # выбор, ЧТО меняем (статус/роль/ментор)
@@ -32,3 +33,8 @@ class ChooseUserCB(CallbackData, prefix="upd_user"):
 # выбор менти по Mentee.id (PK) — для менти без telegram_id
 class ChooseMenteeCB(CallbackData, prefix="upd_mentee"):
     mentee_id: int
+
+
+# выбор типа когорты (Category, Stream, etc.)
+class ChooseCohortTypeCB(CallbackData, prefix="upd_ctype"):
+    cohort_type: str

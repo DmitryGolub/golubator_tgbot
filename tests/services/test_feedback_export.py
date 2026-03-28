@@ -6,22 +6,12 @@ from src.services.feedback_export import (
     FEEDBACK_EXPORT_HEADERS,
     FeedbackExportRow,
     FeedbackExportService,
-    _role_name,
 )
 from tests.conftest import make_meeting, make_role, make_user
 
 
-class TestRoleName:
-    def test_none(self):
-        assert _role_name(None) is None
-
-    def test_user_with_role(self):
-        user = make_user(role_rel=make_role(name="mentor"))
-        assert _role_name(user) == "mentor"
-
-    def test_user_without_role(self):
-        user = make_user(role_rel=None)
-        assert _role_name(user) is None
+def _perm(codename: str) -> SimpleNamespace:
+    return SimpleNamespace(codename=codename)
 
 
 class TestFeedbackExportRow:
@@ -45,7 +35,7 @@ class TestBuildDataset:
         mentor = make_user(
             telegram_id=100,
             name="Mentor",
-            role_rel=make_role(name="mentor"),
+            role_rel=make_role(name="mentor", permissions=[_perm("mentor_role")]),
         )
         student = make_user(
             telegram_id=200,
