@@ -32,6 +32,10 @@ def mentor_meetings_keyboard(
     start = page * page_size
     page_meetings = all_meetings[start : start + page_size]
 
+    nav = paginate_buttons("meetings", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
     for local_idx, meeting in enumerate(page_meetings):
         global_idx = start + local_idx + 1
         row: list[InlineKeyboardButton] = []
@@ -49,10 +53,6 @@ def mentor_meetings_keyboard(
             )
         )
         kb.row(*row)
-
-    nav = paginate_buttons("meetings", page, total_pages)
-    if nav:
-        kb.row(*nav)
 
     kb.row(InlineKeyboardButton(text="Добавить созвон", callback_data="meeting_create"))
     kb.row(
