@@ -135,7 +135,7 @@ async def cb_delete_rule_confirm(
     callback: CallbackQuery, callback_data: TriggerRuleDeleteCB
 ):
     await callback.answer()
-    rule = await TriggerRuleDAO.find_one_or_none(id=callback_data.rule_id)
+    rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
     if not rule:
         await callback.message.edit_text(
             await UiTextService.get("trigger.rule_not_found"),
