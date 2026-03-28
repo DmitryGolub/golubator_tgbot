@@ -618,7 +618,7 @@ async def cb_meeting_skip_link(callback: CallbackQuery, state: FSMContext):
 async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetingCB):
     await callback.answer()
 
-    deleted = await MeetingDAO.delete_for_mentor(
+    deleted, notion_page_id = await MeetingDAO.delete_for_mentor(
         meeting_id=callback_data.meeting_id,
         mentor_id=callback.from_user.id,
     )
@@ -629,6 +629,11 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
             reply_markup=mentor_meetings_keyboard(),
         )
         return
+
+    if notion_page_id:
+        from src.tasks.meeting import archive_notion_page
+
+        archive_notion_page.delay(notion_page_id)
 
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()

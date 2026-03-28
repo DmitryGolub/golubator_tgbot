@@ -91,7 +91,9 @@ class MeetingDAO(BaseDAO):
             return res.scalar_one_or_none()
 
     @classmethod
-    async def delete_for_mentor(cls, meeting_id: int, mentor_id: int) -> bool:
+    async def delete_for_mentor(
+        cls, meeting_id: int, mentor_id: int
+    ) -> tuple[bool, str | None]:
         async with async_session_maker() as session:
             # ensure mentor is participant of meeting
             query = (
@@ -102,11 +104,12 @@ class MeetingDAO(BaseDAO):
             result = await session.execute(query)
             meeting = result.scalar_one_or_none()
             if not meeting:
-                return False
+                return False, None
 
+            notion_page_id = meeting.notion_page_id
             await session.execute(delete(Meeting).where(Meeting.id == meeting_id))
             await session.commit()
-            return True
+            return True, notion_page_id
 
     @classmethod
     async def purge_older_than(cls, cutoff: datetime) -> int:

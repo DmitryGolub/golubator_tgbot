@@ -73,11 +73,22 @@ class NotionClient:
     """
 
     def __init__(self, token: str, database_id: str):
-        self._client = AsyncClient(auth=token)
+        self._token = token
+        self._client: AsyncClient | None = None
+        self._client_loop_id: int | None = None
         self._database_id = database_id
         self._data_source_id: str | None = None
         self._rate_limiter = _get_rate_limiter(token)
         self._users_cache: dict[str, str] | None = None
+
+    def _ensure_client(self) -> AsyncClient:
+        """Recreate AsyncClient when the event loop changes (Celery -P solo)."""
+        current_loop_id = id(asyncio.get_running_loop())
+        if self._client_loop_id != current_loop_id:
+            self._client = AsyncClient(auth=self._token)
+            self._client_loop_id = current_loop_id
+            self._data_source_id = None
+        return self._client
 
     @property
     def database_id(self) -> str:
@@ -87,7 +98,7 @@ class NotionClient:
         if self._data_source_id is None:
             await self._rate_limiter.acquire()
             try:
-                db = await self._client.databases.retrieve(
+                db = await self._ensure_client().databases.retrieve(
                     database_id=self._database_id
                 )
             except APIResponseError as e:
@@ -125,7 +136,7 @@ class NotionClient:
             kwargs["filter"] = filter
         if start_cursor:
             kwargs["start_cursor"] = start_cursor
-        return await self._client.data_sources.query(**kwargs)
+        return await self._ensure_client().data_sources.query(**kwargs)
 
     async def get_all_pages(self) -> list[dict]:
         pages: list[dict] = []
@@ -144,7 +155,7 @@ class NotionClient:
     async def get_page(self, page_id: str) -> dict | None:
         try:
             await self._rate_limiter.acquire()
-            return await self._client.pages.retrieve(page_id=page_id)
+            return await self._ensure_client().pages.retrieve(page_id=page_id)
         except APIResponseError as e:
             logger.error("Notion get_page %s failed: %s", page_id, e)
             return None
@@ -153,7 +164,7 @@ class NotionClient:
         try:
             ds_id = await self._resolve_data_source_id()
             await self._rate_limiter.acquire()
-            return await self._client.pages.create(
+            return await self._ensure_client().pages.create(
                 parent={"data_source_id": ds_id},
                 properties=properties,
             )
@@ -164,18 +175,27 @@ class NotionClient:
     async def update_page(self, page_id: str, properties: dict) -> dict | None:
         try:
             await self._rate_limiter.acquire()
-            return await self._client.pages.update(
+            return await self._ensure_client().pages.update(
                 page_id=page_id, properties=properties
             )
         except APIResponseError as e:
             logger.error("Notion update_page %s failed: %s", page_id, e)
             return None
 
+    async def archive_page(self, page_id: str) -> bool:
+        try:
+            await self._rate_limiter.acquire()
+            await self._ensure_client().pages.update(page_id=page_id, archived=True)
+            return True
+        except APIResponseError as e:
+            logger.error("Notion archive_page %s failed: %s", page_id, e)
+            return False
+
     async def get_schema(self) -> dict:
         try:
             ds_id = await self._resolve_data_source_id()
             await self._rate_limiter.acquire()
-            db = await self._client.data_sources.retrieve(data_source_id=ds_id)
+            db = await self._ensure_client().data_sources.retrieve(data_source_id=ds_id)
             return db.get("properties", {})
         except APIResponseError as e:
             logger.error("Notion get_schema failed: %s", e)
@@ -185,7 +205,7 @@ class NotionClient:
         try:
             ds_id = await self._resolve_data_source_id()
             await self._rate_limiter.acquire()
-            await self._client.data_sources.update(
+            await self._ensure_client().data_sources.update(
                 data_source_id=ds_id, properties=properties
             )
             return True
@@ -201,7 +221,7 @@ class NotionClient:
         result: dict[str, str] = {}
         try:
             await self._rate_limiter.acquire()
-            resp = await self._client.users.list()
+            resp = await self._ensure_client().users.list()
             for user in resp.get("results", []):
                 email = (user.get("person") or {}).get("email")
                 if email:
@@ -213,4 +233,5 @@ class NotionClient:
         return result
 
     async def close(self) -> None:
-        await self._client.aclose()
+        if self._client is not None:
+            await self._client.aclose()

@@ -251,6 +251,29 @@ def delete_meeting(meeting_id: int) -> None:
         raise
 
 
+async def _archive_notion_page_async(notion_page_id: str) -> None:
+    from src.services.notion_sync_v2 import get_sync_service
+
+    sync = get_sync_service()
+    if sync and sync.event_repo:
+        archived = await sync.event_repo._client.archive_page(notion_page_id)
+        if archived:
+            logger.info("Archived Notion page %s", notion_page_id)
+        else:
+            logger.warning("Failed to archive Notion page %s", notion_page_id)
+    else:
+        logger.warning("No sync service available to archive page %s", notion_page_id)
+
+
+@celery_app.task(name="meeting.archive_notion_page", ignore_result=True)
+def archive_notion_page(notion_page_id: str) -> None:
+    try:
+        run_async(_archive_notion_page_async(notion_page_id))
+    except Exception:
+        logger.exception("archive_notion_page failed for %s", notion_page_id)
+        raise
+
+
 @celery_app.task(name="meeting.cleanup_stale")
 def cleanup_stale_meetings() -> None:
     try:
