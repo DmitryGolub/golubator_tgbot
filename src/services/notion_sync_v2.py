@@ -564,7 +564,16 @@ class NotionSyncServiceV2:
     async def _resolve_mentor_notion_ids(
         self, session: AsyncSession, mentor_telegram_id: int | None
     ) -> list[str] | None:
-        if not mentor_telegram_id or not self.event_repo:
+        if not mentor_telegram_id:
+            return None
+        client = None
+        if self.event_repo:
+            client = self.event_repo._client
+        elif self.mentee_repo:
+            client = self.mentee_repo._client
+        elif self.mentor_repo:
+            client = self.mentor_repo._client
+        if not client:
             return None
         result = await session.execute(
             select(Mentor.email).where(Mentor.telegram_id == mentor_telegram_id)
@@ -572,7 +581,7 @@ class NotionSyncServiceV2:
         email = result.scalar_one_or_none()
         if not email:
             return None
-        users = await self.event_repo._client.get_users()
+        users = await client.get_users()
         notion_uid = users.get(email.lower())
         if notion_uid:
             return [notion_uid]
@@ -670,6 +679,21 @@ class NotionSyncServiceV2:
                         notion_status = status_result.scalar_one_or_none()
                         if notion_status:
                             props["Status"] = {"status": {"name": notion_status}}
+                        mentor_telegram_id = (
+                            mentee.mentor.telegram_id if mentee.mentor else None
+                        )
+                        mentor_notion_ids = await self._resolve_mentor_notion_ids(
+                            session, mentor_telegram_id
+                        )
+                        if mentor_notion_ids:
+                            props["Mentor"] = {
+                                "people": [
+                                    {"object": "user", "id": uid}
+                                    for uid in mentor_notion_ids
+                                ]
+                            }
+                        elif mentee.mentor_id is None:
+                            props["Mentor"] = {"people": []}
                         if props:
                             await self.mentee_repo.update_properties(
                                 mentee.notion_page_id, props

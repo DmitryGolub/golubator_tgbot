@@ -158,9 +158,8 @@ class EventDispatcher:
             return f"call_ended:{meeting_id}:{rule.id}"
 
         if trigger == TriggerType.periodic_cron:
-            # Use date as dedup key for periodic tasks
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            return f"periodic:{today}:{rule.id}"
+            now_key = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+            return f"periodic:{now_key}:{rule.id}"
 
         if trigger == TriggerType.manual:
             # No dedup for manual triggers

@@ -1,4 +1,5 @@
 import logging
+from datetime import time
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
@@ -8,11 +9,13 @@ from src.bot.callbacks.trigger_rules import (
     TriggerActionCB,
     TriggerActionTypeCB,
     TriggerRecipientTypeCB,
+    TriggerRegularityCB,
     TriggerRuleConfirmDeleteCB,
     TriggerRuleDeleteCB,
     TriggerRuleDetailCB,
     TriggerRuleSendCB,
     TriggerRuleToggleCB,
+    TriggerScheduleModeCB,
     TriggerSurveyTemplateCB,
     TriggerTypeCB,
 )
@@ -26,8 +29,10 @@ from src.bot.keyboards.trigger_rules import (
     confirm_delete_rule_keyboard,
     manual_send_rules_keyboard,
     recipient_type_keyboard,
+    regularity_keyboard,
     rule_detail_keyboard,
     rules_list_keyboard,
+    schedule_mode_keyboard,
     survey_templates_keyboard,
     trigger_menu_keyboard,
     trigger_type_keyboard,
@@ -234,11 +239,92 @@ async def cb_trigger_type(
     callback: CallbackQuery, callback_data: TriggerTypeCB, state: FSMContext
 ):
     await state.update_data(trigger_type=callback_data.value)
+    await callback.answer()
+
+    if callback_data.value == "periodic_cron":
+        await state.set_state(TriggerRuleBuilderFSM.choosing_schedule_mode)
+        await callback.message.edit_text(
+            "Выберите способ задания расписания:",
+            reply_markup=schedule_mode_keyboard(),
+        )
+    else:
+        await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
+        await callback.message.edit_text(
+            "Выберите действие:", reply_markup=action_type_keyboard()
+        )
+
+
+@router.callback_query(
+    TriggerRuleBuilderFSM.choosing_schedule_mode, TriggerScheduleModeCB.filter()
+)
+async def cb_schedule_mode(
+    callback: CallbackQuery, callback_data: TriggerScheduleModeCB, state: FSMContext
+):
+    await callback.answer()
+    if callback_data.value == "cron":
+        await state.set_state(TriggerRuleBuilderFSM.entering_cron_expression)
+        await callback.message.edit_text(
+            "Введите cron-выражение (5 полей):\n"
+            "<code>минуты часы день_месяца месяц день_недели</code>\n\n"
+            "Примеры:\n"
+            "<code>0 9 * * 1</code> — каждый понедельник в 09:00 UTC\n"
+            "<code>*/30 * * * *</code> — каждые 30 минут\n"
+            "<code>0 10 1 * *</code> — 1-го числа каждого месяца в 10:00 UTC",
+            reply_markup=cancel_keyboard(),
+        )
+    else:
+        await state.set_state(TriggerRuleBuilderFSM.choosing_regularity)
+        await callback.message.edit_text(
+            "Выберите регулярность:", reply_markup=regularity_keyboard()
+        )
+
+
+@router.message(TriggerRuleBuilderFSM.entering_cron_expression)
+async def msg_cron_expression(message: Message, state: FSMContext):
+    expr = message.text.strip()
+    parts = expr.split()
+    if len(parts) != 5:
+        await message.answer(
+            "Cron-выражение должно содержать ровно 5 полей. Попробуйте снова:"
+        )
+        return
+    await state.update_data(cron_expression=expr)
     await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
+    await message.answer("Выберите действие:", reply_markup=action_type_keyboard())
+
+
+@router.callback_query(
+    TriggerRuleBuilderFSM.choosing_regularity, TriggerRegularityCB.filter()
+)
+async def cb_regularity(
+    callback: CallbackQuery, callback_data: TriggerRegularityCB, state: FSMContext
+):
+    await state.update_data(regularity=callback_data.value)
+    await state.set_state(TriggerRuleBuilderFSM.entering_time_of_day)
     await callback.answer()
     await callback.message.edit_text(
-        "Выберите действие:", reply_markup=action_type_keyboard()
+        "Введите время отправки (HH:MM, UTC):", reply_markup=cancel_keyboard()
     )
+
+
+@router.message(TriggerRuleBuilderFSM.entering_time_of_day)
+async def msg_time_of_day(message: Message, state: FSMContext):
+    text = message.text.strip()
+    parts = text.split(":")
+    if len(parts) != 2:
+        await message.answer("Формат: HH:MM (например, 09:30). Попробуйте снова:")
+        return
+    try:
+        h, m = int(parts[0]), int(parts[1])
+    except ValueError:
+        await message.answer("Формат: HH:MM (например, 09:30). Попробуйте снова:")
+        return
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        await message.answer("Часы: 0-23, минуты: 0-59. Попробуйте снова:")
+        return
+    await state.update_data(time_of_day=f"{h:02d}:{m:02d}")
+    await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
+    await message.answer("Выберите действие:", reply_markup=action_type_keyboard())
 
 
 @router.callback_query(
@@ -376,7 +462,7 @@ async def msg_delay(message: Message, state: FSMContext):
 
     # Create rule
     data = await state.get_data()
-    rule = await TriggerRuleDAO.create(
+    create_kwargs = dict(
         name=data["name"],
         trigger_type=data["trigger_type"],
         action_type=data["action_type"],
@@ -386,6 +472,14 @@ async def msg_delay(message: Message, state: FSMContext):
         delay_seconds=delay,
         created_by=message.from_user.id,
     )
+    if data.get("cron_expression"):
+        create_kwargs["cron_expression"] = data["cron_expression"]
+    if data.get("regularity"):
+        create_kwargs["regularity"] = data["regularity"]
+    if data.get("time_of_day"):
+        h, m = data["time_of_day"].split(":")
+        create_kwargs["time_of_day"] = time(int(h), int(m))
+    rule = await TriggerRuleDAO.create(**create_kwargs)
 
     await state.clear()
 

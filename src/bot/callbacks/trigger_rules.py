@@ -39,3 +39,11 @@ class TriggerRuleSendCB(CallbackData, prefix="tr_send"):
 
 class TriggerSurveyTemplateCB(CallbackData, prefix="tr_survey"):
     template_id: int
+
+
+class TriggerScheduleModeCB(CallbackData, prefix="tr_smode"):
+    value: str
+
+
+class TriggerRegularityCB(CallbackData, prefix="tr_reg"):
+    value: str

@@ -8,9 +8,7 @@ from src.services.events.dispatcher import EventDispatcher
 
 class TestBuildEventKey:
     def test_meeting_created(self):
-        rule = SimpleNamespace(
-            id=1, trigger_type=TriggerType.meeting_created
-        )
+        rule = SimpleNamespace(id=1, trigger_type=TriggerType.meeting_created)
         key = EventDispatcher._build_event_key(rule, {"meeting_id": 42})
         assert key == "meeting_created:42:1"
 
@@ -22,17 +20,15 @@ class TestBuildEventKey:
     def test_periodic_cron(self):
         rule = SimpleNamespace(id=3, trigger_type=TriggerType.periodic_cron)
         key = EventDispatcher._build_event_key(rule, {})
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        assert key == f"periodic:{today}:3"
+        now_key = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+        assert key == f"periodic:{now_key}:3"
 
     def test_manual_returns_none(self):
         rule = SimpleNamespace(id=4, trigger_type=TriggerType.manual)
         assert EventDispatcher._build_event_key(rule, {}) is None
 
     def test_unknown_type(self):
-        rule = SimpleNamespace(
-            id=5, trigger_type=TriggerType.user_state_changed
-        )
+        rule = SimpleNamespace(id=5, trigger_type=TriggerType.user_state_changed)
         key = EventDispatcher._build_event_key(rule, {})
         assert key == "user_state_changed:5"
 

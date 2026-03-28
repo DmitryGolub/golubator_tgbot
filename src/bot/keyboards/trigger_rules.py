@@ -5,11 +5,13 @@ from src.bot.callbacks.trigger_rules import (
     TriggerActionCB,
     TriggerActionTypeCB,
     TriggerRecipientTypeCB,
+    TriggerRegularityCB,
     TriggerRuleConfirmDeleteCB,
     TriggerRuleDeleteCB,
     TriggerRuleDetailCB,
     TriggerRuleSendCB,
     TriggerRuleToggleCB,
+    TriggerScheduleModeCB,
     TriggerSurveyTemplateCB,
     TriggerTypeCB,
 )
@@ -20,8 +22,19 @@ TRIGGER_TYPE_LABELS = {
     "meeting_created": "Создание встречи",
     "call_ended": "Завершение созвона",
     "periodic_cron": "По расписанию",
-    "user_state_changed": "Смена статуса",
     "manual": "Ручной",
+}
+
+SCHEDULE_MODE_LABELS = {
+    "cron": "Cron-выражение",
+    "regularity": "Регулярность",
+}
+
+REGULARITY_LABELS = {
+    "day": "Каждый день",
+    "week": "Каждую неделю",
+    "fortnight": "Раз в 2 недели",
+    "month": "Раз в месяц",
 }
 
 ACTION_TYPE_LABELS = {
@@ -136,6 +149,24 @@ def confirm_delete_rule_keyboard(rule_id: int) -> InlineKeyboardMarkup:
         callback_data=TriggerRuleConfirmDeleteCB(rule_id=rule_id),
     )
     builder.button(text="Отмена", callback_data=TriggerActionCB(action="list"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def schedule_mode_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for value, label in SCHEDULE_MODE_LABELS.items():
+        builder.button(text=label, callback_data=TriggerScheduleModeCB(value=value))
+    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def regularity_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for value, label in REGULARITY_LABELS.items():
+        builder.button(text=label, callback_data=TriggerRegularityCB(value=value))
+    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
 
