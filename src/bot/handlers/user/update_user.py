@@ -132,7 +132,7 @@ async def cb_choose_param(
         )
 
     elif param == UpdateParam.MENTOR:
-        mentors = await UserDAO.get_all(role_name="mentor")
+        mentors = await UserDAO.get_all_with_permission("manage_meetings")
         if not mentors:
             await _msg(callback).edit_text("Менторы не найдены.")
             await state.clear()
@@ -458,7 +458,7 @@ async def cb_mentors_page(
     callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
 ):
     await callback.answer()
-    mentors = await UserDAO.get_all(role_name="mentor")
+    mentors = await UserDAO.get_all_with_permission("manage_meetings")
     await _msg(callback).edit_reply_markup(
         reply_markup=mentors_keyboard(mentors, page=callback_data.page)
     )

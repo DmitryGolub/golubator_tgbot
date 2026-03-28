@@ -5,6 +5,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.core.database import async_session_maker
 from src.models.cohort import Cohort, UserCohort
+from src.models.role import Permission, RoleModel, role_permissions
 from src.models.user import User
 
 
@@ -52,6 +53,14 @@ class CohortDAO:
             for uc in rows:
                 mapping.setdefault(uc.user_telegram_id, []).append(uc)
             return mapping
+
+    @staticmethod
+    async def get_cohorts_by_type(cohort_type: str) -> list[Cohort]:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(Cohort).where(Cohort.type == cohort_type).order_by(Cohort.value)
+            )
+            return list(result.scalars().all())
 
     @staticmethod
     async def get_distinct_types() -> list[str]:
@@ -102,6 +111,39 @@ class CohortDAO:
                     )
                 )
             await session.commit()
+
+    @staticmethod
+    async def get_direction_leads_for_student(
+        student_telegram_id: int,
+    ) -> list[int]:
+        async with async_session_maker() as session:
+            student_categories = (
+                select(Cohort.id)
+                .join(UserCohort, UserCohort.cohort_id == Cohort.id)
+                .where(
+                    UserCohort.user_telegram_id == student_telegram_id,
+                    Cohort.type == "Category",
+                )
+            )
+            result = await session.execute(
+                select(UserCohort.user_telegram_id)
+                .join(Cohort, Cohort.id == UserCohort.cohort_id)
+                .join(User, User.telegram_id == UserCohort.user_telegram_id)
+                .join(RoleModel, RoleModel.id == User.role_id)
+                .join(role_permissions, role_permissions.c.role_id == RoleModel.id)
+                .join(
+                    Permission,
+                    Permission.id == role_permissions.c.permission_id,
+                )
+                .where(
+                    UserCohort.cohort_id.in_(student_categories),
+                    Permission.codename == "receive_direction_notifications",
+                    UserCohort.user_telegram_id != student_telegram_id,
+                    User.is_placeholder.is_(False),
+                )
+                .distinct()
+            )
+            return list(result.scalars().all())
 
     @staticmethod
     async def update_user_cohort_by_type(

@@ -21,6 +21,9 @@ from src.bot.handlers.dynamic_survey import router as dynamic_survey_router
 from src.bot.handlers.trigger_rules import router as trigger_rules_router
 from src.bot.handlers.mentor_stats import router as mentor_stats_router
 from src.bot.handlers.export_feedback import router as export_feedback_router
+from src.bot.handlers.user.assign_direction import router as assign_direction_router
+from src.bot.handlers.job_search_report import router as job_search_report_router
+from src.bot.handlers.education_feedback import router as education_feedback_router
 from src.bot.middlewares.logging_middleware import LoggingMiddleware
 from src.bot.middlewares.user_sync_middleware import UserSyncMiddleware
 from src.core.config import settings
@@ -63,6 +66,9 @@ async def main():
         trigger_rules_router,
         mentor_stats_router,
         export_feedback_router,
+        assign_direction_router,
+        job_search_report_router,
+        education_feedback_router,
     )
 
     health_runner = await start_health_server()

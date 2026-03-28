@@ -50,6 +50,7 @@ class RecipientType(str, enum.Enum):
     by_cohort = "by_cohort"
     by_state = "by_state"
     specific_users = "specific_users"
+    direction_lead = "direction_lead"
 
 
 class ExecutionStatus(str, enum.Enum):

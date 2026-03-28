@@ -76,6 +76,23 @@ class TestByRole:
 
 
 @patch("src.dao.cohort.CohortDAO")
+class TestDirectionLead:
+    async def test_fetches_leads(self, mock_dao):
+        mock_dao.get_direction_leads_for_student = AsyncMock(return_value=[400, 500])
+        result = await RecipientResolver.resolve(
+            _rule(RecipientType.direction_lead), {"student_id": 200}
+        )
+        assert result == [400, 500]
+        mock_dao.get_direction_leads_for_student.assert_called_once_with(200)
+
+    async def test_no_student_id(self, mock_dao):
+        result = await RecipientResolver.resolve(
+            _rule(RecipientType.direction_lead), {}
+        )
+        assert result == []
+
+
+@patch("src.dao.cohort.CohortDAO")
 class TestByState:
     async def test_fetches_users(self, mock_dao):
         mock_dao.get_telegram_ids_in_cohort = AsyncMock(return_value=[300])

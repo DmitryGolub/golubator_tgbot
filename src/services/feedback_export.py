@@ -152,18 +152,38 @@ class FeedbackExportService:
         mentor_session: SurveySession | None,
     ) -> FeedbackExportRow:
         participants = list(getattr(meeting, "participants", []))
+        mentor_tid = getattr(meeting, "mentor_telegram_id", None)
+        student_tid = getattr(meeting, "student_telegram_id", None)
 
-        mentor = next(
-            (p for p in participants if _role_name(p) == "mentor"),
-            None,
+        mentor = (
+            next(
+                (p for p in participants if p.telegram_id == mentor_tid),
+                None,
+            )
+            if mentor_tid
+            else None
         )
-        student = next(
-            (p for p in participants if _role_name(p) == "student"),
-            None,
+        student = (
+            next(
+                (p for p in participants if p.telegram_id == student_tid),
+                None,
+            )
+            if student_tid
+            else None
         )
-        if not student and mentor:
+
+        if not mentor:
+            mentor = next(
+                (p for p in participants if _role_name(p) == "mentor"),
+                None,
+            )
+        if not student:
             student = next(
-                (p for p in participants if p.telegram_id != mentor.telegram_id),
+                (
+                    p
+                    for p in participants
+                    if p.telegram_id != getattr(mentor, "telegram_id", None)
+                ),
                 None,
             )
 

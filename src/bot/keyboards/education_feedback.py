@@ -1,0 +1,12 @@
+from aiogram.types import InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+
+def education_period_keyboard() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="За неделю", callback_data="education_period:week")
+    kb.button(text="За месяц", callback_data="education_period:month")
+    kb.button(text="За всё время", callback_data="education_period:all")
+    kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
+    kb.adjust(1)
+    return kb.as_markup()

@@ -42,6 +42,14 @@ class RecipientResolver:
 
             return await CohortDAO.get_telegram_ids_in_cohort("Status", state)
 
+        if rt == RecipientType.direction_lead:
+            student_id = context.get("student_id")
+            if not student_id:
+                return []
+            from src.dao.cohort import CohortDAO
+
+            return await CohortDAO.get_direction_leads_for_student(student_id)
+
         if rt == RecipientType.by_cohort:
             cohort_type = config.get("cohort_type", "Category")
             cohort_value = config.get("cohort_value")

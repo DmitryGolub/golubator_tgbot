@@ -697,6 +697,14 @@ def upgrade() -> None:
         ("fill_survey", "Заполнение опросов"),
         ("fill_self_review", "Заполнение самооценки"),
         ("export_feedback", "Экспорт фидбека в Yandex Sheets"),
+        # ── New lead permissions ──
+        ("view_direction_students", "Просмотр учеников своего направления"),
+        ("receive_direction_notifications", "Получение уведомлений по направлению"),
+        ("send_direction_notification", "Отправка уведомлений ученикам направления"),
+        ("view_job_search_reports", "Просмотр отчётов по поиску работы"),
+        ("view_education_feedback", "Просмотр обратной связи об обучении"),
+        ("export_job_search", "Экспорт отчётов по поиску работы"),
+        ("export_education_feedback", "Экспорт обратной связи об обучении"),
     ]
     conn.execute(
         permissions_t.insert().values(
@@ -709,6 +717,9 @@ def upgrade() -> None:
         {"name": "admin", "display_name": "Админ"},
         {"name": "mentor", "display_name": "Ментор"},
         {"name": "student", "display_name": "Студент"},
+        {"name": "direction_lead", "display_name": "Лид направления"},
+        {"name": "job_search_lead", "display_name": "Ответственный за поиск работы"},
+        {"name": "education_lead", "display_name": "Ответственный за обучение"},
     ]
     for role in ROLES:
         conn.execute(roles_t.insert().values(**role))
@@ -744,6 +755,66 @@ def upgrade() -> None:
         ).scalar_one()
         conn.execute(
             role_perms_t.insert().values(role_id=mentor_role_id, permission_id=perm_id)
+        )
+
+    # Direction lead permissions (mentor perms + direction-specific)
+    direction_lead_role_id = conn.execute(
+        sa.text("SELECT id FROM iam.roles WHERE name = 'direction_lead'")
+    ).scalar_one()
+    direction_lead_perms = mentor_perms + [
+        "view_direction_students",
+        "receive_direction_notifications",
+        "send_direction_notification",
+    ]
+    for codename in direction_lead_perms:
+        perm_id = conn.execute(
+            sa.text("SELECT id FROM iam.permissions WHERE codename = :c"),
+            {"c": codename},
+        ).scalar_one()
+        conn.execute(
+            role_perms_t.insert().values(
+                role_id=direction_lead_role_id, permission_id=perm_id
+            )
+        )
+
+    # Job search lead permissions (mentor perms + job-search-specific)
+    job_search_lead_role_id = conn.execute(
+        sa.text("SELECT id FROM iam.roles WHERE name = 'job_search_lead'")
+    ).scalar_one()
+    job_search_lead_perms = mentor_perms + [
+        "view_job_search_reports",
+        "export_job_search",
+        "export_feedback",
+    ]
+    for codename in job_search_lead_perms:
+        perm_id = conn.execute(
+            sa.text("SELECT id FROM iam.permissions WHERE codename = :c"),
+            {"c": codename},
+        ).scalar_one()
+        conn.execute(
+            role_perms_t.insert().values(
+                role_id=job_search_lead_role_id, permission_id=perm_id
+            )
+        )
+
+    # Education lead permissions (mentor perms + education-specific)
+    education_lead_role_id = conn.execute(
+        sa.text("SELECT id FROM iam.roles WHERE name = 'education_lead'")
+    ).scalar_one()
+    education_lead_perms = mentor_perms + [
+        "view_education_feedback",
+        "export_education_feedback",
+        "export_feedback",
+    ]
+    for codename in education_lead_perms:
+        perm_id = conn.execute(
+            sa.text("SELECT id FROM iam.permissions WHERE codename = :c"),
+            {"c": codename},
+        ).scalar_one()
+        conn.execute(
+            role_perms_t.insert().values(
+                role_id=education_lead_role_id, permission_id=perm_id
+            )
         )
 
     # Student default permissions
@@ -1309,6 +1380,75 @@ def upgrade() -> None:
             "rbac.users_cannot_delete",
             "Нельзя удалить роль, к которой привязаны пользователи.",
             "Cannot delete role with users",
+        ),
+        # ── Lead menu ──
+        (
+            "menu.btn.direction_students",
+            "🎯 Ученики направления",
+            "Menu button: direction students",
+        ),
+        (
+            "menu.btn.send_direction",
+            "📨 Рассылка по направлению",
+            "Menu button: send direction notification",
+        ),
+        (
+            "menu.btn.job_search_reports",
+            "💼 Отчёты: поиск работы",
+            "Menu button: job search reports",
+        ),
+        (
+            "menu.btn.education_feedback",
+            "📚 Обратная связь: обучение",
+            "Menu button: education feedback",
+        ),
+        # ── Direction assignment ──
+        (
+            "direction.choose_cohorts",
+            "Выберите направления (когорты Category) для лида:",
+            "Direction assignment: choose cohorts prompt",
+        ),
+        (
+            "direction.saved",
+            "✅ Направления сохранены.",
+            "Direction assignment: saved confirmation",
+        ),
+        (
+            "direction.no_categories",
+            "Нет доступных направлений (когорт типа Category).",
+            "Direction assignment: no categories found",
+        ),
+        # ── Job search reports ──
+        (
+            "job_search.title",
+            "💼 Отчёты по поиску работы",
+            "Job search report: title",
+        ),
+        (
+            "job_search.no_data",
+            "Нет данных за выбранный период.",
+            "Job search report: no data",
+        ),
+        (
+            "job_search.choose_period",
+            "Выберите период:",
+            "Job search report: choose period",
+        ),
+        # ── Education feedback ──
+        (
+            "education.title",
+            "📚 Обратная связь об обучении",
+            "Education feedback: title",
+        ),
+        (
+            "education.no_data",
+            "Нет данных за выбранный период.",
+            "Education feedback: no data",
+        ),
+        (
+            "education.choose_period",
+            "Выберите период:",
+            "Education feedback: choose period",
         ),
         # ── Common ──
         ("common.cancel", "❌ Отмена", "Cancel button"),

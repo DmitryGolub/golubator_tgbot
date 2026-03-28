@@ -19,6 +19,35 @@ _MENTOR_BUTTONS = [
     ("manage_meetings", "menu.btn.meetings", "mentor_meetings_menu"),
 ]
 
+_LEAD_BUTTONS = [
+    (
+        "view_direction_students",
+        "menu.btn.direction_students",
+        "lead_direction_students",
+    ),
+    (
+        "send_direction_notification",
+        "menu.btn.send_direction",
+        "lead_send_notification",
+    ),
+]
+
+_JOB_SEARCH_BUTTONS = [
+    (
+        "view_job_search_reports",
+        "menu.btn.job_search_reports",
+        "job_search_report_menu",
+    ),
+]
+
+_EDUCATION_BUTTONS = [
+    (
+        "view_education_feedback",
+        "menu.btn.education_feedback",
+        "education_feedback_menu",
+    ),
+]
+
 
 async def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
     needed_keys: list[str] = []
@@ -30,6 +59,21 @@ async def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
             buttons_spec.append((key, cb))
 
     for perm, key, cb in _MENTOR_BUTTONS:
+        if perm in permissions:
+            needed_keys.append(key)
+            buttons_spec.append((key, cb))
+
+    for perm, key, cb in _LEAD_BUTTONS:
+        if perm in permissions:
+            needed_keys.append(key)
+            buttons_spec.append((key, cb))
+
+    for perm, key, cb in _JOB_SEARCH_BUTTONS:
+        if perm in permissions:
+            needed_keys.append(key)
+            buttons_spec.append((key, cb))
+
+    for perm, key, cb in _EDUCATION_BUTTONS:
         if perm in permissions:
             needed_keys.append(key)
             buttons_spec.append((key, cb))

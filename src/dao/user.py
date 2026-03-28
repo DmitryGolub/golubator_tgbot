@@ -5,6 +5,7 @@ from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
 from src.models.user import User
+from src.models.role import RoleModel, Permission, role_permissions
 
 from src.core.database import async_session_maker
 
@@ -28,8 +29,6 @@ class UserDAO(BaseDAO):
             if filter_by:
                 query = query.filter_by(**filter_by)
             if role_name is not None:
-                from src.models.role import RoleModel
-
                 query = query.join(RoleModel, cls.model.role_id == RoleModel.id).where(
                     RoleModel.name == role_name
                 )
@@ -37,6 +36,27 @@ class UserDAO(BaseDAO):
                 query = query.where(cls.model.registered_at >= registered_from)
             if registered_to is not None:
                 query = query.where(cls.model.registered_at <= registered_to)
+            result = await session.execute(query)
+            result = result.unique()
+            return result.scalars().all()
+
+    @classmethod
+    async def get_all_with_permission(cls, permission: str):
+        async with async_session_maker() as session:
+            query = (
+                select(cls.model)
+                .options(joinedload(cls.model.role_rel))
+                .join(RoleModel, cls.model.role_id == RoleModel.id)
+                .join(role_permissions, role_permissions.c.role_id == RoleModel.id)
+                .join(
+                    Permission,
+                    Permission.id == role_permissions.c.permission_id,
+                )
+                .where(
+                    Permission.codename == permission,
+                    cls.model.is_placeholder.is_(False),
+                )
+            )
             result = await session.execute(query)
             result = result.unique()
             return result.scalars().all()
