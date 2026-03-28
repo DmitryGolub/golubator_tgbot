@@ -760,7 +760,6 @@ def upgrade() -> None:
     direction_lead_perms = mentor_perms + [
         "view_direction_students",
         "receive_direction_notifications",
-        "send_direction_notification",
     ]
     for codename in direction_lead_perms:
         perm_id = conn.execute(
@@ -1384,11 +1383,6 @@ def upgrade() -> None:
             "Menu button: direction students",
         ),
         (
-            "menu.btn.send_direction",
-            "📨 Рассылка по направлению",
-            "Menu button: send direction notification",
-        ),
-        (
             "menu.btn.job_search_reports",
             "💼 Отчёты: поиск работы",
             "Menu button: job search reports",
@@ -1398,21 +1392,11 @@ def upgrade() -> None:
             "📚 Обратная связь: обучение",
             "Menu button: education feedback",
         ),
-        # ── Direction assignment ──
+        # ── Direction view ──
         (
-            "direction.choose_cohorts",
-            "Выберите направления (когорты Category) для лида:",
-            "Direction assignment: choose cohorts prompt",
-        ),
-        (
-            "direction.saved",
-            "✅ Направления сохранены.",
-            "Direction assignment: saved confirmation",
-        ),
-        (
-            "direction.no_categories",
-            "Нет доступных направлений (когорт типа Category).",
-            "Direction assignment: no categories found",
+            "direction.no_directions",
+            "У вас нет назначенных направлений.",
+            "Direction view: no directions assigned to lead",
         ),
         # ── Job search reports ──
         (

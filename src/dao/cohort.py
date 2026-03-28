@@ -146,6 +146,40 @@ class CohortDAO:
             return list(result.scalars().all())
 
     @staticmethod
+    async def get_students_for_direction_lead(
+        lead_telegram_id: int,
+    ) -> dict[str, list[User]]:
+        """Return {direction_name: [User, ...]} for Category cohorts the lead belongs to."""
+        async with async_session_maker() as session:
+            # 1. Find Category cohort IDs of the lead
+            lead_cohorts = (
+                select(Cohort.id, Cohort.value)
+                .join(UserCohort, UserCohort.cohort_id == Cohort.id)
+                .where(
+                    UserCohort.user_telegram_id == lead_telegram_id,
+                    Cohort.type == "Category",
+                )
+                .subquery()
+            )
+
+            # 2. Find all other users in those cohorts (non-placeholder, exclude the lead)
+            result = await session.execute(
+                select(lead_cohorts.c.value, User)
+                .join(UserCohort, UserCohort.cohort_id == lead_cohorts.c.id)
+                .join(User, User.telegram_id == UserCohort.user_telegram_id)
+                .where(
+                    UserCohort.user_telegram_id != lead_telegram_id,
+                    User.is_placeholder.is_(False),
+                )
+                .order_by(lead_cohorts.c.value, User.name)
+            )
+
+            grouped: dict[str, list[User]] = {}
+            for direction, user in result.tuples().all():
+                grouped.setdefault(direction, []).append(user)
+            return grouped
+
+    @staticmethod
     async def get_types_with_value_counts() -> list[tuple[str, int]]:
         async with async_session_maker() as session:
             result = await session.execute(

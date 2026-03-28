@@ -95,8 +95,8 @@ async def _tick_periodic_async() -> None:
             for rule in rules:
                 if _should_fire_now(rule, now):
                     try:
-                        await EventDispatcher.emit(
-                            TriggerType.periodic_cron,
+                        await EventDispatcher.fire_rule(
+                            rule,
                             {"rule_id": rule.id},
                             bot=bot,
                         )

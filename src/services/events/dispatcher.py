@@ -38,6 +38,19 @@ class EventDispatcher:
                 logger.exception("Error processing TriggerRule %s", rule.id)
 
     @classmethod
+    async def fire_rule(
+        cls,
+        rule: TriggerRule,
+        context: dict,
+        bot=None,
+    ) -> None:
+        """Fire a single rule directly (used by periodic tick)."""
+        try:
+            await cls._process_rule(rule, context, bot)
+        except Exception:
+            logger.exception("Error processing TriggerRule %s", rule.id)
+
+    @classmethod
     async def execute_rule_manually(
         cls,
         rule_id: int,

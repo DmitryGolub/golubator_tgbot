@@ -25,11 +25,6 @@ _LEAD_BUTTONS = [
         "menu.btn.direction_students",
         "lead_direction_students",
     ),
-    (
-        "send_direction_notification",
-        "menu.btn.send_direction",
-        "lead_send_notification",
-    ),
 ]
 
 _JOB_SEARCH_BUTTONS = [

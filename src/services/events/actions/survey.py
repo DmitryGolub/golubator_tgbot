@@ -1,10 +1,11 @@
 import logging
+from datetime import datetime, timezone
 
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.dynamic_survey import StartDynamicSurveyCB
-from src.models.trigger import TriggerRule
+from src.models.trigger import TriggerRule, TriggerType
 from src.services.events.actions.base import BaseAction
 from src.services.survey_session import SurveySessionService
 from src.utils.escape import e
@@ -37,6 +38,11 @@ class SendSurveyAction(BaseAction):
         if not context_type and "meeting_id" in context:
             context_type = "meeting"
             context_id = str(context["meeting_id"])
+
+        # Periodic triggers: unique context per firing so dedup doesn't block repeats
+        if not context_type and rule.trigger_type == TriggerType.periodic_cron:
+            context_type = "periodic"
+            context_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
 
         service = SurveySessionService()
         session, already_existed = await service.create_session(
