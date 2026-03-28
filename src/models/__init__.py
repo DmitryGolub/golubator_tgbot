@@ -20,6 +20,7 @@ from src.models.survey_session import (
     SurveyAnswer as SurveyAnswer,
 )
 from src.models.ui_text import UiText as UiText
+from src.models.stage_transition import StageTransition as StageTransition
 from src.models.trigger import (
     TriggerRule as TriggerRule,
     TriggerExecution as TriggerExecution,

@@ -23,10 +23,15 @@ async def cb_direction_students(callback: CallbackQuery):
         return
 
     lines: list[str] = []
-    for direction, users in grouped.items():
+    for direction, students in grouped.items():
         lines.append(f"<b>{direction}</b>")
-        for i, user in enumerate(users, 1):
-            mention = f"@{user.username}" if user.username else user.name
+        for i, (user, doc_name) in enumerate(students, 1):
+            if user.username:
+                mention = f"@{user.username}"
+            elif doc_name:
+                mention = doc_name
+            else:
+                mention = user.name
             lines.append(f"  {i}. {mention}")
         lines.append("")
 

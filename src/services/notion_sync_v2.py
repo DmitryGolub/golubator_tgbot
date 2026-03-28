@@ -630,6 +630,20 @@ class NotionSyncServiceV2:
                         "new_value": new_val,
                     }
                 )
+
+        from src.models.stage_transition import StageTransition
+
+        for diff in diffs:
+            session.add(
+                StageTransition(
+                    user_telegram_id=diff["user_telegram_id"],
+                    cohort_type=diff["cohort_type"],
+                    old_value=diff["old_value"],
+                    new_value=diff["new_value"],
+                    source="notion_sync",
+                )
+            )
+
         return diffs
 
     # ── Cohort sync (standalone stream) ─────────────────────────────────

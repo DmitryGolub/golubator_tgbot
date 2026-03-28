@@ -12,3 +12,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./migrations:/app/migrations
+  grafana:
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards

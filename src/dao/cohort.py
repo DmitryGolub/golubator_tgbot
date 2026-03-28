@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from src.core.database import async_session_maker
 from src.models.cohort import Cohort, UserCohort
 from src.models.role import Permission, RoleModel, role_permissions
+from src.models.mentee import Mentee
 from src.models.user import User
 
 
@@ -148,10 +149,9 @@ class CohortDAO:
     @staticmethod
     async def get_students_for_direction_lead(
         lead_telegram_id: int,
-    ) -> dict[str, list[User]]:
-        """Return {direction_name: [User, ...]} for Category cohorts the lead belongs to."""
+    ) -> dict[str, list[tuple[User, str | None]]]:
+        """Return {direction_name: [(User, doc_name), ...]} for Category cohorts the lead belongs to."""
         async with async_session_maker() as session:
-            # 1. Find Category cohort IDs of the lead
             lead_cohorts = (
                 select(Cohort.id, Cohort.value)
                 .join(UserCohort, UserCohort.cohort_id == Cohort.id)
@@ -162,21 +162,20 @@ class CohortDAO:
                 .subquery()
             )
 
-            # 2. Find all other users in those cohorts (non-placeholder, exclude the lead)
             result = await session.execute(
-                select(lead_cohorts.c.value, User)
+                select(lead_cohorts.c.value, User, Mentee.doc_name)
                 .join(UserCohort, UserCohort.cohort_id == lead_cohorts.c.id)
                 .join(User, User.telegram_id == UserCohort.user_telegram_id)
+                .outerjoin(Mentee, Mentee.telegram_id == User.telegram_id)
                 .where(
                     UserCohort.user_telegram_id != lead_telegram_id,
-                    User.is_placeholder.is_(False),
                 )
                 .order_by(lead_cohorts.c.value, User.name)
             )
 
-            grouped: dict[str, list[User]] = {}
-            for direction, user in result.tuples().all():
-                grouped.setdefault(direction, []).append(user)
+            grouped: dict[str, list[tuple[User, str | None]]] = {}
+            for direction, user, doc_name in result.tuples().all():
+                grouped.setdefault(direction, []).append((user, doc_name))
             return grouped
 
     @staticmethod
@@ -239,6 +238,17 @@ class CohortDAO:
                 update(User)
                 .where(User.telegram_id == user_telegram_id)
                 .values(updated_at=now)
+            )
+            from src.models.stage_transition import StageTransition
+
+            session.add(
+                StageTransition(
+                    user_telegram_id=user_telegram_id,
+                    cohort_type=cohort_type,
+                    old_value=old_value,
+                    new_value=cohort_value,
+                    source="bot",
+                )
             )
             await session.commit()
             return old_value, cohort_value

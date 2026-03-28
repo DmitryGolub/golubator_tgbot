@@ -1,0 +1,78 @@
+{
+  "uid": "mentoring-surveys",
+  "title": "Опросы",
+  "tags": ["mentoring"],
+  "timezone": "browser",
+  "refresh": "5m",
+  "time": { "from": "now-90d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Средние оценки по неделям",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  date_trunc('week', a.created_at) AS time,\n  ROUND(AVG(a.value_int)::numeric, 2) AS \"Средняя оценка\"\nFROM surveys.survey_answers a\nWHERE a.value_int IS NOT NULL\n  AND a.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1\nORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Процент заполнения",
+      "type": "gauge",
+      "gridPos": { "h": 10, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  ROUND(\n    COUNT(*) FILTER (WHERE ss.status = 'completed')::numeric\n    / NULLIF(COUNT(*), 0) * 100, 1\n  ) AS \"Заполнено %\"\nFROM surveys.survey_sessions ss\nWHERE ss.created_at BETWEEN $__timeFrom() AND $__timeTo()",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 80 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Заполняемость по неделям",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  date_trunc('week', ss.created_at) AS time,\n  ROUND(\n    COUNT(*) FILTER (WHERE ss.status = 'completed')::numeric\n    / NULLIF(COUNT(*), 0) * 100, 1\n  ) AS \"Заполнено %\"\nFROM surveys.survey_sessions ss\nWHERE ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1\nORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "min": 0,
+          "max": 100
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39
+}

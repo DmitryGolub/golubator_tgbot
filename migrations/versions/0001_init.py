@@ -432,6 +432,43 @@ def upgrade() -> None:
         schema="integrations",
     )
 
+    # ── 7b. Stage transitions ───────────────────────────────────────────
+    op.create_table(
+        "stage_transitions",
+        sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column(
+            "user_telegram_id",
+            sa.BigInteger,
+            sa.ForeignKey(
+                "iam.users.telegram_id", ondelete="CASCADE", onupdate="CASCADE"
+            ),
+            nullable=False,
+        ),
+        sa.Column("cohort_type", sa.String(100), nullable=False),
+        sa.Column("old_value", sa.String(255), nullable=True),
+        sa.Column("new_value", sa.String(255), nullable=False),
+        sa.Column("source", sa.String(50), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        schema="integrations",
+    )
+    op.create_index(
+        "ix_stage_transitions_user_tid",
+        "stage_transitions",
+        ["user_telegram_id"],
+        schema="integrations",
+    )
+    op.create_index(
+        "ix_stage_transitions_created_at",
+        "stage_transitions",
+        ["created_at"],
+        schema="integrations",
+    )
+
     # ── 8. Survey constructor ────────────────────────────────────────────
     op.create_table(
         "survey_templates",
@@ -704,6 +741,7 @@ def upgrade() -> None:
         ("view_education_feedback", "Просмотр обратной связи об обучении"),
         ("export_job_search", "Экспорт отчётов по поиску работы"),
         ("export_education_feedback", "Экспорт обратной связи об обучении"),
+        ("mentor_role", "Marker: user has mentor capabilities"),
     ]
     conn.execute(
         permissions_t.insert().values(
@@ -746,6 +784,7 @@ def upgrade() -> None:
         "end_call",
         "fill_survey",
         "fill_self_review",
+        "mentor_role",
     ]
     for codename in mentor_perms:
         perm_id = conn.execute(
@@ -1457,6 +1496,7 @@ def downgrade() -> None:
     op.drop_table("survey_question_options", schema="surveys")
     op.drop_table("survey_questions", schema="surveys")
     op.drop_table("survey_templates", schema="surveys")
+    op.drop_table("stage_transitions", schema="integrations")
     op.drop_table("user_cohorts", schema="integrations")
     op.drop_table("cohorts", schema="integrations")
     op.drop_table("meeting_users", schema="meetings")

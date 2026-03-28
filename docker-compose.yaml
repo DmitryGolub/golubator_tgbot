@@ -96,6 +96,26 @@ services:
       retries: 3
       start_period: 30s
 
+  grafana:
+    image: grafana/grafana-oss:11.5.2
+    container_name: tg_bot.grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   ngrok:
     image: ngrok/ngrok:latest
     container_name: tg_bot.ngrok
@@ -128,3 +148,4 @@ services:
 volumes:
   db_data:
   redis_data:
+  grafana_data:
