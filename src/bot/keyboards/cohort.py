@@ -19,35 +19,25 @@ from src.bot.keyboards.pagination import (
 from src.services.notion_client import CohortTypeInfo
 
 
-def cohort_actions_keyboard() -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="Типы когорт", callback_data="cohort_list")
-    kb.button(text="Создать тип когорты", callback_data="cohort_create_type")
-    kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
-    kb.adjust(1)
-    return kb.as_markup()
-
-
 def cohort_types_keyboard(
-    types: list[CohortTypeInfo],
+    types_with_counts: list[tuple[str, int]],
     page: int = 0,
 ) -> tuple[InlineKeyboardMarkup, dict[int, str]]:
     """Returns (keyboard, {idx: type_name}) mapping for FSM storage."""
-    # Mapping uses global indices so FSM lookup works across pages
     mapping: dict[int, str] = {}
-    for i, t in enumerate(types):
-        mapping[i] = t.name
+    for i, (name, _count) in enumerate(types_with_counts):
+        mapping[i] = name
 
-    page_items, total_pages = get_page_slice(types, page)
+    page_items, total_pages = get_page_slice(types_with_counts, page)
     kb = InlineKeyboardBuilder()
 
     nav = paginate_buttons("cohorts", page, total_pages)
     if nav:
         kb.row(*nav)
 
-    for i, t in enumerate(page_items):
+    for i, (name, count) in enumerate(page_items):
         global_idx = page * DEFAULT_PAGE_SIZE + i
-        label = f"{t.name} ({t.notion_type}) [{len(t.options)}]"
+        label = f"{name} [{count}]"
         kb.row(
             InlineKeyboardButton(
                 text=label, callback_data=CohortTypeCB(idx=global_idx).pack()

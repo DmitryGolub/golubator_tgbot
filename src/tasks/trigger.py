@@ -48,25 +48,28 @@ async def _execute_action_async(execution_id: int) -> None:
                     return
                 if exec_obj.status != ExecutionStatus.pending:
                     return
+                rule_id = exec_obj.rule_id
+                recipient_id = exec_obj.recipient_id
+                exec_context = exec_obj.context or {}
 
-            rule = await TriggerRuleDAO.get_by_id(exec_obj.rule_id)
+            rule = await TriggerRuleDAO.get_by_id(rule_id)
             if not rule:
                 await TriggerExecutionDAO.mark_failed(execution_id, "Rule not found")
                 return
 
             try:
-                await EventDispatcher._execute_action(
+                await EventDispatcher.execute_action(
                     rule=rule,
-                    recipient_id=exec_obj.recipient_id,
-                    context=exec_obj.context or {},
+                    recipient_id=recipient_id,
+                    context=exec_context,
                     bot=bot,
                 )
                 await TriggerExecutionDAO.mark_sent(execution_id)
                 logger.info(
                     "Trigger execution %s completed: rule=%s user=%s",
                     execution_id,
-                    exec_obj.rule_id,
-                    exec_obj.recipient_id,
+                    rule_id,
+                    recipient_id,
                 )
             except Exception as exc:
                 await TriggerExecutionDAO.mark_failed(execution_id, str(exc))
@@ -127,7 +130,7 @@ async def _process_pending_async() -> None:
                     continue
 
                 try:
-                    await EventDispatcher._execute_action(
+                    await EventDispatcher.execute_action(
                         rule=rule,
                         recipient_id=execution.recipient_id,
                         context=execution.context or {},

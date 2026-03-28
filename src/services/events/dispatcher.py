@@ -51,7 +51,7 @@ class EventDispatcher:
 
         recipients = await RecipientResolver.resolve(rule, context)
         for recipient_id in recipients:
-            await cls._execute_action(rule, recipient_id, context, bot)
+            await cls.execute_action(rule, recipient_id, context, bot)
 
         return len(recipients)
 
@@ -88,7 +88,7 @@ class EventDispatcher:
                     continue
 
                 try:
-                    await cls._execute_action(rule, recipient_id, context, bot)
+                    await cls.execute_action(rule, recipient_id, context, bot)
                     await TriggerExecutionDAO.mark_sent(execution.id)
                     logger.info("Rule %s executed for user %s", rule.id, recipient_id)
                 except Exception as exc:
@@ -126,7 +126,7 @@ class EventDispatcher:
                 )
 
     @classmethod
-    async def _execute_action(
+    async def execute_action(
         cls,
         rule: TriggerRule,
         recipient_id: int,
@@ -135,8 +135,7 @@ class EventDispatcher:
     ) -> None:
         action = ACTION_MAP.get(rule.action_type)
         if not action:
-            logger.warning("Unknown action_type: %s", rule.action_type)
-            return
+            raise ValueError(f"Unknown action_type: {rule.action_type}")
 
         await action.execute(
             rule=rule,

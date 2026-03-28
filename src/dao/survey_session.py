@@ -43,6 +43,7 @@ class SurveySessionDAO:
                         status=SessionStatus.pending,
                     )
                     session.add(survey_session)
+                await session.refresh(survey_session)
             except IntegrityError:
                 await session.rollback()
                 existing = await session.execute(
@@ -58,7 +59,6 @@ class SurveySessionDAO:
                     return existing_session, True
                 raise
 
-            await session.refresh(survey_session)
             return survey_session, False
 
     @classmethod

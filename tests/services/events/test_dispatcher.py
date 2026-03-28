@@ -2,6 +2,8 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from src.models.trigger import ActionType, DelayMode, TriggerType
 from src.services.events.dispatcher import EventDispatcher
 
@@ -108,5 +110,5 @@ class TestEmit:
 class TestExecuteAction:
     async def test_unknown_action_type(self):
         rule = SimpleNamespace(action_type="unknown_type")
-        # Should not raise, just logs warning
-        await EventDispatcher._execute_action(rule, 100, {}, None)
+        with pytest.raises(ValueError, match="Unknown action_type"):
+            await EventDispatcher.execute_action(rule, 100, {}, None)

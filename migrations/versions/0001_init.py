@@ -19,9 +19,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 # ── Enums ──────────────────────────────────────────────────────────────────
 
-regularity_enum = pgEnum(
-    "day", "week", "fortnight", "month", name="regularity_enum", create_type=False
-)
 call_status_enum = pgEnum(
     "идёт", "завершён", name="call_status_enum", create_type=False
 )
@@ -163,7 +160,6 @@ def upgrade() -> None:
 
     # ── 1. Create enums ───────────────────────────────────────────────────
     for e in (
-        regularity_enum,
         call_status_enum,
         question_type_enum,
         session_status_enum,
@@ -1496,7 +1492,6 @@ def downgrade() -> None:
         session_status_enum,
         question_type_enum,
         call_status_enum,
-        regularity_enum,
     ):
         e.drop(conn, checkfirst=True)
 

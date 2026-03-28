@@ -52,7 +52,7 @@ from src.services.call_flow import (
 )
 
 logger = logging.getLogger(__name__)
-MOSCOW_TZ = timezone(timedelta(hours=3))
+MOSCOW_TZ = MSK
 router = Router(name="meetings")
 router.message.filter(PermissionFilter(["manage_meetings", "view_own_meetings"]))
 router.callback_query.filter(PermissionFilter(["manage_meetings", "view_own_meetings"]))
@@ -103,12 +103,15 @@ def _format_meetings(
             continue
 
         mentor_text = (
-            f"Ментор: <b>{e(mentor.name)}</b> @{e(mentor.username)}"
+            f"Ментор: <b>{e(mentor.name)}</b>"
+            + (f" @{e(mentor.username)}" if mentor.username else "")
             if mentor
             else "Ментор: —"
         )
         if student:
-            student_text = f"Ученик: <b>{e(student.name)}</b> @{e(student.username)}"
+            student_text = f"Ученик: <b>{e(student.name)}</b>" + (
+                f" @{e(student.username)}" if student.username else ""
+            )
         elif meeting.mentee_telegram_tag:
             student_text = f"Ученик: {e(meeting.mentee_telegram_tag)}"
         else:
@@ -117,12 +120,9 @@ def _format_meetings(
         link = e(meeting.meeting_link) if meeting.meeting_link else "—"
         if meeting.scheduled_at:
             try:
-                if meeting.scheduled_at.tzinfo:
-                    date_str = meeting.scheduled_at.astimezone(
-                        meeting.scheduled_at.tzinfo
-                    ).strftime("%d.%m.%Y %H:%M MSK")
-                else:
-                    date_str = meeting.scheduled_at.strftime("%d.%m.%Y %H:%M MSK")
+                date_str = meeting.scheduled_at.astimezone(MOSCOW_TZ).strftime(
+                    "%d.%m.%Y %H:%M MSK"
+                )
             except Exception:
                 date_str = meeting.scheduled_at.isoformat()
         else:
@@ -269,6 +269,14 @@ async def cb_choose_meeting_student(
         await state.clear()
         return
 
+    if not mentee.telegram_id:
+        await callback.message.edit_text(
+            "У ученика не привязан Telegram.",
+            reply_markup=await _menu_kb(callback.from_user.id),
+        )
+        await state.clear()
+        return
+
     await state.update_data(
         student_id=mentee.telegram_id,
         mentee_id=mentee.id,
@@ -293,6 +301,14 @@ async def cb_choose_meeting_type(
 ):
     await callback.answer()
     from src.bot.keyboards.meeting import MEETING_TYPES
+
+    if callback_data.type_idx >= len(MEETING_TYPES):
+        await callback.message.edit_text(
+            "Неверный тип встречи.",
+            reply_markup=await _menu_kb(callback.from_user.id),
+        )
+        await state.clear()
+        return
 
     await state.update_data(event_type=MEETING_TYPES[callback_data.type_idx])
     await state.set_state(CreateMeetingFSM.waiting_description)
@@ -544,7 +560,7 @@ async def _finalize_meeting(
     scheduled_at_raw = data.get("scheduled_at")
     scheduled_at = None
     if scheduled_at_raw:
-        scheduled_at = _parse_datetime(scheduled_at_raw)
+        scheduled_at = _to_utc_assuming_msk(_parse_datetime(scheduled_at_raw))
 
     if not scheduled_at:
         await reply_func(

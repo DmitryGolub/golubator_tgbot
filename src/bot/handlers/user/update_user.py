@@ -398,6 +398,14 @@ async def cb_choose_mentee_for_update(
             await state.clear()
             return
 
+    if not mentee.telegram_id:
+        await _msg(callback).edit_text(
+            "У ученика не привязан Telegram-аккаунт.",
+            reply_markup=await back_to_menu_keyboard(),
+        )
+        await state.clear()
+        return
+
     await CohortDAO.update_user_cohort_by_type(
         mentee.telegram_id, "Status", chosen_value
     )

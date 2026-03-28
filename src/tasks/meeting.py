@@ -6,14 +6,13 @@ from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import joinedload
 
 from src.celery_app import celery_app
 from src.core.config import settings
 from src.models.meeting import Meeting
 from src.models.user import User
-from src.tasks._db import run_async
+from src.tasks._db import celery_db, run_async
 
 logger = logging.getLogger(__name__)
 
@@ -85,25 +84,27 @@ async def _send_to_student(
 
 
 async def _load_meeting(meeting_id: int) -> Optional[Meeting]:
-    engine = create_async_engine(settings.DATABASE_URL)
-    Session = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        async with Session() as session:
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting_id)
-                .options(
-                    joinedload(Meeting.participants),
-                )
+    from src.core.database import async_session_maker
+
+    async with async_session_maker() as session:
+        query = (
+            select(Meeting)
+            .where(Meeting.id == meeting_id)
+            .options(
+                joinedload(Meeting.participants),
             )
-            res = await session.execute(query)
-            res = res.unique()
-            return res.scalar_one_or_none()
-    finally:
-        await engine.dispose()
+        )
+        res = await session.execute(query)
+        res = res.unique()
+        return res.scalar_one_or_none()
 
 
 async def _notify_created_async(meeting_id: int) -> None:
+    async with celery_db():
+        await _notify_created_inner(meeting_id)
+
+
+async def _notify_created_inner(meeting_id: int) -> None:
     meeting = await _load_meeting(meeting_id)
     if not meeting:
         logger.warning("Meeting %s not found for notification", meeting_id)
@@ -137,29 +138,30 @@ async def _notify_created_async(meeting_id: int) -> None:
 
 
 async def _notify_reminder_async(meeting_id: int) -> None:
-    meeting = await _load_meeting(meeting_id)
-    if not meeting:
-        return
+    async with celery_db():
+        meeting = await _load_meeting(meeting_id)
+        if not meeting:
+            return
 
-    bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-    try:
-        _, student = _split_participants(meeting)
-        when = _format_dt(meeting.scheduled_at)
-        text = (
-            "<b>Напоминание о созвоне через ~5 минут.</b>\n"
-            f"Когда: {when}\n"
-            f"Ссылка: {meeting.meeting_link or '—'}"
-        )
-        await _send_to_student(bot, student, text)
-    finally:
-        await bot.session.close()
+        bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+        try:
+            _, student = _split_participants(meeting)
+            when = _format_dt(meeting.scheduled_at)
+            text = (
+                "<b>Напоминание о созвоне через ~5 минут.</b>\n"
+                f"Когда: {when}\n"
+                f"Ссылка: {meeting.meeting_link or '—'}"
+            )
+            await _send_to_student(bot, student, text)
+        finally:
+            await bot.session.close()
 
 
 async def _complete_meeting_async(meeting_id: int) -> bool:
-    engine = create_async_engine(settings.DATABASE_URL)
-    Session = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        async with Session() as session:
+    async with celery_db():
+        from src.core.database import async_session_maker
+
+        async with async_session_maker() as session:
             query = select(Meeting).where(Meeting.id == meeting_id)
             result = await session.execute(query)
             meeting = result.scalar_one_or_none()
@@ -170,16 +172,14 @@ async def _complete_meeting_async(meeting_id: int) -> bool:
             await session.commit()
             logger.info("Completed meeting %s via scheduled task", meeting_id)
             return True
-    finally:
-        await engine.dispose()
 
 
 async def _cleanup_stale_async() -> None:
-    cutoff = datetime.now(timezone.utc)
-    engine = create_async_engine(settings.DATABASE_URL)
-    Session = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        async with Session() as session:
+    async with celery_db():
+        from src.core.database import async_session_maker
+
+        cutoff = datetime.now(timezone.utc)
+        async with async_session_maker() as session:
             query = select(Meeting).where(
                 Meeting.scheduled_at <= cutoff,
                 Meeting.completed_at.is_(None),
@@ -193,10 +193,10 @@ async def _cleanup_stale_async() -> None:
             if meetings:
                 await session.commit()
             logger.info(
-                "Cleanup stale meetings: cutoff=%s, completed=%s", cutoff, len(meetings)
+                "Cleanup stale meetings: cutoff=%s, completed=%s",
+                cutoff,
+                len(meetings),
             )
-    finally:
-        await engine.dispose()
 
 
 @celery_app.task(name="meeting.notify_created")
@@ -227,10 +227,10 @@ def complete_meeting(meeting_id: int) -> None:
 
 
 async def _delete_meeting_async(meeting_id: int) -> None:
-    engine = create_async_engine(settings.DATABASE_URL)
-    Session = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        async with Session() as session:
+    async with celery_db():
+        from src.core.database import async_session_maker
+
+        async with async_session_maker() as session:
             stmt = delete(Meeting).where(Meeting.id == meeting_id)
             result = await session.execute(stmt)
             await session.commit()
@@ -238,8 +238,6 @@ async def _delete_meeting_async(meeting_id: int) -> None:
                 logger.info("Deleted meeting %s via scheduled task", meeting_id)
             else:
                 logger.warning("Meeting %s not found for deletion", meeting_id)
-    finally:
-        await engine.dispose()
 
 
 @celery_app.task(name="meeting.delete")
@@ -252,17 +250,20 @@ def delete_meeting(meeting_id: int) -> None:
 
 
 async def _archive_notion_page_async(notion_page_id: str) -> None:
-    from src.services.notion_sync_v2 import get_sync_service
+    async with celery_db():
+        from src.services.notion_sync_v2 import get_sync_service
 
-    sync = get_sync_service()
-    if sync and sync.event_repo:
-        archived = await sync.event_repo._client.archive_page(notion_page_id)
-        if archived:
-            logger.info("Archived Notion page %s", notion_page_id)
+        sync = get_sync_service()
+        if sync and sync.event_repo:
+            archived = await sync.event_repo._client.archive_page(notion_page_id)
+            if archived:
+                logger.info("Archived Notion page %s", notion_page_id)
+            else:
+                logger.warning("Failed to archive Notion page %s", notion_page_id)
         else:
-            logger.warning("Failed to archive Notion page %s", notion_page_id)
-    else:
-        logger.warning("No sync service available to archive page %s", notion_page_id)
+            logger.warning(
+                "No sync service available to archive page %s", notion_page_id
+            )
 
 
 @celery_app.task(name="meeting.archive_notion_page", ignore_result=True)

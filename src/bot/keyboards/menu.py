@@ -100,14 +100,9 @@ async def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-_back_text: str | None = None
-
-
 async def back_to_menu_keyboard() -> InlineKeyboardMarkup:
-    global _back_text
-    if _back_text is None:
-        _back_text = await UiTextService.get("menu.back")
+    back_text = await UiTextService.get("menu.back")
     kb = InlineKeyboardBuilder()
-    kb.button(text=_back_text, callback_data="back_to_menu")
+    kb.button(text=back_text, callback_data="back_to_menu")
     kb.adjust(1)
     return kb.as_markup()

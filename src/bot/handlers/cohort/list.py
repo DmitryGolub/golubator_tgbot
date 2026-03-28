@@ -11,6 +11,7 @@ from src.bot.keyboards.cohort import (
     cohort_options_select_keyboard,
 )
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.dao.cohort import CohortDAO
 from src.services.notion_client import get_notion_service
 from src.services.ui_text import UiTextService
 from src.utils.escape import e
@@ -24,23 +25,8 @@ router.callback_query.filter(PermissionFilter("manage_cohorts"))
 async def show_cohort_types(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
-    notion = get_notion_service()
-    if not notion:
-        text = await UiTextService.get("cohort.not_configured")
-        await callback.message.edit_text(
-            text, reply_markup=await back_to_menu_keyboard()
-        )
-        return
-
-    loading = await UiTextService.get("common.loading")
-    await callback.message.edit_text(loading)
-
-    try:
-        types = await notion.get_cohort_types()
-    finally:
-        await notion.close()
-
-    if not types:
+    types_with_counts = await CohortDAO.get_types_with_value_counts()
+    if not types_with_counts:
         text = await UiTextService.get("cohort.not_found")
         await callback.message.edit_text(
             text, reply_markup=await back_to_menu_keyboard()
@@ -48,7 +34,7 @@ async def show_cohort_types(callback: CallbackQuery, state: FSMContext):
         return
 
     header = await UiTextService.get("cohort.types.header")
-    markup, types_map = cohort_types_keyboard(types)
+    markup, types_map = cohort_types_keyboard(types_with_counts)
     await state.update_data(cohort_types_map=types_map)
     await callback.message.edit_text(header, reply_markup=markup)
 
@@ -158,15 +144,10 @@ async def cb_cohorts_page(
     callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
 ):
     await callback.answer()
-    notion = get_notion_service()
-    if not notion:
-        return
 
-    try:
-        types = await notion.get_cohort_types()
-    finally:
-        await notion.close()
-
-    markup, types_map = cohort_types_keyboard(types, page=callback_data.page)
+    types_with_counts = await CohortDAO.get_types_with_value_counts()
+    markup, types_map = cohort_types_keyboard(
+        types_with_counts, page=callback_data.page
+    )
     await state.update_data(cohort_types_map=types_map)
     await callback.message.edit_reply_markup(reply_markup=markup)

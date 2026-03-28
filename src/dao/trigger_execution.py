@@ -43,6 +43,7 @@ class TriggerExecutionDAO:
                         context=context,
                     )
                     session.add(execution)
+                await session.refresh(execution)
             except IntegrityError:
                 await session.rollback()
                 if event_key:
@@ -58,7 +59,6 @@ class TriggerExecutionDAO:
                         return existing_exec, True
                 raise
 
-            await session.refresh(execution)
             return execution, False
 
     @classmethod

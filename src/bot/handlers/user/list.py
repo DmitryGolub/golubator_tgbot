@@ -15,6 +15,7 @@ router.callback_query.filter(PermissionFilter("manage_users"))
 
 
 async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarkup]:
+    # TODO: SQL-level pagination (LIMIT/OFFSET) when user count exceeds ~500
     all_users = await UserDAO.get_all()
 
     if not all_users:

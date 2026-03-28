@@ -9,6 +9,16 @@ def join_rich_text(blocks: list[dict]) -> str:
     return "".join(item.get("plain_text", "") for item in blocks)
 
 
+def parse_iso(value: str | None) -> datetime | None:
+    """Parse ISO datetime string, handling Notion's 'Z' suffix."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
 @dataclass
 class MentorData:
     page_id: str

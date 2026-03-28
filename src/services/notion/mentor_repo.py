@@ -1,21 +1,11 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from src.services.notion.client import NotionClient
-from src.services.notion.dto import MentorData, join_rich_text
+from src.services.notion.dto import MentorData, join_rich_text, parse_iso as _parse_iso
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_iso(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        return None
 
 
 class NotionMentorRepo:

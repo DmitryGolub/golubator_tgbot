@@ -1,5 +1,6 @@
 from aiogram import Router, F
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -7,37 +8,25 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import menu_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
-from src.bot.keyboards.cohort import cohort_actions_keyboard
+from src.bot.keyboards.cohort import cohort_types_keyboard
 from src.services.auth import AuthService
 from src.services.ui_text import UiTextService
 from src.dao.user import UserDAO
-from src.dao.role import RoleDAO
 from src.dao.mentee import MenteeDAO
 from src.dao.mentor import MentorDAO
 from src.dao.mentor_stats import MentorStatsDAO
 from src.dao.cohort import CohortDAO
 
-from src.core.config import settings
 from src.services.call_flow import ActiveCallNotFoundError, CallFlowService
 from src.utils.escape import e
 
 router = Router(name="menu")
 
 
-async def _auto_register(tg_user):
-    """Register user if not exists, return User."""
-    existing = await UserDAO.find_one_or_none(telegram_id=tg_user.id)
-    if existing:
-        return existing
-    role_obj = await RoleDAO.get_by_name(
-        "admin" if tg_user.id in settings.admin_ids else "student"
-    )
-    return await UserDAO.add(
-        telegram_id=tg_user.id,
-        username=tg_user.username,
-        name=tg_user.full_name,
-        role_id=role_obj.id if role_obj else None,
-    )
+async def _ensure_user(tg_user):
+    from src.bot.handlers.common.start import _ensure_user as _start_ensure_user
+
+    return await _start_ensure_user(tg_user)
 
 
 async def _render_menu(message_or_callback, permissions: set[str]):
@@ -58,7 +47,7 @@ async def _render_menu(message_or_callback, permissions: set[str]):
 async def cmd_menu(message: Message):
     permissions = await AuthService.get_user_permissions(message.from_user.id)
     if not permissions:
-        await _auto_register(message.from_user)
+        await _ensure_user(message.from_user)
         await AuthService.invalidate_user(message.from_user.id)
         permissions = await AuthService.get_user_permissions(message.from_user.id)
     if not permissions:
@@ -75,7 +64,7 @@ async def cb_menu(callback: CallbackQuery):
 
     permissions = await AuthService.get_user_permissions(callback.from_user.id)
     if not permissions:
-        await _auto_register(callback.from_user)
+        await _ensure_user(callback.from_user)
         await AuthService.invalidate_user(callback.from_user.id)
         permissions = await AuthService.get_user_permissions(callback.from_user.id)
     if not permissions:
@@ -88,11 +77,26 @@ async def cb_menu(callback: CallbackQuery):
 
 # ==== ADMIN ====
 @router.callback_query(PermissionFilter("manage_cohorts"), F.data == "menu_cohorts")
-async def cb_menu_cohorts(callback: CallbackQuery):
+async def cb_menu_cohorts(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    text = await UiTextService.get("menu.cohorts.title")
+
+    types_with_counts = await CohortDAO.get_types_with_value_counts()
+    if not types_with_counts:
+        text = await UiTextService.get("cohort.not_found")
+        try:
+            await callback.message.edit_text(
+                text, reply_markup=await back_to_menu_keyboard()
+            )
+        except TelegramBadRequest as exc:
+            if "message is not modified" not in str(exc).lower():
+                raise
+        return
+
+    header = await UiTextService.get("cohort.types.header")
+    markup, types_map = cohort_types_keyboard(types_with_counts)
+    await state.update_data(cohort_types_map=types_map)
     try:
-        await callback.message.edit_text(text, reply_markup=cohort_actions_keyboard())
+        await callback.message.edit_text(header, reply_markup=markup)
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise

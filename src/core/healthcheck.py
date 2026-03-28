@@ -23,8 +23,10 @@ async def _health_handler(_request: web.Request) -> web.Response:
 
     try:
         redis = get_redis()
-        await redis.ping()
-        await redis.aclose()
+        try:
+            await redis.ping()
+        finally:
+            await redis.aclose()
     except Exception as exc:
         logger.warning("Health check: redis unreachable: %s", exc)
         errors.append("redis")

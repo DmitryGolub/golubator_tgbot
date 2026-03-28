@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, distinct, select, update
+from sqlalchemy import delete, distinct, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.core.database import async_session_maker
@@ -144,6 +144,16 @@ class CohortDAO:
                 .distinct()
             )
             return list(result.scalars().all())
+
+    @staticmethod
+    async def get_types_with_value_counts() -> list[tuple[str, int]]:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(Cohort.type, func.count(Cohort.id))
+                .group_by(Cohort.type)
+                .order_by(Cohort.type)
+            )
+            return list(result.tuples().all())
 
     @staticmethod
     async def update_user_cohort_by_type(

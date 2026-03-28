@@ -51,9 +51,23 @@ class MentorStatsDAO:
             if date_to is not None:
                 survey_meeting_filter.append(Meeting.completed_at <= date_to)
 
+            # CTE: only sessions with numeric context_id (safe for CAST)
+            numeric_sessions = (
+                select(SurveySession.id.label("session_id"))
+                .where(
+                    SurveySession.context_type == "meeting",
+                    SurveySession.context_id.op("~")(r"^\d+$"),
+                )
+                .cte("numeric_sessions")
+            )
+
             # Count completed survey sessions for this mentor's meetings
             survey_count_query = (
                 select(func.count(SurveySession.id))
+                .join(
+                    numeric_sessions,
+                    numeric_sessions.c.session_id == SurveySession.id,
+                )
                 .join(SurveyTemplate, SurveySession.template_id == SurveyTemplate.id)
                 .join(Meeting, Meeting.id == cast(SurveySession.context_id, Integer))
                 .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
@@ -70,6 +84,10 @@ class MentorStatsDAO:
                 )
                 .select_from(SurveyAnswer)
                 .join(SurveySession, SurveyAnswer.session_id == SurveySession.id)
+                .join(
+                    numeric_sessions,
+                    numeric_sessions.c.session_id == SurveySession.id,
+                )
                 .join(SurveyQuestion, SurveyAnswer.question_id == SurveyQuestion.id)
                 .join(SurveyTemplate, SurveySession.template_id == SurveyTemplate.id)
                 .join(Meeting, Meeting.id == cast(SurveySession.context_id, Integer))

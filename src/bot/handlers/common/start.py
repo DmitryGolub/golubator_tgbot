@@ -95,15 +95,14 @@ async def cmd_help(message: Message):
 
 
 async def _merge_placeholder(telegram_id: int, placeholder_id: int) -> None:
-    """Delete placeholder User and relink Mentor/Mentee to the real User."""
-    await UserDAO.delete(telegram_id=placeholder_id)
-    # Update any Mentor/Mentee that pointed to the placeholder
+    """Relink Mentor/Mentee from placeholder to real User, then delete placeholder."""
     mentor = await MentorDAO.find_by_telegram_id(placeholder_id)
     if mentor:
         await MentorDAO.update(mentor.id, telegram_id=telegram_id)
     mentee = await MenteeDAO.find_by_telegram_id(placeholder_id)
     if mentee:
         await MenteeDAO.update(mentee.id, telegram_id=telegram_id)
+    await UserDAO.delete(telegram_id=placeholder_id)
 
 
 async def _link_notion_page(telegram_id: int, username: str) -> None:

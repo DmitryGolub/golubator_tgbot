@@ -19,7 +19,7 @@ class Mentor(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     telegram_id: Mapped[Optional[int]] = mapped_column(
         BigInteger,
-        ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+        ForeignKey("iam.users.telegram_id", ondelete="SET NULL", onupdate="CASCADE"),
         nullable=True,
         unique=True,
         index=True,

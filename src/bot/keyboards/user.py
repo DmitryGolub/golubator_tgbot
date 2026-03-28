@@ -127,7 +127,8 @@ def mentors_keyboard(mentors: Sequence[User], page: int = 0) -> InlineKeyboardMa
     for mentor in page_items:
         kb.row(
             InlineKeyboardButton(
-                text=f"{mentor.name} {mentor.username}",
+                text=f"{mentor.name}"
+                + (f" @{mentor.username}" if mentor.username else ""),
                 callback_data=ChooseMentorCB(mentor_id=mentor.telegram_id).pack(),
             )
         )
@@ -170,7 +171,7 @@ def users_keyboard(users: Sequence[User], page: int = 0) -> InlineKeyboardMarkup
     for user in page_items:
         kb.row(
             InlineKeyboardButton(
-                text=f"{user.name} {user.username}",
+                text=f"{user.name}" + (f" @{user.username}" if user.username else ""),
                 callback_data=ChooseUserCB(user_id=user.telegram_id).pack(),
             )
         )
