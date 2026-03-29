@@ -17,7 +17,7 @@ async def _handle_automation(request: web.Request, source_db: str) -> web.Respon
     from src.core.config import settings
 
     secret = settings.NOTION_WEBHOOK_SECRET
-    if secret and not hmac.compare_digest(
+    if not secret or not hmac.compare_digest(
         request.headers.get("X-Notion-Secret", ""), secret
     ):
         return web.json_response({"error": "unauthorized"}, status=401)
