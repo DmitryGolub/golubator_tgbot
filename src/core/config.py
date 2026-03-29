@@ -1,9 +1,4 @@
-import re
-
-from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-_URL_SAFE_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
 class Settings(BaseSettings):
@@ -37,16 +32,6 @@ class Settings(BaseSettings):
     NOTION_BACKUP_POLL_USERS_INTERVAL: int = 1800
     NOTION_BACKUP_POLL_EVENTS_INTERVAL: int = 600
     NOTION_WEBHOOK_SECRET: str | None = None
-
-    @model_validator(mode="after")
-    def _validate_webhook_secret(self) -> "Settings":
-        secret = self.NOTION_WEBHOOK_SECRET
-        if secret and not _URL_SAFE_RE.match(secret):
-            raise ValueError(
-                "NOTION_WEBHOOK_SECRET must contain only URL-safe characters: "
-                "A-Z, a-z, 0-9, hyphen, underscore"
-            )
-        return self
 
     # Notion internal API (for backfill script only)
     NOTION_TOKEN_V2: str | None = None
