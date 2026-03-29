@@ -887,12 +887,12 @@ UI_TEXTS = [
     ("menu.no_active_call", "У вас нет активного созвона.", "No active call"),
     (
         "menu.call_ended.no_meeting",
-        "✅ Активный созвон завершён.\nНачало: {start}\nКонец: {end}",
+        "✅ Активный созвон завершён.\nНачало: $start\nКонец: $end",
         "Call ended (no meeting)",
     ),
     (
         "menu.call_ended.with_meeting",
-        "✅ Созвон по встрече #{id} завершён.\nНачало: {start}\nКонец: {end}\n\nТеперь можно заполнить фидбек.",
+        "✅ Созвон по встрече #$id завершён.\nНачало: $start\nКонец: $end\n\nТеперь можно заполнить фидбек.",
         "Call ended (with meeting)",
     ),
     # ── Profile ──
@@ -902,7 +902,7 @@ UI_TEXTS = [
     # ── Start ──
     (
         "start.welcome",
-        "<b>Привет, {name}!</b>\n\nЯ буду напоминать вам о занятиях и присылать полезную информацию.\nЧерез команду <b>/menu</b> можно открыть главное меню, посмотреть свои данные и доступные действия.\n\nЕсли что-то не работает — напишите куратору.",
+        "<b>Привет, $name!</b>\n\nЯ буду напоминать вам о занятиях и присылать полезную информацию.\nЧерез команду <b>/menu</b> можно открыть главное меню, посмотреть свои данные и доступные действия.\n\nЕсли что-то не работает — напишите куратору.",
         "Welcome message",
     ),
     # ── Users ──
@@ -922,7 +922,7 @@ UI_TEXTS = [
     ("user.update.access_denied", "Доступ запрещен.", "Update user: access denied"),
     (
         "user.update.success",
-        "Пользователь {name} @{username}\n{param} обновлено на: {value}",
+        "Пользователь $name @$username\n$param обновлено на: $value",
         "Update user: success",
     ),
     # ── Cohorts ──
@@ -969,7 +969,7 @@ UI_TEXTS = [
     # ── Mentor stats ──
     (
         "mentor_stats.header",
-        "<b>Статистика ментора: {name}</b>",
+        "<b>Статистика ментора: $name</b>",
         "Mentor stats header",
     ),
     ("mentor_stats.no_scores", "Оценок пока нет.", "No scores yet"),
