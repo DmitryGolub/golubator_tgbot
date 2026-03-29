@@ -1,11 +1,11 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import InlineKeyboardMarkup
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from src.celery_app import celery_app
@@ -157,48 +157,6 @@ async def _notify_reminder_async(meeting_id: int) -> None:
             await bot.session.close()
 
 
-async def _complete_meeting_async(meeting_id: int) -> bool:
-    async with celery_db():
-        from src.core.database import async_session_maker
-
-        async with async_session_maker() as session:
-            query = select(Meeting).where(Meeting.id == meeting_id)
-            result = await session.execute(query)
-            meeting = result.scalar_one_or_none()
-            if not meeting or meeting.completed_at is not None:
-                return False
-
-            meeting.completed_at = datetime.now(timezone.utc)
-            await session.commit()
-            logger.info("Completed meeting %s via scheduled task", meeting_id)
-            return True
-
-
-async def _cleanup_stale_async() -> None:
-    async with celery_db():
-        from src.core.database import async_session_maker
-
-        cutoff = datetime.now(timezone.utc)
-        async with async_session_maker() as session:
-            query = select(Meeting).where(
-                Meeting.scheduled_at <= cutoff,
-                Meeting.completed_at.is_(None),
-            )
-            result = await session.execute(query)
-            meetings = result.scalars().all()
-
-            for meeting in meetings:
-                meeting.completed_at = cutoff
-
-            if meetings:
-                await session.commit()
-            logger.info(
-                "Cleanup stale meetings: cutoff=%s, completed=%s",
-                cutoff,
-                len(meetings),
-            )
-
-
 @celery_app.task(name="meeting.notify_created")
 def notify_meeting_created(meeting_id: int) -> None:
     try:
@@ -214,38 +172,6 @@ def notify_meeting_reminder(meeting_id: int) -> None:
         run_async(_notify_reminder_async(meeting_id))
     except Exception:
         logger.exception("notify_meeting_reminder failed for meeting %s", meeting_id)
-        raise
-
-
-@celery_app.task(name="meeting.complete")
-def complete_meeting(meeting_id: int) -> None:
-    try:
-        run_async(_complete_meeting_async(meeting_id))
-    except Exception:
-        logger.exception("complete_meeting failed for meeting %s", meeting_id)
-        raise
-
-
-async def _delete_meeting_async(meeting_id: int) -> None:
-    async with celery_db():
-        from src.core.database import async_session_maker
-
-        async with async_session_maker() as session:
-            stmt = delete(Meeting).where(Meeting.id == meeting_id)
-            result = await session.execute(stmt)
-            await session.commit()
-            if result.rowcount:
-                logger.info("Deleted meeting %s via scheduled task", meeting_id)
-            else:
-                logger.warning("Meeting %s not found for deletion", meeting_id)
-
-
-@celery_app.task(name="meeting.delete")
-def delete_meeting(meeting_id: int) -> None:
-    try:
-        run_async(_delete_meeting_async(meeting_id))
-    except Exception:
-        logger.exception("delete_meeting failed for meeting %s", meeting_id)
         raise
 
 
@@ -272,13 +198,4 @@ def archive_notion_page(notion_page_id: str) -> None:
         run_async(_archive_notion_page_async(notion_page_id))
     except Exception:
         logger.exception("archive_notion_page failed for %s", notion_page_id)
-        raise
-
-
-@celery_app.task(name="meeting.cleanup_stale")
-def cleanup_stale_meetings() -> None:
-    try:
-        run_async(_cleanup_stale_async())
-    except Exception:
-        logger.exception("cleanup_stale_meetings failed")
         raise
