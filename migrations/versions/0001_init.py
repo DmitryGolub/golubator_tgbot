@@ -732,7 +732,6 @@ def upgrade() -> None:
         ("end_call", "Завершение активного созвона"),
         ("fill_survey", "Заполнение опросов"),
         ("fill_self_review", "Заполнение самооценки"),
-        ("export_feedback", "Экспорт фидбека в Yandex Sheets"),
         # ── New lead permissions ──
         ("view_direction_students", "Просмотр учеников своего направления"),
         ("receive_direction_notifications", "Получение уведомлений по направлению"),
@@ -821,7 +820,6 @@ def upgrade() -> None:
     job_search_lead_perms = mentor_perms + [
         "view_job_search_reports",
         "export_job_search",
-        "export_feedback",
     ]
     for codename in job_search_lead_perms:
         perm_id = conn.execute(
@@ -841,7 +839,6 @@ def upgrade() -> None:
     education_lead_perms = mentor_perms + [
         "view_education_feedback",
         "export_education_feedback",
-        "export_feedback",
     ]
     for codename in education_lead_perms:
         perm_id = conn.execute(
@@ -1145,11 +1142,6 @@ def upgrade() -> None:
             "📊 Статистика менторов",
             "Menu button: mentor stats",
         ),
-        (
-            "menu.btn.export_feedback",
-            "📤 Экспорт фидбека",
-            "Menu button: export feedback",
-        ),
         ("menu.btn.students", "🎓 Ученики", "Menu button: students (mentor)"),
         ("menu.btn.meetings", "📅 Созвоны", "Menu button: meetings (mentor)"),
         ("menu.btn.my_info", "ℹ️ Обо мне", "Menu button: my info (mentor)"),
@@ -1300,32 +1292,6 @@ def upgrade() -> None:
             "Select mentor",
         ),
         ("mentor_stats.no_mentors", "Менторов не найдено.", "No mentors found"),
-        # ── Export ──
-        (
-            "export.not_configured",
-            "Экспорт не настроен: проверьте YANDEX_SHEETS_* переменные.",
-            "Export not configured",
-        ),
-        (
-            "export.running",
-            "⏳ Экспорт фидбека запущен, подождите...",
-            "Export running",
-        ),
-        (
-            "export.upload_error",
-            "Не удалось загрузить файл в Яндекс Таблицу.",
-            "Export upload error",
-        ),
-        (
-            "export.internal_error",
-            "Внутренняя ошибка экспорта.",
-            "Export internal error",
-        ),
-        (
-            "export.success",
-            "✅ Экспорт завершён.\n\nСтрок: <b>{rows}</b>\nФайл: <b>{file}</b>\nЛист: <b>{sheet}</b>",
-            "Export success",
-        ),
         # ── Triggers ──
         ("trigger.btn.create", "Создать правило", "Triggers: create btn"),
         ("trigger.btn.list", "Список правил", "Triggers: list btn"),

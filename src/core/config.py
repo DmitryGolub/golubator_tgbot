@@ -35,12 +35,6 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "dev"  # "dev" | "json"
 
-    YANDEX_SHEETS_TOKEN: str | None = None
-    YANDEX_SHEETS_FILE_PATH: str | None = None
-    YANDEX_SHEETS_SHEET_NAME: str = "feedback_export"
-    YANDEX_SHEETS_BASE_URL: str = "https://cloud-api.yandex.net/v1/disk"
-    YANDEX_SHEETS_TIMEOUT_SECONDS: float = 30.0
-
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"

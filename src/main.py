@@ -20,7 +20,6 @@ from src.bot.handlers.survey_builder import router as survey_builder_router
 from src.bot.handlers.dynamic_survey import router as dynamic_survey_router
 from src.bot.handlers.trigger_rules import router as trigger_rules_router
 from src.bot.handlers.mentor_stats import router as mentor_stats_router
-from src.bot.handlers.export_feedback import router as export_feedback_router
 from src.bot.handlers.user.direction_students import router as direction_students_router
 from src.bot.handlers.job_search_report import router as job_search_report_router
 from src.bot.handlers.education_feedback import router as education_feedback_router
@@ -65,7 +64,6 @@ async def main():
         dynamic_survey_router,
         trigger_rules_router,
         mentor_stats_router,
-        export_feedback_router,
         direction_students_router,
         job_search_report_router,
         education_feedback_router,

@@ -11,7 +11,6 @@ _ADMIN_BUTTONS = [
     ("manage_triggers", "menu.btn.triggers", "menu_triggers"),
     ("manage_roles", "menu.btn.roles", "menu_roles"),
     ("manage_users", "menu.btn.mentor_stats", "admin_mentor_stats"),
-    ("export_feedback", "menu.btn.export_feedback", "menu_export_feedback"),
 ]
 
 _MENTOR_BUTTONS = [
