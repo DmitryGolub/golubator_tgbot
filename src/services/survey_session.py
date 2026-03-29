@@ -58,6 +58,9 @@ class SurveySessionService:
             context_id=context_id,
         )
 
+    async def get_available_sessions(self, respondent_id: int) -> list[SurveySession]:
+        return await SurveySessionDAO.get_pending_for_respondent(respondent_id)
+
     async def get_session(self, session_id: int) -> SurveySession:
         session = await SurveySessionDAO.get_by_id(session_id)
         if not session:

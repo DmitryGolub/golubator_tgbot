@@ -5,6 +5,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
 from src.bot.callbacks.dynamic_survey import DynamicSurveyAnswerCB, StartDynamicSurveyCB
+from src.bot.keyboards.dynamic_survey import my_surveys_keyboard
 from src.bot.states.dynamic_survey import DynamicSurveyFSM
 from src.services.survey_session import (
     SessionAlreadyCompletedError,
@@ -15,6 +16,29 @@ from src.services.survey_session import (
 logger = logging.getLogger(__name__)
 
 router = Router(name="dynamic_survey")
+
+
+# --- My surveys list ---
+
+
+@router.callback_query(lambda c: c.data == "my_surveys")
+async def cb_my_surveys(callback: CallbackQuery):
+    service = SurveySessionService()
+    sessions = await service.get_available_sessions(callback.from_user.id)
+
+    if not sessions:
+        await callback.answer()
+        await callback.message.edit_text(
+            "Нет доступных опросов.",
+            reply_markup=my_surveys_keyboard([]),
+        )
+        return
+
+    await callback.answer()
+    await callback.message.edit_text(
+        "Доступные опросы:",
+        reply_markup=my_surveys_keyboard(sessions),
+    )
 
 
 # --- Entry point ---

@@ -60,7 +60,7 @@ def mentor_meetings_keyboard(
             text="Завершить активный созвон", callback_data="mentor_end_call"
         )
     )
-    kb.row(InlineKeyboardButton(text="Заполнить фидбек", callback_data="menu_surveys"))
+    kb.row(InlineKeyboardButton(text="Заполнить фидбек", callback_data="my_surveys"))
     kb.row(InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu"))
     return kb.as_markup()
 

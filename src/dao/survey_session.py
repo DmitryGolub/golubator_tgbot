@@ -62,6 +62,24 @@ class SurveySessionDAO:
             return survey_session, False
 
     @classmethod
+    async def get_pending_for_respondent(
+        cls, respondent_id: int
+    ) -> list[SurveySession]:
+        async with async_session_maker() as session:
+            query = (
+                select(SurveySession)
+                .where(
+                    SurveySession.respondent_id == respondent_id,
+                    SurveySession.status.in_(
+                        [SessionStatus.pending, SessionStatus.in_progress]
+                    ),
+                )
+                .order_by(SurveySession.created_at.desc())
+            )
+            result = await session.execute(query)
+            return list(result.scalars().all())
+
+    @classmethod
     async def get_by_id(cls, session_id: int) -> Optional[SurveySession]:
         async with async_session_maker() as session:
             query = (
