@@ -69,6 +69,7 @@ class NotionMenteeRepo:
             contract_expires=contract_expires,
             student_score=score,
             last_edited_time=_parse_iso(page.get("last_edited_time")),
+            created_time=_parse_iso(page.get("created_time")),
         )
 
     async def find_by_telegram_id(self, tg_id: int) -> MenteeData | None:

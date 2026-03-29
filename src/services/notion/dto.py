@@ -46,6 +46,7 @@ class MenteeData:
     contract_expires: str | None = None
     student_score: float | None = None
     last_edited_time: datetime | None = None
+    created_time: datetime | None = None
 
 
 @dataclass

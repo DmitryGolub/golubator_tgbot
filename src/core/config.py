@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     NOTION_BACKUP_POLL_USERS_INTERVAL: int = 1800
     NOTION_BACKUP_POLL_EVENTS_INTERVAL: int = 600
 
+    # Notion internal API (for backfill script only)
+    NOTION_TOKEN_V2: str | None = None
+    NOTION_SPACE_ID: str | None = None
+
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "dev"  # "dev" | "json"
 

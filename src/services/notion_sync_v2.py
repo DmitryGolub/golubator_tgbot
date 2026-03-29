@@ -29,18 +29,24 @@ _NOTION_ROLE_MAP: dict[str, str] = {
     "admin": "admin",
     "админ": "admin",
     "ментор": "mentor",
+    "direction_lead": "direction_lead",
+    "job_search_lead": "job_search_lead",
+    "education_lead": "education_lead",
 }
 
 _DB_ROLE_TO_NOTION: dict[str, str] = {
     "mentor": "mentor",
     "admin": "admin",
+    "direction_lead": "direction_lead",
+    "job_search_lead": "job_search_lead",
+    "education_lead": "education_lead",
 }
 
 
 def _resolve_role_name(notion_role: str | None) -> str:
     if notion_role is None:
-        return "student"
-    return _NOTION_ROLE_MAP.get(notion_role.strip().lower(), "student")
+        return "mentor"
+    return _NOTION_ROLE_MAP.get(notion_role.strip().lower(), "mentor")
 
 
 def _clean_name(name: str | None) -> str | None:
@@ -571,7 +577,13 @@ class NotionSyncServiceV2:
             new_mentee.telegram_id = user_tid
 
         mentee_record = mentee or new_mentee  # type: ignore[possibly-undefined]
-        return await self._sync_cohorts(session, mentee_record.telegram_id, data, now)
+        return await self._sync_cohorts(
+            session,
+            mentee_record.telegram_id,
+            data,
+            now,
+            page_created_time=getattr(data, "created_time", None),
+        )
 
     async def _sync_cohorts(
         self,
@@ -579,6 +591,7 @@ class NotionSyncServiceV2:
         user_telegram_id: int,
         data,
         now: datetime,
+        page_created_time: datetime | None = None,
     ) -> list[dict]:
         """Sync cohorts and return list of diffs for changed cohorts."""
         from sqlalchemy import delete
@@ -645,15 +658,16 @@ class NotionSyncServiceV2:
         from src.models.stage_transition import StageTransition
 
         for diff in diffs:
-            session.add(
-                StageTransition(
-                    user_telegram_id=diff["user_telegram_id"],
-                    cohort_type=diff["cohort_type"],
-                    old_value=diff["old_value"],
-                    new_value=diff["new_value"],
-                    source="notion_sync",
-                )
+            transition_kwargs = dict(
+                user_telegram_id=diff["user_telegram_id"],
+                cohort_type=diff["cohort_type"],
+                old_value=diff["old_value"],
+                new_value=diff["new_value"],
+                source="notion_sync",
             )
+            if diff["old_value"] is None and page_created_time is not None:
+                transition_kwargs["created_at"] = page_created_time
+            session.add(StageTransition(**transition_kwargs))
 
         return diffs
 
