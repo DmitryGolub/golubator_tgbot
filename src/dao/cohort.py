@@ -56,14 +56,6 @@ class CohortDAO:
             return mapping
 
     @staticmethod
-    async def get_cohorts_by_type(cohort_type: str) -> list[Cohort]:
-        async with async_session_maker() as session:
-            result = await session.execute(
-                select(Cohort).where(Cohort.type == cohort_type).order_by(Cohort.value)
-            )
-            return list(result.scalars().all())
-
-    @staticmethod
     async def get_distinct_types() -> list[str]:
         async with async_session_maker() as session:
             result = await session.execute(
@@ -80,38 +72,6 @@ class CohortDAO:
                 .order_by(Cohort.value)
             )
             return list(result.scalars().all())
-
-    @staticmethod
-    async def replace_user_cohorts(
-        user_telegram_id: int, memberships: list[tuple[str, str]]
-    ) -> None:
-        async with async_session_maker() as session:
-            await session.execute(
-                delete(UserCohort).where(
-                    UserCohort.user_telegram_id == user_telegram_id
-                )
-            )
-            now = datetime.now(timezone.utc)
-            for cohort_type, cohort_value in memberships:
-                await session.execute(
-                    pg_insert(Cohort)
-                    .values(type=cohort_type, value=cohort_value)
-                    .on_conflict_do_nothing(constraint="uq_cohort_type_value")
-                )
-                result = await session.execute(
-                    select(Cohort.id).where(
-                        Cohort.type == cohort_type, Cohort.value == cohort_value
-                    )
-                )
-                cohort_id = result.scalar_one()
-                session.add(
-                    UserCohort(
-                        user_telegram_id=user_telegram_id,
-                        cohort_id=cohort_id,
-                        synced_at=now,
-                    )
-                )
-            await session.commit()
 
     @staticmethod
     async def get_direction_leads_for_student(

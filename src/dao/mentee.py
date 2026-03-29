@@ -25,13 +25,6 @@ class MenteeDAO(BaseDAO):
             return result.scalars().one_or_none()
 
     @classmethod
-    async def get_by_mentor_id(cls, mentor_id: int) -> list[Mentee]:
-        async with async_session_maker() as session:
-            query = select(cls.model).where(cls.model.mentor_id == mentor_id)
-            result = await session.execute(query)
-            return list(result.scalars().all())
-
-    @classmethod
     async def get_by_mentor_telegram_id(cls, mentor_telegram_id: int) -> list[Mentee]:
         async with async_session_maker() as session:
             query = (

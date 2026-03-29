@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import and_, func, or_, select, insert, delete, update, text
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
@@ -112,23 +112,6 @@ class MeetingDAO(BaseDAO):
             return True, notion_page_id
 
     @classmethod
-    async def purge_older_than(cls, cutoff: datetime) -> int:
-        if cutoff.tzinfo is None:
-            cutoff = cutoff.replace(tzinfo=timezone.utc)
-        async with async_session_maker() as session:
-            stmt = (
-                update(Meeting)
-                .where(
-                    (Meeting.scheduled_at - text("interval '3 hours'")) <= cutoff,
-                    Meeting.completed_at.is_(None),
-                )
-                .values(completed_at=cutoff)
-            )
-            res = await session.execute(stmt)
-            await session.commit()
-            return res.rowcount or 0
-
-    @classmethod
     async def get_active_call_for_mentor(cls, mentor_id: int) -> Optional[Meeting]:
         async with async_session_maker() as session:
             query = (
@@ -222,78 +205,3 @@ class MeetingDAO(BaseDAO):
                 )
             )
             return result.scalar_one()
-
-    @classmethod
-    async def get_unsynced(cls) -> list[Meeting]:
-        async with async_session_maker() as session:
-            query = select(Meeting).where(
-                or_(
-                    Meeting.synced_at.is_(None),
-                    and_(
-                        Meeting.updated_at.isnot(None),
-                        Meeting.updated_at > Meeting.synced_at,
-                    ),
-                ),
-            )
-            result = await session.execute(query)
-            return result.scalars().all()
-
-    @classmethod
-    async def mark_synced(
-        cls, meeting_id: int, notion_page_id: str | None = None
-    ) -> None:
-        async with async_session_maker() as session:
-            values: dict = {"synced_at": datetime.now(timezone.utc)}
-            if notion_page_id:
-                values["notion_page_id"] = notion_page_id
-            await session.execute(
-                update(Meeting).where(Meeting.id == meeting_id).values(**values)
-            )
-            await session.commit()
-
-    @classmethod
-    async def complete(
-        cls,
-        meeting_id: int,
-        *,
-        completed_at: datetime | None = None,
-    ) -> tuple[Optional[Meeting], bool]:
-        completed_at = completed_at or datetime.now(timezone.utc)
-        if completed_at.tzinfo is None:
-            completed_at = completed_at.replace(tzinfo=timezone.utc)
-
-        async with async_session_maker() as session:
-            stmt = (
-                update(Meeting)
-                .where(Meeting.id == meeting_id, Meeting.completed_at.is_(None))
-                .values(completed_at=completed_at)
-                .returning(Meeting.id)
-            )
-            result = await session.execute(stmt)
-            updated_id = result.scalar_one_or_none()
-            await session.commit()
-
-            if updated_id is None:
-                # Either not found or already completed — fetch to distinguish
-                query = (
-                    select(Meeting)
-                    .where(Meeting.id == meeting_id)
-                    .options(
-                        joinedload(Meeting.participants).selectinload(User.role_rel)
-                    )
-                )
-                res = await session.execute(query)
-                res = res.unique()
-                meeting = res.scalar_one_or_none()
-                return meeting, False
-
-            # Reload with participants
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
-            )
-            res = await session.execute(query)
-            res = res.unique()
-            meeting = res.scalar_one_or_none()
-            return meeting, True

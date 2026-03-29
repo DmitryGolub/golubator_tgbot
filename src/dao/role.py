@@ -60,10 +60,3 @@ class RoleDAO(BaseDAO):
 
 class PermissionDAO(BaseDAO):
     model = Permission
-
-    @classmethod
-    async def get_by_codename(cls, codename: str) -> Permission | None:
-        async with async_session_maker() as session:
-            query = select(cls.model).where(cls.model.codename == codename)
-            result = await session.execute(query)
-            return result.scalars().one_or_none()
