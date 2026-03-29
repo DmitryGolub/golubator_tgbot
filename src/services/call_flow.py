@@ -160,15 +160,32 @@ class CallFlowService:
         # Emit call_ended trigger for dynamic actions (surveys, notifications)
         if meeting_was_completed:
             try:
+                from src.dao.cohort import CohortDAO
                 from src.models.trigger import TriggerType
                 from src.services.events.dispatcher import EventDispatcher
+
+                student_id = finished_meeting.student_telegram_id
+                completed_count = await MeetingDAO.count_completed_for_pair(
+                    mentor_id, student_id
+                )
+                is_first_call = completed_count == 1
+
+                student_stage = None
+                if is_first_call and student_id:
+                    greeting_ids = await CohortDAO.get_telegram_ids_in_cohort(
+                        "Status", "greeting"
+                    )
+                    if student_id in greeting_ids:
+                        student_stage = "greeting"
 
                 await EventDispatcher.emit(
                     TriggerType.call_ended,
                     {
                         "meeting_id": finished_meeting.id,
                         "mentor_id": finished_meeting.mentor_telegram_id,
-                        "student_id": finished_meeting.student_telegram_id,
+                        "student_id": student_id,
+                        "is_first_call": is_first_call,
+                        "student_stage": student_stage,
                     },
                 )
             except Exception:

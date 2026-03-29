@@ -32,7 +32,7 @@ class EventDispatcher:
         logger.info("Event %s: %d rule(s) matched", trigger_type.value, len(rules))
 
         for rule in rules:
-            if not cls._matches_trigger_config(rule, trigger_type, context):
+            if not await cls._matches_trigger_config(rule, trigger_type, context):
                 continue
             try:
                 await cls._process_rule(rule, context, bot)
@@ -160,16 +160,23 @@ class EventDispatcher:
         )
 
     @classmethod
-    def _matches_trigger_config(
+    async def _matches_trigger_config(
         cls, rule: TriggerRule, trigger_type: TriggerType, context: dict
     ) -> bool:
-        if trigger_type != TriggerType.cohort_changed:
-            return True
-
-        config = rule.trigger_config
+        config = getattr(rule, "trigger_config", None)
         if not config:
             return True
 
+        if trigger_type == TriggerType.cohort_changed:
+            return await cls._matches_cohort_changed(config, context)
+
+        if trigger_type == TriggerType.call_ended:
+            return cls._matches_call_ended(config, context)
+
+        return True
+
+    @classmethod
+    async def _matches_cohort_changed(cls, config: dict, context: dict) -> bool:
         cfg_cohort_type = config.get("cohort_type", "*")
         cfg_from = config.get("from_value", "*")
         cfg_to = config.get("to_value", "*")
@@ -183,6 +190,35 @@ class EventDispatcher:
         if cfg_from != "*" and cfg_from != ctx_old:
             return False
         if cfg_to != "*" and cfg_to != ctx_new:
+            return False
+
+        require_category = config.get("require_category")
+        if require_category and require_category != "*":
+            from src.dao.cohort import CohortDAO
+
+            user_id = context.get("user_telegram_id")
+            if not user_id:
+                return False
+            categories = await CohortDAO.get_user_cohort_values_by_type(
+                user_id, "Category"
+            )
+            if require_category == "__none__":
+                if categories:
+                    return False
+            else:
+                if require_category not in categories:
+                    return False
+
+        return True
+
+    @staticmethod
+    def _matches_call_ended(config: dict, context: dict) -> bool:
+        cfg_first = config.get("is_first_call")
+        if cfg_first is not None and context.get("is_first_call") != cfg_first:
+            return False
+
+        cfg_stage = config.get("student_stage")
+        if cfg_stage is not None and context.get("student_stage") != cfg_stage:
             return False
 
         return True

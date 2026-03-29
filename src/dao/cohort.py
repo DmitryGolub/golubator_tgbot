@@ -189,6 +189,21 @@ class CohortDAO:
             return list(result.tuples().all())
 
     @staticmethod
+    async def get_user_cohort_values_by_type(
+        user_telegram_id: int, cohort_type: str
+    ) -> list[str]:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(Cohort.value)
+                .join(UserCohort, UserCohort.cohort_id == Cohort.id)
+                .where(
+                    UserCohort.user_telegram_id == user_telegram_id,
+                    Cohort.type == cohort_type,
+                )
+            )
+            return list(result.scalars().all())
+
+    @staticmethod
     async def update_user_cohort_by_type(
         user_telegram_id: int, cohort_type: str, cohort_value: str
     ) -> tuple[str | None, str]:

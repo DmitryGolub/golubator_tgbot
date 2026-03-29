@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import and_, or_, select, insert, delete, update, text
+from sqlalchemy import and_, func, or_, select, insert, delete, update, text
 from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
@@ -208,6 +208,20 @@ class MeetingDAO(BaseDAO):
             res = await session.execute(query)
             res = res.unique()
             return res.scalar_one_or_none()
+
+    @classmethod
+    async def count_completed_for_pair(cls, mentor_id: int, student_id: int) -> int:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(func.count())
+                .select_from(Meeting)
+                .where(
+                    Meeting.mentor_telegram_id == mentor_id,
+                    Meeting.student_telegram_id == student_id,
+                    Meeting.completed_at.isnot(None),
+                )
+            )
+            return result.scalar_one()
 
     @classmethod
     async def get_unsynced(cls) -> list[Meeting]:

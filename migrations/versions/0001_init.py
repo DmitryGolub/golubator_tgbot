@@ -142,6 +142,9 @@ rules_t = sa.table(
     sa.column("recipient_type", sa.String),
     sa.column("recipient_config", sa.JSON),
     sa.column("action_config", sa.JSON),
+    sa.column("trigger_config", sa.JSON),
+    sa.column("regularity", sa.String),
+    sa.column("time_of_day", sa.Time),
     schema="triggers",
 )
 
@@ -1024,6 +1027,87 @@ def upgrade() -> None:
                 },
             ],
         },
+        {
+            "slug": "greeting_mentee_feedback",
+            "title": "Опрос ученика после первого созвона",
+            "description": "Заполняется учеником через 24 часа после первого созвона (стадия greeting)",
+            "questions": [
+                {
+                    "sort_order": 1,
+                    "title": "Насколько понятны условия обучения",
+                    "question_type": "rating",
+                    "is_required": True,
+                    "config": {"min": 1, "max": 10},
+                    "options": [],
+                },
+                {
+                    "sort_order": 2,
+                    "title": "Впечатление от встречи с ментором",
+                    "question_type": "rating",
+                    "is_required": True,
+                    "config": {"min": 1, "max": 10},
+                    "options": [],
+                },
+                {
+                    "sort_order": 3,
+                    "title": "Уверенность в выборе направления",
+                    "question_type": "rating",
+                    "is_required": True,
+                    "config": {"min": 1, "max": 10},
+                    "options": [],
+                },
+                {
+                    "sort_order": 4,
+                    "title": "Что повлияло на решение начать/не начать обучение?",
+                    "question_type": "text",
+                    "is_required": True,
+                    "config": None,
+                    "options": [],
+                },
+            ],
+        },
+        {
+            "slug": "greeting_mentor_feedback",
+            "title": "Опрос ментора после первого созвона",
+            "description": "Заполняется ментором через 24 часа после первого созвона (стадия greeting)",
+            "questions": [
+                {
+                    "sort_order": 1,
+                    "title": "Мотивация ученика",
+                    "question_type": "rating",
+                    "is_required": True,
+                    "config": {"min": 1, "max": 10},
+                    "options": [],
+                },
+                {
+                    "sort_order": 2,
+                    "title": "Реалистичность ожиданий ученика",
+                    "question_type": "rating",
+                    "is_required": True,
+                    "config": {"min": 1, "max": 10},
+                    "options": [],
+                },
+                {
+                    "sort_order": 3,
+                    "title": "Рекомендуешь ли брать в работу?",
+                    "question_type": "single_choice",
+                    "is_required": True,
+                    "config": None,
+                    "options": [
+                        {"value": "yes", "label": "Да"},
+                        {"value": "no", "label": "Нет"},
+                    ],
+                },
+                {
+                    "sort_order": 4,
+                    "title": "Комментарий к рекомендации",
+                    "question_type": "text",
+                    "is_required": False,
+                    "config": None,
+                    "options": [],
+                },
+            ],
+        },
     ]
 
     template_ids = {}
@@ -1131,6 +1215,34 @@ def upgrade() -> None:
             "action_config": {
                 "survey_template_id": template_ids["mentor_self_review"],
                 "survey_title": "Двухнедельный опрос ментора",
+            },
+        },
+        {
+            "name": "Опрос ученика после первого созвона (greeting)",
+            "trigger_type": "call_ended",
+            "action_type": "send_survey",
+            "is_active": True,
+            "delay_seconds": 86400,
+            "delay_mode": "after_trigger",
+            "recipient_type": "event_student",
+            "trigger_config": {"is_first_call": True, "student_stage": "greeting"},
+            "action_config": {
+                "survey_template_id": template_ids["greeting_mentee_feedback"],
+                "survey_title": "Опрос ученика после первого созвона",
+            },
+        },
+        {
+            "name": "Опрос ментора после первого созвона (greeting)",
+            "trigger_type": "call_ended",
+            "action_type": "send_survey",
+            "is_active": True,
+            "delay_seconds": 86400,
+            "delay_mode": "after_trigger",
+            "recipient_type": "event_mentor",
+            "trigger_config": {"is_first_call": True, "student_stage": "greeting"},
+            "action_config": {
+                "survey_template_id": template_ids["greeting_mentor_feedback"],
+                "survey_title": "Опрос ментора после первого созвона",
             },
         },
     ]
@@ -1457,6 +1569,95 @@ def upgrade() -> None:
     for key, value, description in UI_TEXTS:
         conn.execute(
             ui_texts_t.insert().values(key=key, value=value, description=description)
+        )
+
+    # ── 14. Seed: Lead → Study welcome rules ────────────────────────────
+    LEAD_TO_STUDY_RULES = [
+        {
+            "name": "Lead→Study: Backend",
+            "require_category": "Backend",
+            "text": (
+                "Добро пожаловать в Голубятню! 🎉\n\n"
+                "Ты зачислен(а) на направление Backend.\n\n"
+                "Вступай в чаты:\n"
+                "— Общий чат: [ССЫЛКА]\n"
+                "— Backend: [ССЫЛКА]"
+            ),
+        },
+        {
+            "name": "Lead→Study: Frontend",
+            "require_category": "Frontend",
+            "text": (
+                "Добро пожаловать в Голубятню! 🎉\n\n"
+                "Ты зачислен(а) на направление Frontend.\n\n"
+                "Вступай в чаты:\n"
+                "— Общий чат: [ССЫЛКА]\n"
+                "— Frontend: [ССЫЛКА]"
+            ),
+        },
+        {
+            "name": "Lead→Study: Design",
+            "require_category": "Design",
+            "text": (
+                "Добро пожаловать в Голубятню! 🎉\n\n"
+                "Ты зачислен(а) на направление Design.\n\n"
+                "Вступай в чаты:\n"
+                "— Общий чат: [ССЫЛКА]\n"
+                "— Design: [ССЫЛКА]"
+            ),
+        },
+        {
+            "name": "Lead→Study: QA",
+            "require_category": "QA",
+            "text": (
+                "Добро пожаловать в Голубятню! 🎉\n\n"
+                "Ты зачислен(а) на направление QA.\n\n"
+                "Вступай в чаты:\n"
+                "— Общий чат: [ССЫЛКА]\n"
+                "— QA: [ССЫЛКА]"
+            ),
+        },
+        {
+            "name": "Lead→Study: Analytics",
+            "require_category": "Analytics",
+            "text": (
+                "Добро пожаловать в Голубятню! 🎉\n\n"
+                "Ты зачислен(а) на направление Analytics.\n\n"
+                "Вступай в чаты:\n"
+                "— Общий чат: [ССЫЛКА]\n"
+                "— Analytics: [ССЫЛКА]"
+            ),
+        },
+        {
+            "name": "Lead→Study: Fallback (no category)",
+            "require_category": "__none__",
+            "text": (
+                "Добро пожаловать в Голубятню! 🎉\n\n"
+                "Ты зачислен(а) на обучение.\n\n"
+                "Вступай в общий чат: [ССЫЛКА]\n\n"
+                "Направление пока не указано — обратись к куратору."
+            ),
+        },
+    ]
+    for rule in LEAD_TO_STUDY_RULES:
+        conn.execute(
+            rules_t.insert().values(
+                name=rule["name"],
+                trigger_type="cohort_changed",
+                action_type="send_notification",
+                is_active=True,
+                delay_seconds=0,
+                delay_mode="after_trigger",
+                recipient_type="event_user",
+                recipient_config=None,
+                action_config={"text": rule["text"]},
+                trigger_config={
+                    "cohort_type": "Status",
+                    "from_value": "Lead",
+                    "to_value": "Study",
+                    "require_category": rule["require_category"],
+                },
+            )
         )
 
 
