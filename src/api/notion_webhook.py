@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 
@@ -13,6 +14,12 @@ async def _handle_automation(request: web.Request, source_db: str) -> web.Respon
 
     Payload contains page properties directly (not sparse like API webhooks).
     """
+    from src.core.config import settings
+
+    secret = settings.NOTION_WEBHOOK_SECRET
+    if secret and not hmac.compare_digest(request.query.get("secret", ""), secret):
+        return web.json_response({"error": "unauthorized"}, status=401)
+
     body = await request.read()
 
     try:
