@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, func, select
+from sqlalchemy import String, case, func, select
 
 from src.core.database import async_session_maker
 from src.models.cohort import Cohort, UserCohort
@@ -31,7 +31,9 @@ class JobSearchReportDAO:
             total = func.count(Meeting.id.distinct()).label("total_meetings")
 
             survey_completed = func.count(
-                func.nullif(SurveySession.status, "pending")
+                case(
+                    (SurveySession.status == "completed", SurveySession.id),
+                )
             ).label("surveys_completed")
 
             query = (

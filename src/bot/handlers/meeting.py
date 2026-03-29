@@ -66,32 +66,38 @@ async def _menu_kb(user_id: int):
 MEETINGS_PAGE_SIZE = 5
 
 
+def _resolve_participants(meeting, mentor_tg_ids: set[int]):
+    """Return (mentor, student) participant pair for a meeting."""
+    mentor = next(
+        (p for p in meeting.participants if p.telegram_id in mentor_tg_ids),
+        None,
+    )
+    if not mentor and meeting.mentor_telegram_id:
+        mentor = next(
+            (
+                p
+                for p in meeting.participants
+                if p.telegram_id == meeting.mentor_telegram_id
+            ),
+            None,
+        )
+    student = next(
+        (
+            p
+            for p in meeting.participants
+            if not mentor or p.telegram_id != mentor.telegram_id
+        ),
+        None,
+    )
+    return mentor, student
+
+
 def _filter_visible_meetings(
     meetings, viewer_id: int, viewer_is_mentor: bool, mentor_tg_ids: set[int]
 ) -> list:
     result = []
     for meeting in meetings:
-        mentor = next(
-            (p for p in meeting.participants if p.telegram_id in mentor_tg_ids),
-            None,
-        )
-        if not mentor and meeting.mentor_telegram_id:
-            mentor = next(
-                (
-                    p
-                    for p in meeting.participants
-                    if p.telegram_id == meeting.mentor_telegram_id
-                ),
-                None,
-            )
-        student = next(
-            (
-                p
-                for p in meeting.participants
-                if not mentor or p.telegram_id != mentor.telegram_id
-            ),
-            None,
-        )
+        mentor, student = _resolve_participants(meeting, mentor_tg_ids)
         if viewer_is_mentor and mentor and mentor.telegram_id != viewer_id:
             continue
         if not viewer_is_mentor and student and student.telegram_id != viewer_id:
@@ -116,27 +122,7 @@ def _format_meetings(
     for local_idx, meeting in enumerate(page_meetings):
         display_idx = start + local_idx + 1
 
-        mentor = next(
-            (p for p in meeting.participants if p.telegram_id in mentor_tg_ids),
-            None,
-        )
-        if not mentor and meeting.mentor_telegram_id:
-            mentor = next(
-                (
-                    p
-                    for p in meeting.participants
-                    if p.telegram_id == meeting.mentor_telegram_id
-                ),
-                None,
-            )
-        student = next(
-            (
-                p
-                for p in meeting.participants
-                if not mentor or p.telegram_id != mentor.telegram_id
-            ),
-            None,
-        )
+        mentor, student = _resolve_participants(meeting, mentor_tg_ids)
 
         mentor_text = (
             f"Ментор: <b>{e(mentor.name)}</b>"

@@ -25,9 +25,11 @@ class UiTextService:
             await r.set(f"{_PREFIX}{key}", value, ex=_TTL)
 
         if kwargs:
+            from string import Template
+
             try:
-                return value.format(**kwargs)
-            except KeyError:
+                return Template(value).safe_substitute(kwargs)
+            except (ValueError, TypeError):
                 logger.warning("UiText format error for key=%s kwargs=%s", key, kwargs)
                 return value
         return value

@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, Message
 from src.bot.callbacks.rbac import (
     ConfirmDeleteRoleCB,
     DeleteRoleCB,
+    EditPermsCB,
     RoleDetailCB,
     TogglePermCB,
 )
@@ -67,11 +68,10 @@ async def cb_role_detail(callback: CallbackQuery, callback_data: RoleDetailCB):
 # ── Permissions toggle ──
 
 
-@router.callback_query(F.data.startswith("rbac_edit_perms:"))
-async def cb_edit_perms(callback: CallbackQuery):
+@router.callback_query(EditPermsCB.filter())
+async def cb_edit_perms(callback: CallbackQuery, callback_data: EditPermsCB):
     await callback.answer()
-    role_id = int(callback.data.split(":")[1])
-    role = await RoleDAO.get_with_permissions(role_id)
+    role = await RoleDAO.get_with_permissions(callback_data.role_id)
     if not role:
         await callback.message.edit_text("Роль не найдена.")
         return

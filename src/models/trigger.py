@@ -17,6 +17,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -100,7 +101,9 @@ class TriggerRule(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     trigger_type: Mapped[TriggerType] = mapped_column(trigger_type_enum, nullable=False)
     action_type: Mapped[ActionType] = mapped_column(action_type_enum, nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
 
     # Periodic schedule (two modes)
     cron_expression: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -159,6 +162,13 @@ class TriggerExecution(Base):
             name="uq_trigger_execution_unique",
         ),
         Index("ix_trigger_exec_pending", "status", "scheduled_at"),
+        Index(
+            "uq_trigger_exec_no_event_key",
+            "rule_id",
+            "recipient_id",
+            unique=True,
+            postgresql_where=text("event_key IS NULL"),
+        ),
         {"schema": "triggers"},
     )
 

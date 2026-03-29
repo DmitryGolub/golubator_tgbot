@@ -62,6 +62,24 @@ celery_app.conf.update(
             "task": "surveys.send_weekly_mentor_per_student",
             "schedule": crontab(minute=0, hour=12, day_of_week=1),
         },
+        # Biweekly search mentor per-student survey (Mon 12:00 UTC = 15:00 MSK)
+        # Task itself checks even ISO week
+        "surveys.send_search_biweekly_mentor": {
+            "task": "surveys.send_search_biweekly_mentor",
+            "schedule": crontab(minute=0, hour=12, day_of_week=1),
+        },
+        # Biweekly probation mentee survey (Mon 12:00 UTC = 15:00 MSK)
+        # Task itself checks even ISO week
+        "surveys.send_probation_biweekly_mentee": {
+            "task": "surveys.send_probation_biweekly_mentee",
+            "schedule": crontab(minute=0, hour=12, day_of_week=1),
+        },
+        # Biweekly probation mentor per-student survey (Mon 12:00 UTC = 15:00 MSK)
+        # Task itself checks even ISO week
+        "surveys.send_probation_biweekly_mentor": {
+            "task": "surveys.send_probation_biweekly_mentor",
+            "schedule": crontab(minute=0, hour=12, day_of_week=1),
+        },
     },
 )
 

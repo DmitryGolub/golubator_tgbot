@@ -62,6 +62,14 @@ class UserDAO(BaseDAO):
             return result.scalars().all()
 
     @classmethod
+    async def get_telegram_ids_by_role(cls, role_id: int) -> list[int]:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(cls.model.telegram_id).where(cls.model.role_id == role_id)
+            )
+            return list(result.scalars().all())
+
+    @classmethod
     async def update(cls, telegram_id: int, **values):
         async with async_session_maker() as session:
             query = (

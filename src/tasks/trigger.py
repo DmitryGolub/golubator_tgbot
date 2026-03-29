@@ -188,10 +188,14 @@ def _match_cron_field(pattern: str, value: int) -> bool:
         except ValueError:
             return False
 
-    # Handle comma-separated values
+    # Handle comma-separated values and ranges
     for part in pattern.split(","):
         try:
-            if int(part) == value:
+            if "-" in part:
+                lo, hi = part.split("-", 1)
+                if int(lo) <= value <= int(hi):
+                    return True
+            elif int(part) == value:
                 return True
         except ValueError:
             pass

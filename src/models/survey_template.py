@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -54,7 +55,9 @@ class SurveyTemplate(Base):
         ForeignKey("iam.roles.id", ondelete="SET NULL"),
         nullable=True,
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     created_by: Mapped[Optional[int]] = mapped_column(
         BigInteger,
         ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
@@ -99,7 +102,9 @@ class SurveyQuestion(Base):
         question_type_enum,
         nullable=False,
     )
-    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

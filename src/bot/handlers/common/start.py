@@ -9,8 +9,6 @@ from src.dao.user import UserDAO
 from src.dao.role import RoleDAO
 from src.dao.mentor import MentorDAO
 from src.dao.mentee import MenteeDAO
-from src.models.user import User
-from datetime import datetime, timezone
 
 from src.core.config import settings
 from src.services.auth import AuthService
@@ -25,40 +23,29 @@ router = Router()
 _background_tasks: set[asyncio.Task] = set()
 
 
-async def _ensure_user(tg_user) -> User:
+async def _ensure_user(tg_user):
     """Create or update User record (telegram data only). Returns User."""
     user_id = tg_user.id
     is_admin = user_id in settings.admin_ids
 
-    existing = await UserDAO.find_one_or_none(telegram_id=user_id)
+    existing_before = await UserDAO.find_one_or_none(telegram_id=user_id)
+    user = await AuthService.ensure_user(tg_user)
 
-    if not existing:
-        role_obj = await RoleDAO.get_by_name("admin" if is_admin else "student")
-        now = datetime.now(timezone.utc)
-        created = await UserDAO.add(
-            telegram_id=user_id,
-            username=tg_user.username,
-            name=tg_user.full_name,
-            role_id=role_obj.id if role_obj else None,
-            registered_at=now,
+    if existing_before is None and user:
+        logger.info(
+            "New user registered: tg=%s role=%s",
+            user_id,
+            "admin" if is_admin else "student",
         )
-        if created:
-            logger.info(
-                "New user registered: tg=%s role=%s",
-                user_id,
-                "admin" if is_admin else "student",
-            )
-            await schedule_onboarding_notifications(created)
-        return created
-    else:
-        if is_admin and (
-            existing.role_rel is None or existing.role_rel.name != "admin"
-        ):
+        await schedule_onboarding_notifications(user)
+    elif existing_before and is_admin:
+        if existing_before.role_rel is None or existing_before.role_rel.name != "admin":
             admin_role = await RoleDAO.get_by_name("admin")
             if admin_role:
                 await UserDAO.update(telegram_id=user_id, role_id=admin_role.id)
                 await AuthService.invalidate_user(user_id)
-        return existing
+
+    return user
 
 
 @router.message(CommandStart())

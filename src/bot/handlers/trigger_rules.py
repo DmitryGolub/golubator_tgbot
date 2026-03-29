@@ -385,14 +385,44 @@ async def cb_cohort_to(
     )
 
 
+def _validate_cron(expr: str) -> str | None:
+    """Return error message if cron expression is invalid, else None."""
+    parts = expr.split()
+    if len(parts) != 5:
+        return "Cron-выражение должно содержать ровно 5 полей."
+    for part in parts:
+        if part == "*":
+            continue
+        if part.startswith("*/"):
+            try:
+                int(part[2:])
+            except ValueError:
+                return f"Невалидное поле: {part}"
+            continue
+        for sub in part.split(","):
+            if "-" in sub:
+                pieces = sub.split("-", 1)
+                if len(pieces) != 2:
+                    return f"Невалидный диапазон: {sub}"
+                try:
+                    int(pieces[0])
+                    int(pieces[1])
+                except ValueError:
+                    return f"Невалидный диапазон: {sub}"
+            else:
+                try:
+                    int(sub)
+                except ValueError:
+                    return f"Невалидное значение: {sub}"
+    return None
+
+
 @router.message(TriggerRuleBuilderFSM.entering_cron_expression)
 async def msg_cron_expression(message: Message, state: FSMContext):
     expr = message.text.strip()
-    parts = expr.split()
-    if len(parts) != 5:
-        await message.answer(
-            "Cron-выражение должно содержать ровно 5 полей. Попробуйте снова:"
-        )
+    error = _validate_cron(expr)
+    if error:
+        await message.answer(f"{error} Попробуйте снова:")
         return
     await state.update_data(cron_expression=expr)
     await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)

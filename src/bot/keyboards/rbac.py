@@ -4,6 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from src.bot.callbacks.rbac import (
     ConfirmDeleteRoleCB,
     DeleteRoleCB,
+    EditPermsCB,
     RoleDetailCB,
     TogglePermCB,
 )
@@ -27,7 +28,7 @@ def role_detail_keyboard(role: RoleModel, user_count: int) -> InlineKeyboardMark
     kb = InlineKeyboardBuilder()
     kb.button(
         text="🔑 Управление пермишенами",
-        callback_data=f"rbac_edit_perms:{role.id}",
+        callback_data=EditPermsCB(role_id=role.id),
     )
     if user_count == 0:
         kb.button(

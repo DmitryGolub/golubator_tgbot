@@ -1,7 +1,7 @@
 # app/bot/handlers/admin/update_user_fsm.py
 from aiogram import Router, F
 from aiogram.filters import StateFilter
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 from src.bot.filters.permission import PermissionFilter
@@ -39,19 +39,12 @@ from src.utils.onboarding import (
     notify_student_new_mentor,
 )
 from src.utils.escape import e
+from src.bot.utils import safe_message as _msg
 
 router = Router(name="update-user-fsm")
 router.callback_query.filter(
     PermissionFilter(["manage_users", "update_student_status"])
 )
-
-
-def _msg(callback: CallbackQuery) -> Message:
-    """Extract Message from callback, raising if inaccessible."""
-    msg = callback.message
-    if not isinstance(msg, Message):
-        raise TypeError("Message is inaccessible")
-    return msg
 
 
 @router.callback_query(F.data == "user_update_menu")

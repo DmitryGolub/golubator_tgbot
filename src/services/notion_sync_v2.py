@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select, update
@@ -602,7 +603,9 @@ class NotionSyncServiceV2:
             .join(UserCohort, UserCohort.cohort_id == Cohort.id)
             .where(UserCohort.user_telegram_id == user_telegram_id)
         )
-        old_map: dict[str, str] = {row[0]: row[1] for row in old_result.all()}
+        old_map: dict[str, set[str]] = defaultdict(set)
+        for row in old_result.all():
+            old_map[row[0]].add(row[1])
 
         await session.execute(
             delete(UserCohort).where(UserCohort.user_telegram_id == user_telegram_id)
@@ -618,9 +621,9 @@ class NotionSyncServiceV2:
         if intern := getattr(data, "intern", None):
             entries.append(("Стажор", intern))
 
-        new_map: dict[str, str] = {}
+        new_map: dict[str, set[str]] = defaultdict(set)
         for cohort_type, cohort_value in entries:
-            new_map[cohort_type] = cohort_value
+            new_map[cohort_type].add(cohort_value)
             await session.execute(
                 pg_insert(Cohort)
                 .values(type=cohort_type, value=cohort_value)
@@ -643,21 +646,35 @@ class NotionSyncServiceV2:
         diffs: list[dict] = []
         all_types = set(old_map) | set(new_map)
         for ct in all_types:
-            old_val = old_map.get(ct)
-            new_val = new_map.get(ct)
-            if old_val != new_val and new_val is not None:
+            old_vals = old_map.get(ct, set())
+            new_vals = new_map.get(ct, set())
+            if old_vals == new_vals:
+                continue
+            for added in new_vals - old_vals:
+                old_single = next(iter(old_vals), None) if len(old_vals) == 1 else None
                 diffs.append(
                     {
                         "user_telegram_id": user_telegram_id,
                         "cohort_type": ct,
-                        "old_value": old_val,
-                        "new_value": new_val,
+                        "old_value": old_single,
+                        "new_value": added,
+                    }
+                )
+            for removed in old_vals - new_vals:
+                diffs.append(
+                    {
+                        "user_telegram_id": user_telegram_id,
+                        "cohort_type": ct,
+                        "old_value": removed,
+                        "new_value": None,
                     }
                 )
 
         from src.models.stage_transition import StageTransition
 
         for diff in diffs:
+            if diff["new_value"] is None:
+                continue
             transition_kwargs = dict(
                 user_telegram_id=diff["user_telegram_id"],
                 cohort_type=diff["cohort_type"],

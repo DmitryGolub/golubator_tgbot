@@ -1,6 +1,10 @@
-from src.dao.role import PermissionDAO
+from datetime import datetime, timezone
+
+from src.core.config import settings
+from src.dao.role import PermissionDAO, RoleDAO
 from src.dao.user import UserDAO
 from src.models.role import RoleModel
+from src.models.user import User
 from src.services.permission_cache import (
     get_cached_permissions,
     get_cached_role,
@@ -71,3 +75,30 @@ class AuthService:
     @staticmethod
     async def invalidate_role(role_id: int) -> None:
         await invalidate_role_cache(role_id)
+
+    @staticmethod
+    async def ensure_user(tg_user) -> User:
+        """Create or sync User record from Telegram user object. Returns User."""
+        real_id = tg_user.id
+        existing = await UserDAO.find_one_or_none(telegram_id=real_id)
+
+        if existing:
+            updates: dict = {}
+            if existing.registered_at is None:
+                updates["registered_at"] = datetime.now(timezone.utc)
+            if existing.username != tg_user.username:
+                updates["username"] = tg_user.username
+            if updates:
+                await UserDAO.update(telegram_id=real_id, **updates)
+            return existing
+
+        is_admin = real_id in settings.admin_ids
+        role_obj = await RoleDAO.get_by_name("admin" if is_admin else "student")
+        created = await UserDAO.add(
+            telegram_id=real_id,
+            username=tg_user.username,
+            name=tg_user.full_name,
+            role_id=role_obj.id if role_obj else None,
+            registered_at=datetime.now(timezone.utc),
+        )
+        return created

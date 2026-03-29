@@ -148,16 +148,32 @@ class EventDispatcher:
         context: dict,
         bot,
     ) -> None:
-        action = ACTION_MAP.get(rule.action_type)
-        if not action:
-            raise ValueError(f"Unknown action_type: {rule.action_type}")
+        created_bot = False
+        if bot is None:
+            from aiogram import Bot
+            from aiogram.client.default import DefaultBotProperties
 
-        await action.execute(
-            rule=rule,
-            recipient_id=recipient_id,
-            context=context,
-            bot=bot,
-        )
+            from src.core.config import settings
+
+            bot = Bot(
+                settings.BOT_TOKEN,
+                default=DefaultBotProperties(parse_mode="HTML"),
+            )
+            created_bot = True
+        try:
+            action = ACTION_MAP.get(rule.action_type)
+            if not action:
+                raise ValueError(f"Unknown action_type: {rule.action_type}")
+
+            await action.execute(
+                rule=rule,
+                recipient_id=recipient_id,
+                context=context,
+                bot=bot,
+            )
+        finally:
+            if created_bot:
+                await bot.session.close()
 
     @classmethod
     async def _matches_trigger_config(

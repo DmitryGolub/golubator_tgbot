@@ -40,16 +40,9 @@ async def invalidate_user_cache(user_id: int) -> None:
 
 async def invalidate_role_cache(role_id: int) -> None:
     """Invalidate cache for all users with given role_id."""
-    from src.models.user import User
+    from src.dao.user import UserDAO
 
-    from sqlalchemy import select
-    from src.core.database import async_session_maker
-
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(User.telegram_id).where(User.role_id == role_id)
-        )
-        user_ids = result.scalars().all()
+    user_ids = await UserDAO.get_telegram_ids_by_role(role_id)
 
     r = get_redis()
     keys = []

@@ -13,11 +13,13 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -48,6 +50,13 @@ class SurveySession(Base):
             "context_type",
             "context_id",
             name="uq_survey_session_unique",
+        ),
+        Index(
+            "uq_survey_session_no_ctx",
+            "template_id",
+            "respondent_id",
+            unique=True,
+            postgresql_where=text("context_type IS NULL AND context_id IS NULL"),
         ),
         {"schema": "surveys"},
     )

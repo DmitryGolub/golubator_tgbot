@@ -115,5 +115,6 @@ class TestEmit:
 class TestExecuteAction:
     async def test_unknown_action_type(self):
         rule = SimpleNamespace(action_type="unknown_type")
+        bot = AsyncMock()
         with pytest.raises(ValueError, match="Unknown action_type"):
-            await EventDispatcher.execute_action(rule, 100, {}, None)
+            await EventDispatcher.execute_action(rule, 100, {}, bot)

@@ -141,15 +141,12 @@ class NotionClient:
     async def get_all_pages(self) -> list[dict]:
         pages: list[dict] = []
         cursor: str | None = None
-        try:
-            while True:
-                resp = await self.query_pages(page_size=100, start_cursor=cursor)
-                pages.extend(resp["results"])
-                if not resp.get("has_more"):
-                    break
-                cursor = resp.get("next_cursor")
-        except APIResponseError as e:
-            logger.error("Notion get_all_pages failed: %s", e)
+        while True:
+            resp = await self.query_pages(page_size=100, start_cursor=cursor)
+            pages.extend(resp["results"])
+            if not resp.get("has_more"):
+                break
+            cursor = resp.get("next_cursor")
         return pages
 
     async def get_page(self, page_id: str) -> dict | None:
