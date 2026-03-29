@@ -21,6 +21,7 @@ celery_app = Celery(
         "src.tasks.meeting",
         "src.tasks.notion_sync",
         "src.tasks.trigger",
+        "src.tasks.weekly_survey",
     ],
 )
 
@@ -55,6 +56,11 @@ celery_app.conf.update(
         "triggers.process_pending": {
             "task": "triggers.process_pending",
             "schedule": crontab(minute="*"),
+        },
+        # Weekly mentor per-student survey (Mon 12:00 UTC = 15:00 MSK)
+        "surveys.send_weekly_mentor_per_student": {
+            "task": "surveys.send_weekly_mentor_per_student",
+            "schedule": crontab(minute=0, hour=12, day_of_week=1),
         },
     },
 )

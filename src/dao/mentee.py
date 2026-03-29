@@ -43,6 +43,20 @@ class MenteeDAO(BaseDAO):
             return list(result.scalars().all())
 
     @classmethod
+    async def get_by_telegram_ids(cls, telegram_ids: list[int]) -> list[Mentee]:
+        """Load mentees with mentor and user relations in a single query."""
+        if not telegram_ids:
+            return []
+        async with async_session_maker() as session:
+            query = (
+                select(cls.model)
+                .options(joinedload(cls.model.mentor), joinedload(cls.model.user))
+                .where(cls.model.telegram_id.in_(telegram_ids))
+            )
+            result = await session.execute(query)
+            return list(result.unique().scalars().all())
+
+    @classmethod
     async def get_all_with_details(cls, **filter_by) -> list[Mentee]:
         async with async_session_maker() as session:
             query = select(cls.model).options(
