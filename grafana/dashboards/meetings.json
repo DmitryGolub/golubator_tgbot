@@ -12,15 +12,6 @@
         "type": "custom",
         "query": "day,week,month",
         "current": { "text": "week", "value": "week" }
-      },
-      {
-        "name": "student",
-        "label": "Ученик",
-        "type": "query",
-        "datasource": { "type": "postgres", "uid": "pg-mentoring" },
-        "query": "SELECT me.telegram_id AS __value, me.doc_name AS __text FROM iam.mentees me ORDER BY me.doc_name",
-        "refresh": 2,
-        "includeAll": false
       }
     ]
   },
@@ -94,25 +85,11 @@
       "id": 5,
       "title": "Среднее кол-во созвонов на стадию",
       "type": "barchart",
-      "gridPos": { "h": 12, "w": 12, "x": 0, "y": 24 },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 24 },
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
           "rawSql": "WITH stage_periods AS (\n  SELECT\n    user_telegram_id,\n    new_value AS stage,\n    created_at AS started_at,\n    COALESCE(\n      LEAD(created_at) OVER (PARTITION BY user_telegram_id ORDER BY created_at),\n      now()\n    ) AS ended_at\n  FROM integrations.stage_transitions\n  WHERE cohort_type = 'Status'\n),\nmeetings_per_stage AS (\n  SELECT\n    sp.user_telegram_id,\n    sp.stage,\n    COUNT(DISTINCT m.id) AS cnt\n  FROM stage_periods sp\n  JOIN meetings.meeting_users mu ON mu.user_id = sp.user_telegram_id\n  JOIN meetings.meetings m ON m.id = mu.meeting_id\n    AND m.scheduled_at >= sp.started_at\n    AND m.scheduled_at < sp.ended_at\n  GROUP BY sp.user_telegram_id, sp.stage\n)\nSELECT\n  stage,\n  ROUND(AVG(cnt), 1) AS \"Среднее созвонов\"\nFROM meetings_per_stage\nGROUP BY stage\nORDER BY \"Среднее созвонов\" DESC",
-          "format": "table",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "id": 6,
-      "title": "Созвоны ученика по стадиям",
-      "type": "barchart",
-      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 24 },
-      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
-      "targets": [
-        {
-          "rawSql": "WITH stage_periods AS (\n  SELECT\n    new_value AS stage,\n    created_at AS started_at,\n    COALESCE(\n      LEAD(created_at) OVER (ORDER BY created_at),\n      now()\n    ) AS ended_at\n  FROM integrations.stage_transitions\n  WHERE user_telegram_id = $student\n    AND cohort_type = 'Status'\n)\nSELECT\n  sp.stage,\n  COUNT(DISTINCT m.id) AS \"Созвонов\"\nFROM stage_periods sp\nJOIN meetings.meeting_users mu ON mu.user_id = $student\nJOIN meetings.meetings m ON m.id = mu.meeting_id\n  AND m.scheduled_at >= sp.started_at\n  AND m.scheduled_at < sp.ended_at\nGROUP BY sp.stage\nORDER BY MIN(sp.started_at)",
           "format": "table",
           "refId": "A"
         }

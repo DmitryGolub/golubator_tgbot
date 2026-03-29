@@ -5,6 +5,7 @@ Revises: None
 Create Date: 2026-03-22 00:00:00.000000
 """
 
+from datetime import time
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -978,28 +979,28 @@ def upgrade() -> None:
         },
         {
             "slug": "mentor_self_review",
-            "title": "Ежемесячная самооценка ментора",
-            "description": "Заполняется ментором раз в месяц",
+            "title": "Двухнедельный опрос ментора",
+            "description": "Заполняется ментором раз в две недели",
             "questions": [
                 {
                     "sort_order": 1,
-                    "title": "Оцените вашу загрузку",
+                    "title": "Загруженность",
                     "question_type": "rating",
                     "is_required": True,
-                    "config": {"min": 1, "max": 5},
+                    "config": {"min": 1, "max": 10},
                     "options": [],
                 },
                 {
                     "sort_order": 2,
-                    "title": "Раздражение тупостью голубя",
+                    "title": "Удовлетворённость (NPS)",
                     "question_type": "rating",
                     "is_required": True,
-                    "config": {"min": 1, "max": 5},
+                    "config": {"min": 1, "max": 10},
                     "options": [],
                 },
                 {
                     "sort_order": 3,
-                    "title": "Средняя нейромутация учеников",
+                    "title": "Рутина",
                     "question_type": "rating",
                     "is_required": True,
                     "config": {"min": 1, "max": 10},
@@ -1007,10 +1008,18 @@ def upgrade() -> None:
                 },
                 {
                     "sort_order": 4,
-                    "title": "Комментарий",
-                    "question_type": "text",
-                    "is_required": False,
-                    "config": None,
+                    "title": "Ясность ожиданий",
+                    "question_type": "rating",
+                    "is_required": True,
+                    "config": {"min": 1, "max": 10},
+                    "options": [],
+                },
+                {
+                    "sort_order": 5,
+                    "title": "Поддержка и доступность руководства/коллег",
+                    "question_type": "rating",
+                    "is_required": True,
+                    "config": {"min": 1, "max": 10},
                     "options": [],
                 },
             ],
@@ -1109,18 +1118,19 @@ def upgrade() -> None:
             },
         },
         {
-            "name": "Ежемесячная самооценка ментора",
+            "name": "Двухнедельный опрос ментора",
             "trigger_type": "periodic_cron",
             "action_type": "send_survey",
             "is_active": True,
-            "cron_expression": "0 9 1 * *",
+            "regularity": "fortnight",
+            "time_of_day": time(12, 0),
             "delay_seconds": 0,
             "delay_mode": "after_trigger",
             "recipient_type": "by_role",
             "recipient_config": {"role_name": "mentor"},
             "action_config": {
                 "survey_template_id": template_ids["mentor_self_review"],
-                "survey_title": "Ежемесячная самооценка ментора",
+                "survey_title": "Двухнедельный опрос ментора",
             },
         },
     ]

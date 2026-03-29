@@ -1,0 +1,181 @@
+{
+  "uid": "mentoring-mentee-profile",
+  "title": "Профиль менти",
+  "tags": ["mentoring"],
+  "timezone": "browser",
+  "refresh": "5m",
+  "time": { "from": "now-90d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "mentee",
+        "label": "Менти",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+        "query": "SELECT me.telegram_id AS __value, me.doc_name AS __text FROM iam.mentees me ORDER BY me.doc_name",
+        "refresh": 2,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Ментор",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT COALESCE(u.name, u.username) AS \"Ментор\"\nFROM iam.mentees me\nJOIN iam.mentors mt ON mt.id = me.mentor_id\nJOIN iam.users u ON u.telegram_id = mt.telegram_id\nWHERE me.telegram_id = $mentee",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "text" }
+        }
+      },
+      "options": {
+        "textMode": "value",
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Текущая стадия",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT COALESCE(c.value, 'Не определена') AS \"Стадия\"\nFROM integrations.user_cohorts uc\nJOIN integrations.cohorts c ON c.id = uc.cohort_id AND c.type = 'Status'\nWHERE uc.user_telegram_id = $mentee\nLIMIT 1",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "text" }
+        }
+      },
+      "options": {
+        "textMode": "value",
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Балл ученика",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT me.student_score AS \"Балл\"\nFROM iam.mentees me\nWHERE me.telegram_id = $mentee",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 30 },
+              { "color": "green", "value": 60 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Созвонов за период",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 5, "x": 15, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(DISTINCT m.id) AS \"Созвонов\"\nFROM meetings.meeting_users mu\nJOIN meetings.meetings m ON m.id = mu.meeting_id\nWHERE mu.user_id = $mentee\n  AND m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Контракт",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  CASE WHEN me.contract THEN 'Да' ELSE 'Нет' END\n  || COALESCE(' (до ' || to_char(me.contract_expires, 'DD.MM.YYYY') || ')', '') AS \"Контракт\"\nFROM iam.mentees me\nWHERE me.telegram_id = $mentee",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "text" }
+        }
+      },
+      "options": {
+        "textMode": "value",
+        "colorMode": "none"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Созвоны по стадиям",
+      "type": "barchart",
+      "gridPos": { "h": 12, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "WITH stage_periods AS (\n  SELECT\n    new_value AS stage,\n    created_at AS started_at,\n    COALESCE(\n      LEAD(created_at) OVER (ORDER BY created_at),\n      now()\n    ) AS ended_at\n  FROM integrations.stage_transitions\n  WHERE user_telegram_id = $mentee\n    AND cohort_type = 'Status'\n)\nSELECT\n  sp.stage,\n  COUNT(DISTINCT m.id) AS \"Созвонов\"\nFROM stage_periods sp\nJOIN meetings.meeting_users mu ON mu.user_id = $mentee\nJOIN meetings.meetings m ON m.id = mu.meeting_id\n  AND m.scheduled_at >= sp.started_at\n  AND m.scheduled_at < sp.ended_at\nGROUP BY sp.stage\nORDER BY MIN(sp.started_at)",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Созвоны за период",
+      "type": "timeseries",
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  date_trunc('week', m.scheduled_at) AS time,\n  COUNT(DISTINCT m.id) AS \"Созвонов\"\nFROM meetings.meeting_users mu\nJOIN meetings.meetings m ON m.id = mu.meeting_id\nWHERE mu.user_id = $mentee\n  AND m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1\nORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "bars", "fillOpacity": 50 }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "История переходов",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  to_char(st.created_at AT TIME ZONE 'Europe/Moscow', 'DD.MM.YYYY HH24:MI') AS \"Дата\",\n  COALESCE(st.old_value, '(новый)') AS \"Из\",\n  st.new_value AS \"В\",\n  st.cohort_type AS \"Тип когорты\"\nFROM integrations.stage_transitions st\nWHERE st.user_telegram_id = $mentee\nORDER BY st.created_at DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39
+}

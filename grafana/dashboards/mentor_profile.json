@@ -1,0 +1,163 @@
+{
+  "uid": "mentoring-mentor-profile",
+  "title": "Профиль ментора",
+  "tags": ["mentoring"],
+  "timezone": "browser",
+  "refresh": "5m",
+  "time": { "from": "now-90d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "mentor",
+        "label": "Ментор",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+        "query": "SELECT mt.telegram_id AS __value, COALESCE(u.name, u.username) AS __text FROM iam.mentors mt JOIN iam.users u ON u.telegram_id = mt.telegram_id ORDER BY __text",
+        "refresh": 2,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Учеников всего",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS \"Учеников\"\nFROM iam.mentees me\nJOIN iam.mentors mt ON mt.id = me.mentor_id\nWHERE mt.telegram_id = $mentor",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Созвонов за период",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS \"Созвонов\"\nFROM meetings.meetings m\nWHERE m.mentor_telegram_id = $mentor\n  AND m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Средняя оценка",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(AVG(a.value_int)::numeric, 2) AS \"Средняя оценка\"\nFROM surveys.survey_sessions ss\nJOIN surveys.survey_answers a ON a.session_id = ss.id\nJOIN meetings.meetings m ON m.id = ss.context_id::int\nWHERE a.value_int IS NOT NULL\n  AND ss.status = 'completed'\n  AND ss.context_type = 'meeting'\n  AND m.mentor_telegram_id = $mentor\n  AND m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 5,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 3 },
+              { "color": "green", "value": 4 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Опросов заполнено",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(DISTINCT ss.id) AS \"Опросов\"\nFROM surveys.survey_sessions ss\nJOIN meetings.meetings m ON m.id = ss.context_id::int\nWHERE ss.status = 'completed'\n  AND ss.context_type = 'meeting'\n  AND m.mentor_telegram_id = $mentor\n  AND m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Созвоны за период",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  date_trunc('week', m.scheduled_at) AS time,\n  COUNT(*) AS \"Созвонов\"\nFROM meetings.meetings m\nWHERE m.mentor_telegram_id = $mentor\n  AND m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1\nORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "bars", "fillOpacity": 50 }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Ученики ментора",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  me.doc_name AS \"Ученик\",\n  COALESCE(c.value, 'Без стадии') AS \"Стадия\",\n  me.student_score AS \"Балл\",\n  CASE WHEN me.contract THEN 'Да' ELSE 'Нет' END AS \"Контракт\",\n  COUNT(DISTINCT mtg.id) AS \"Созвонов\"\nFROM iam.mentees me\nJOIN iam.mentors mt ON mt.id = me.mentor_id\nLEFT JOIN integrations.user_cohorts uc ON uc.user_telegram_id = me.telegram_id\nLEFT JOIN integrations.cohorts c ON c.id = uc.cohort_id AND c.type = 'Status'\nLEFT JOIN meetings.meeting_users mu ON mu.user_id = me.telegram_id\nLEFT JOIN meetings.meetings mtg ON mtg.id = mu.meeting_id\n  AND mtg.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\nWHERE mt.telegram_id = $mentor\nGROUP BY me.doc_name, c.value, me.student_score, me.contract\nORDER BY me.doc_name",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Оценки по вопросам",
+      "type": "barchart",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  q.title AS \"Вопрос\",\n  ROUND(AVG(a.value_int)::numeric, 2) AS \"Средняя оценка\"\nFROM surveys.survey_answers a\nJOIN surveys.survey_questions q ON q.id = a.question_id\nJOIN surveys.survey_sessions ss ON ss.id = a.session_id\nJOIN meetings.meetings m ON m.id = ss.context_id::int\nWHERE a.value_int IS NOT NULL\n  AND ss.status = 'completed'\n  AND ss.context_type = 'meeting'\n  AND m.mentor_telegram_id = $mentor\n  AND m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY q.title\nORDER BY \"Средняя оценка\" DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "xTickLabelRotation": -45,
+        "xTickLabelMaxLength": 30
+      }
+    },
+    {
+      "id": 8,
+      "title": "История оценок",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  date_trunc('week', a.created_at) AS time,\n  ROUND(AVG(a.value_int)::numeric, 2) AS \"Средняя оценка\"\nFROM surveys.survey_answers a\nJOIN surveys.survey_sessions ss ON ss.id = a.session_id\nJOIN meetings.meetings m ON m.id = ss.context_id::int\nWHERE a.value_int IS NOT NULL\n  AND ss.status = 'completed'\n  AND ss.context_type = 'meeting'\n  AND m.mentor_telegram_id = $mentor\n  AND a.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1\nORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39
+}
