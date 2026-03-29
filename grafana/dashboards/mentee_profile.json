@@ -27,7 +27,7 @@
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT COALESCE(u.name, u.username) AS \"Ментор\"\nFROM iam.mentees me\nJOIN iam.mentors mt ON mt.id = me.mentor_id\nJOIN iam.users u ON u.telegram_id = mt.telegram_id\nWHERE me.telegram_id = $mentee",
+          "rawSql": "SELECT COALESCE(u.name, u.username, 'Не назначен') AS \"Ментор\"\nFROM iam.mentees me\nLEFT JOIN iam.mentors mt ON mt.id = me.mentor_id\nLEFT JOIN iam.users u ON u.telegram_id = mt.telegram_id\nWHERE me.telegram_id = $mentee",
           "format": "table",
           "refId": "A"
         }
@@ -50,7 +50,7 @@
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT COALESCE(c.value, 'Не определена') AS \"Стадия\"\nFROM integrations.user_cohorts uc\nJOIN integrations.cohorts c ON c.id = uc.cohort_id AND c.type = 'Status'\nWHERE uc.user_telegram_id = $mentee\nLIMIT 1",
+          "rawSql": "SELECT COALESCE(\n  (SELECT c.value\n   FROM integrations.user_cohorts uc\n   JOIN integrations.cohorts c ON c.id = uc.cohort_id AND c.type = 'Status'\n   WHERE uc.user_telegram_id = $mentee\n   LIMIT 1),\n  'Не определена'\n) AS \"Стадия\"",
           "format": "table",
           "refId": "A"
         }
@@ -114,7 +114,7 @@
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT\n  CASE WHEN me.contract THEN 'Да' ELSE 'Нет' END\n  || COALESCE(' (до ' || to_char(me.contract_expires, 'DD.MM.YYYY') || ')', '') AS \"Контракт\"\nFROM iam.mentees me\nWHERE me.telegram_id = $mentee",
+          "rawSql": "SELECT\n  CASE WHEN me.contract THEN 'Да' ELSE 'Нет' END\n  || COALESCE(' (до ' || me.contract_expires || ')', '') AS \"Контракт\"\nFROM iam.mentees me\nWHERE me.telegram_id = $mentee",
           "format": "table",
           "refId": "A"
         }

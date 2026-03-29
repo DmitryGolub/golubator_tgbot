@@ -115,7 +115,7 @@
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT\n  me.doc_name AS \"Ученик\",\n  COALESCE(c.value, 'Без стадии') AS \"Стадия\",\n  me.student_score AS \"Балл\",\n  CASE WHEN me.contract THEN 'Да' ELSE 'Нет' END AS \"Контракт\",\n  COUNT(DISTINCT mtg.id) AS \"Созвонов\"\nFROM iam.mentees me\nJOIN iam.mentors mt ON mt.id = me.mentor_id\nLEFT JOIN integrations.user_cohorts uc ON uc.user_telegram_id = me.telegram_id\nLEFT JOIN integrations.cohorts c ON c.id = uc.cohort_id AND c.type = 'Status'\nLEFT JOIN meetings.meeting_users mu ON mu.user_id = me.telegram_id\nLEFT JOIN meetings.meetings mtg ON mtg.id = mu.meeting_id\n  AND mtg.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\nWHERE mt.telegram_id = $mentor\nGROUP BY me.doc_name, c.value, me.student_score, me.contract\nORDER BY me.doc_name",
+          "rawSql": "SELECT\n  me.doc_name AS \"Ученик\",\n  COALESCE(c.value, 'Без стадии') AS \"Стадия\",\n  me.student_score AS \"Балл\",\n  CASE WHEN me.contract THEN 'Да' ELSE 'Нет' END AS \"Контракт\",\n  COUNT(DISTINCT mtg.id) AS \"Созвонов\"\nFROM iam.mentees me\nJOIN iam.mentors mt ON mt.id = me.mentor_id\nLEFT JOIN (\n  integrations.user_cohorts uc\n  JOIN integrations.cohorts c ON c.id = uc.cohort_id AND c.type = 'Status'\n) ON uc.user_telegram_id = me.telegram_id\nLEFT JOIN meetings.meeting_users mu ON mu.user_id = me.telegram_id\nLEFT JOIN meetings.meetings mtg ON mtg.id = mu.meeting_id\n  AND mtg.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\nWHERE mt.telegram_id = $mentor\nGROUP BY me.doc_name, c.value, me.student_score, me.contract\nORDER BY me.doc_name",
           "format": "table",
           "refId": "A"
         }

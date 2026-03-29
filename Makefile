@@ -5,7 +5,7 @@ DC_FILE := docker-compose.yaml
 init: up logs
 
 up:
-	docker compose --profile dev up -d --build
+	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --profile dev up -d --build
 
 up-prod:
 	docker compose --profile prod up -d --build
