@@ -1,5 +1,3 @@
-from typing import Optional
-
 from src.dao.survey_session import SurveySessionDAO
 from src.dao.survey_template import SurveyTemplateDAO
 from src.models.survey_session import SessionStatus, SurveySession
@@ -131,18 +129,3 @@ class SurveySessionService:
             raise SessionAlreadyCompletedError
 
         return await SurveySessionDAO.complete(session_id)
-
-    async def find_session(
-        self,
-        *,
-        template_id: int,
-        respondent_id: int,
-        context_type: str | None = None,
-        context_id: str | None = None,
-    ) -> Optional[SurveySession]:
-        return await SurveySessionDAO.find_for_respondent(
-            template_id=template_id,
-            respondent_id=respondent_id,
-            context_type=context_type,
-            context_id=context_id,
-        )

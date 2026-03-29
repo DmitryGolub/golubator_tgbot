@@ -69,42 +69,6 @@ class NotionService:
 
     # === Pages (users) ===
 
-    async def find_page_by_username(self, username: str) -> dict | None:
-        clean = username.lstrip("@")
-        for query_val in [f"@{clean}", clean]:
-            try:
-                ds_id = await self._resolve_data_source_id()
-                resp = await self._client.data_sources.query(
-                    data_source_id=ds_id,
-                    filter={
-                        "property": "Doc name",
-                        "title": {"equals": query_val},
-                    },
-                    page_size=1,
-                )
-                if resp["results"]:
-                    return resp["results"][0]
-            except APIResponseError as e:
-                logger.error("Notion query by username '%s' failed: %s", query_val, e)
-                return None
-        return None
-
-    async def find_page_by_telegram_id(self, tg_id: int) -> dict | None:
-        try:
-            ds_id = await self._resolve_data_source_id()
-            resp = await self._client.data_sources.query(
-                data_source_id=ds_id,
-                filter={
-                    "property": "Telegram ID",
-                    "number": {"equals": tg_id},
-                },
-                page_size=1,
-            )
-            return resp["results"][0] if resp["results"] else None
-        except APIResponseError as e:
-            logger.error("Notion query by telegram_id %s failed: %s", tg_id, e)
-            return None
-
     async def create_page(self, username: str, telegram_id: int) -> dict | None:
         clean = username.lstrip("@")
         try:
@@ -118,17 +82,6 @@ class NotionService:
             )
         except APIResponseError as e:
             logger.error("Notion create page for @%s failed: %s", clean, e)
-            return None
-
-    async def update_page_properties(
-        self, page_id: str, properties: dict
-    ) -> dict | None:
-        try:
-            return await self._client.pages.update(
-                page_id=page_id, properties=properties
-            )
-        except APIResponseError as e:
-            logger.error("Notion update page %s failed: %s", page_id, e)
             return None
 
     async def get_all_pages(self) -> list[dict]:

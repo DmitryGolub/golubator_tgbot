@@ -125,17 +125,6 @@ async def cohort_values_keyboard(cohort_type: str) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-async def user_list_keyboard() -> InlineKeyboardMarkup:
-    from src.services.ui_text import UiTextService
-
-    texts = await UiTextService.get_many(["user.btn.update", "menu.back"])
-    kb = InlineKeyboardBuilder()
-    kb.button(text=texts["user.btn.update"], callback_data="user_update_menu")
-    kb.button(text=texts["menu.back"], callback_data="back_to_menu")
-    kb.adjust(1)
-    return kb.as_markup()
-
-
 async def user_list_paginated_keyboard(
     total_pages: int,
     page: int = 0,
