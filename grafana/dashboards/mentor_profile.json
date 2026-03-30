@@ -12,7 +12,7 @@
         "label": "Ментор",
         "type": "query",
         "datasource": { "type": "postgres", "uid": "pg-mentoring" },
-        "query": "SELECT mt.telegram_id AS __value, COALESCE(u.name, u.username) AS __text FROM iam.mentors mt JOIN iam.users u ON u.telegram_id = mt.telegram_id AND u.is_placeholder = false ORDER BY __text",
+        "query": "SELECT mt.telegram_id AS __value, COALESCE(u.name, u.username, 'ID: ' || mt.telegram_id::text) AS __text FROM iam.mentors mt LEFT JOIN iam.users u ON u.telegram_id = mt.telegram_id WHERE mt.telegram_id IS NOT NULL ORDER BY __text",
         "refresh": 2,
         "includeAll": false
       }
