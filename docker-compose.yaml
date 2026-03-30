@@ -103,7 +103,6 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
-      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_SERVER_ENABLE_GZIP: "true"
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
@@ -136,9 +135,12 @@ services:
     image: nginx:alpine
     container_name: tg_bot.nginx
     ports:
-      - "8081:80"
+      - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot_conf:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
     depends_on:
       bot:
         condition: service_healthy
@@ -146,7 +148,19 @@ services:
       - prod
     restart: unless-stopped
 
+  certbot:
+    image: certbot/certbot
+    container_name: tg_bot.certbot
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    profiles:
+      - prod
+    command: ["true"]
+
 volumes:
   db_data:
   redis_data:
   grafana_data:
+  certbot_conf:
+  certbot_www:
