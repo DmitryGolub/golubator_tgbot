@@ -39,7 +39,13 @@
       },
       "options": {
         "textMode": "value",
-        "colorMode": "none"
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "/.*/",
+          "values": false
+        }
       }
     },
     {
@@ -62,7 +68,13 @@
       },
       "options": {
         "textMode": "value",
-        "colorMode": "none"
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "/.*/",
+          "values": false
+        }
       }
     },
     {
@@ -126,7 +138,13 @@
       },
       "options": {
         "textMode": "value",
-        "colorMode": "none"
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "/.*/",
+          "values": false
+        }
       }
     },
     {
