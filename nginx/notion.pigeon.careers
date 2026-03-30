@@ -5,12 +5,13 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name notion.pigeon.careers;
 
-    ssl_certificate /etc/letsencrypt/live/pigeon.careers/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/pigeon.careers/privkey.pem;
-    ssl_trusted_certificate /etc/letsencrypt/live/pigeon.careers/chain.pem;
+    ssl_certificate /etc/letsencrypt/live/notion.pigeon.careers/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/notion.pigeon.careers/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/notion.pigeon.careers/chain.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
 

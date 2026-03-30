@@ -42,10 +42,15 @@ nginx-deploy:
 	sudo nginx -s reload
 
 cert-init:
-	sudo certbot certonly --nginx \
+	@echo "==> Stopping nginx to free port 80..."
+	sudo nginx -s stop || true
+	sudo certbot certonly --standalone \
+		--register-unsafely-without-email \
+		--agree-tos \
 		-d notion.pigeon.careers \
 		-d grafana.pigeon.careers
-	sudo nginx -s reload
+	@echo "==> Starting nginx..."
+	sudo nginx
 	@echo "==> Done! HTTPS certificates obtained."
 
 cert-renew:
