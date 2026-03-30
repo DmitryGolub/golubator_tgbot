@@ -1,6 +1,6 @@
 DC_FILE := docker-compose.yaml
 
-.PHONY: init up up-prod down logs ps test migrate reset clean restart cert-init cert-renew nginx-deploy
+.PHONY: init up up-prod down logs ps test migrate reset clean restart cert-init cert-renew nginx-deploy backfill-transitions
 
 init: up logs
 
@@ -51,3 +51,6 @@ cert-init:
 cert-renew:
 	sudo certbot renew
 	sudo nginx -s reload
+
+backfill-transitions:
+	uv run python -m src.scripts.backfill_stage_transitions
