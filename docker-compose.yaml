@@ -52,6 +52,8 @@ services:
   bot:
     <<: *app-base
     container_name: tg_bot.bot
+    ports:
+      - "127.0.0.1:8080:8080"
     depends_on:
       migrations:
         condition: service_completed_successfully
@@ -99,6 +101,8 @@ services:
   grafana:
     image: grafana/grafana-oss:11.5.2
     container_name: tg_bot.grafana
+    ports:
+      - "127.0.0.1:3000:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -131,36 +135,7 @@ services:
       - dev
     restart: unless-stopped
 
-  nginx:
-    image: nginx:alpine
-    container_name: tg_bot.nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - certbot_conf:/etc/letsencrypt:ro
-      - certbot_www:/var/www/certbot:ro
-    depends_on:
-      bot:
-        condition: service_healthy
-    profiles:
-      - prod
-    restart: unless-stopped
-
-  certbot:
-    image: certbot/certbot
-    container_name: tg_bot.certbot
-    volumes:
-      - certbot_conf:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    profiles:
-      - prod
-    command: ["true"]
-
 volumes:
   db_data:
   redis_data:
   grafana_data:
-  certbot_conf:
-  certbot_www:

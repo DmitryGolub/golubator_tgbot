@@ -1,6 +1,6 @@
 DC_FILE := docker-compose.yaml
 
-.PHONY: init up up-prod down logs ps test migrate reset clean restart cert-init cert-renew
+.PHONY: init up up-prod down logs ps test migrate reset clean restart cert-init cert-renew nginx-deploy
 
 init: up logs
 
@@ -8,7 +8,7 @@ up:
 	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --profile dev up -d --build
 
 up-prod:
-	docker compose --profile prod up -d --build
+	docker compose up -d --build
 
 down:
 	docker compose down
@@ -26,32 +26,28 @@ migrate:
 	uv run alembic upgrade head
 
 reset:
-	docker compose --profile dev --profile prod down -v --remove-orphans
+	docker compose --profile dev down -v --remove-orphans
 
 restart: reset up
 
 clean:
-	docker compose --profile dev --profile prod down -v --rmi local --remove-orphans
+	docker compose --profile dev down -v --rmi local --remove-orphans
+
+nginx-deploy:
+	sudo cp nginx/notion.pigeon.careers /etc/nginx/sites-available/notion.pigeon.careers
+	sudo cp nginx/grafana.pigeon.careers /etc/nginx/sites-available/grafana.pigeon.careers
+	sudo ln -sf /etc/nginx/sites-available/notion.pigeon.careers /etc/nginx/sites-enabled/notion.pigeon.careers
+	sudo ln -sf /etc/nginx/sites-available/grafana.pigeon.careers /etc/nginx/sites-enabled/grafana.pigeon.careers
+	sudo nginx -t
+	sudo nginx -s reload
 
 cert-init:
-	@echo "==> Switching to initial nginx config (HTTP only)..."
-	cp nginx/default.conf.initial nginx/default.conf.tmp
-	cp nginx/default.conf nginx/default.conf.bak
-	cp nginx/default.conf.initial nginx/default.conf
-	docker compose --profile prod up -d nginx
-	@echo "==> Requesting certificate from Let's Encrypt..."
-	docker compose --profile prod run --rm certbot certonly \
-		--webroot -w /var/www/certbot \
-		--register-unsafely-without-email \
-		--agree-tos \
+	sudo certbot certonly --nginx \
 		-d notion.pigeon.careers \
 		-d grafana.pigeon.careers
-	@echo "==> Restoring HTTPS nginx config..."
-	cp nginx/default.conf.bak nginx/default.conf
-	rm -f nginx/default.conf.tmp nginx/default.conf.bak
-	docker compose --profile prod exec nginx nginx -s reload
-	@echo "==> Done! HTTPS is active."
+	sudo nginx -s reload
+	@echo "==> Done! HTTPS certificates obtained."
 
 cert-renew:
-	docker compose --profile prod run --rm certbot renew
-	docker compose --profile prod exec nginx nginx -s reload
+	sudo certbot renew
+	sudo nginx -s reload
