@@ -58,4 +58,4 @@ cert-renew:
 	sudo nginx -s reload
 
 backfill-transitions:
-	uv run python -m src.scripts.backfill_stage_transitions
+	docker compose exec bot uv run python -m src.scripts.backfill_stage_transitions
