@@ -101,26 +101,16 @@ async def test_assign_permissions_to_role(
     assert perms_btn is not None, "Role detail should have 'Permissions' button"
     perms_msg = await account1.click_button(detail_msg, text=perms_btn.text)
 
-    # Find view_own_info toggle button and click it
+    # Find view_own_info toggle button — buttons show display names, not codenames
+    # "Просмотр своей информации" is the display name for view_own_info
     buttons = _get_buttons(perms_msg)
     view_btn = None
     for btn in buttons:
-        if (
-            btn.data
-            and b"rbac_perm:" in btn.data
-            and "view_own_info" in btn.text.lower()
-        ):
-            view_btn = btn
-            break
-
-    # If not found by text, find any toggle_perm button that relates to view_own_info
-    if view_btn is None:
-        # The permission buttons show codename in text; look for it
-        for btn in buttons:
-            if btn.data and b"rbac_perm:" in btn.data:
-                if "view_own" in btn.text:
-                    view_btn = btn
-                    break
+        if btn.data and b"rbac_perm:" in btn.data:
+            text_lower = btn.text.lower()
+            if "своей информации" in text_lower or "view_own" in text_lower:
+                view_btn = btn
+                break
 
     assert view_btn is not None, (
         f"Should find view_own_info toggle button. Available: "

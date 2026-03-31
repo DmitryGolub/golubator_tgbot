@@ -54,7 +54,11 @@ async def test_create_meeting_fsm(
 
     # Click "Create meeting"
     create_btn = _find_button(meetings_msg, "meeting_create")
-    assert create_btn is not None, "Meetings list should have 'Create' button"
+    all_btns = _get_buttons(meetings_msg)
+    assert create_btn is not None, (
+        f"Meetings list should have 'Create' button. "
+        f"Available: {[(b.text, b.data.decode() if b.data else '') for b in all_btns]}"
+    )
     create_msg = await account1.click_button(meetings_msg, text=create_btn.text)
 
     # Step 1: Choose student — find first student button

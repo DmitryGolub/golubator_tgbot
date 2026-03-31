@@ -180,7 +180,7 @@ class TestSetup:
             )
         existing = await self._pool.fetchval(
             """
-            SELECT id FROM integrations.user_cohorts
+            SELECT cohort_id FROM integrations.user_cohorts
             WHERE user_telegram_id = $1 AND cohort_id IN (
                 SELECT id FROM integrations.cohorts WHERE type = $2
             )
@@ -190,8 +190,12 @@ class TestSetup:
         )
         if existing:
             await self._pool.execute(
-                "UPDATE integrations.user_cohorts SET cohort_id = $1 WHERE id = $2",
+                """
+                UPDATE integrations.user_cohorts SET cohort_id = $1
+                WHERE user_telegram_id = $2 AND cohort_id = $3
+                """,
                 cohort_id,
+                telegram_id,
                 existing,
             )
         else:

@@ -16,6 +16,14 @@ NOTION_MENTEE_DB_ID = os.environ.get(
     "NOTION_MENTEE_DB_ID", os.environ.get("NOTION_DATABASE_ID", "")
 )
 
+# TODO: Add module-scoped teardown to archive/delete test Notion pages after each run.
+# Without cleanup, tests are not deterministic:
+# - test_push_events_creates_page may pass falsely because notion_page_id remains from a previous run
+# - test_push_skips_synced may pass even if push is broken (synced_at already set)
+# - test_push_mentors_role doesn't verify the actual property value changed in Notion
+# Fix: add a fixture that calls notion.cleanup_test_pages() in teardown,
+# and reset notion_page_id/synced_at to NULL in setup before each push test.
+
 _module_state = {}
 
 

@@ -50,7 +50,7 @@ celerybeat-schedule
 celerybeat-schedule.db
 
 # E2E test sessions
-tests/e2e/sessions/*.session
+tests/e2e/sessions/*.session*
 
 # Misc
 *.log

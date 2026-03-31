@@ -90,7 +90,9 @@ def meeting_students_keyboard(students, page: int = 0) -> InlineKeyboardMarkup:
         kb.row(*nav)
 
     for student in page_items:
-        display_name = getattr(student, "doc_name", None) or student.name
+        display_name = getattr(student, "doc_name", None) or (
+            student.user.name if student.user else f"id={student.id}"
+        )
         username = getattr(student, "username", None)
         if not username and hasattr(student, "user") and student.user:
             username = student.user.username

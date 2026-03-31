@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from telethon import TelegramClient, events
+from telethon import TelegramClient
 from telethon.tl.custom import Message
 
 
@@ -39,35 +39,46 @@ class TelegramTestClient:
         index: int | None = None,
         timeout: float = 15,
     ) -> Message:
-        """Click an inline button and wait for the edited/new message."""
-        # Set up a future to capture the edited message
-        edit_future: asyncio.Future[Message] = asyncio.get_event_loop().create_future()
-        msg_id = message.id
+        """Click an inline button and wait for the bot response (edit or new message).
 
-        async def on_edit(event):
-            if event.message.id == msg_id and not edit_future.done():
-                edit_future.set_result(event.message)
+        Uses polling approach: remembers last messages before click,
+        then polls until a new/edited message appears.
+        """
+        # Remember state before click
+        old_messages = await self._client.get_messages(self._bot, limit=3)
+        old_ids_texts = {m.id: (m.text, m.date) for m in old_messages}
+        max_old_id = max(m.id for m in old_messages) if old_messages else 0
 
-        async def on_new(event):
-            if not edit_future.done():
-                edit_future.set_result(event.message)
+        # Perform click
+        if text is not None:
+            await message.click(text=text)
+        elif index is not None:
+            await message.click(index)
+        else:
+            raise ValueError("Specify text or index")
 
-        # Register handlers for both edit and new message
-        self._client.add_event_handler(on_edit, events.MessageEdited(chats=self._bot))
-        self._client.add_event_handler(on_new, events.NewMessage(chats=self._bot))
+        # Poll for changes
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            await asyncio.sleep(0.5)
+            new_messages = await self._client.get_messages(self._bot, limit=5)
+            for m in new_messages:
+                # New message appeared
+                if m.id > max_old_id:
+                    return m
+                # Existing message was edited (text changed)
+                if m.id in old_ids_texts:
+                    old_text, old_date = old_ids_texts[m.id]
+                    if (
+                        m.text != old_text
+                        or m.edit_date is not None
+                        and (m.id not in old_ids_texts or m.edit_date != old_date)
+                    ):
+                        return m
 
-        try:
-            if text is not None:
-                await message.click(text=text)
-            elif index is not None:
-                await message.click(index)
-            else:
-                raise ValueError("Specify text or index")
-
-            return await asyncio.wait_for(edit_future, timeout=timeout)
-        finally:
-            self._client.remove_event_handler(on_edit)
-            self._client.remove_event_handler(on_new)
+        raise TimeoutError(
+            f"No response from bot within {timeout}s after clicking button"
+        )
 
     async def send_text_in_fsm(self, text: str, timeout: float = 15) -> Message:
         """Send text in an FSM dialog and get the next prompt/confirmation."""
