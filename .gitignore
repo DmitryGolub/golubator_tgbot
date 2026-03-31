@@ -16,6 +16,7 @@ venv/
 .env
 /.env.*
 !.env.sample
+!.env.test.sample
 
 # IDE
 .idea/
@@ -47,6 +48,9 @@ htmlcov/
 # Celery
 celerybeat-schedule
 celerybeat-schedule.db
+
+# E2E test sessions
+tests/e2e/sessions/*.session
 
 # Misc
 *.log

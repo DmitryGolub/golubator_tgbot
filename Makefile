@@ -1,6 +1,6 @@
 DC_FILE := docker-compose.yaml
 
-.PHONY: init up up-prod down logs ps test migrate reset clean restart cert-init cert-renew nginx-deploy backfill-transitions
+.PHONY: init up up-prod down logs ps test migrate reset clean restart cert-init cert-renew nginx-deploy backfill-transitions test-e2e-up test-e2e-down test-e2e-reset test-e2e
 
 init: up logs
 
@@ -59,3 +59,18 @@ cert-renew:
 
 backfill-transitions:
 	docker compose exec bot python -m src.scripts.backfill_stage_transitions
+
+# ── E2E tests ──
+test-e2e-up:
+	docker compose --profile test up -d --build
+
+test-e2e-down:
+	docker compose --profile test down
+
+test-e2e-reset:
+	docker compose --profile test down -v --remove-orphans
+
+test-e2e:
+	docker compose --profile test up -d --build
+	uv run pytest tests/e2e/ -v --timeout=120
+	docker compose --profile test down

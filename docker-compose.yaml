@@ -120,6 +120,113 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── Test profile ──
+  db_test:
+    image: postgres:16-alpine
+    container_name: tg_bot.db_test
+    environment:
+      POSTGRES_DB: botdb_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - db_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d botdb_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - test
+
+  redis_test:
+    image: redis:7-alpine
+    container_name: tg_bot.redis_test
+    ports:
+      - "127.0.0.1:6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - test
+
+  migrations_test:
+    <<: *app-base
+    container_name: tg_bot.migrations_test
+    command: ["alembic", "upgrade", "head"]
+    env_file:
+      - .env.test
+    environment:
+      DB_HOST: db_test
+      DB_PORT: 5432
+      REDIS_HOST: redis_test
+      REDIS_PORT: 6379
+    restart: "no"
+    depends_on:
+      db_test:
+        condition: service_healthy
+    profiles:
+      - test
+
+  bot_test:
+    <<: *app-base
+    container_name: tg_bot.bot_test
+    env_file:
+      - .env.test
+    environment:
+      DB_HOST: db_test
+      DB_PORT: 5432
+      REDIS_HOST: redis_test
+      REDIS_PORT: 6379
+    depends_on:
+      migrations_test:
+        condition: service_completed_successfully
+      redis_test:
+        condition: service_healthy
+    profiles:
+      - test
+
+  celery_worker_test:
+    <<: *app-base
+    container_name: tg_bot.celery_worker_test
+    command: ["python", "-m", "src.scripts.celery_worker"]
+    env_file:
+      - .env.test
+    environment:
+      DB_HOST: db_test
+      DB_PORT: 5432
+      REDIS_HOST: redis_test
+      REDIS_PORT: 6379
+    depends_on:
+      migrations_test:
+        condition: service_completed_successfully
+      redis_test:
+        condition: service_healthy
+    profiles:
+      - test
+
+  celery_beat_test:
+    <<: *app-base
+    container_name: tg_bot.celery_beat_test
+    command: ["python", "-m", "src.scripts.celery_beat"]
+    env_file:
+      - .env.test
+    environment:
+      DB_HOST: db_test
+      DB_PORT: 5432
+      REDIS_HOST: redis_test
+      REDIS_PORT: 6379
+    depends_on:
+      migrations_test:
+        condition: service_completed_successfully
+      redis_test:
+        condition: service_healthy
+    profiles:
+      - test
+
   ngrok:
     image: ngrok/ngrok:latest
     container_name: tg_bot.ngrok
@@ -139,3 +246,4 @@ volumes:
   db_data:
   redis_data:
   grafana_data:
+  db_test_data:
