@@ -34,6 +34,7 @@ alert_type_enum = Enum(
     AlertType,
     name="alert_type_enum",
     schema="surveys",
+    create_type=False,
     values_callable=lambda e: [m.value for m in e],
 )
 

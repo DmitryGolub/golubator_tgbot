@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0009_alerts"
 down_revision: Union[str, None] = "0008_seed"
@@ -17,15 +18,26 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    alert_type_enum = sa.Enum(
+    op.execute(
+        sa.text("""
+        DO $$ BEGIN
+            CREATE TYPE surveys.alert_type_enum
+                AS ENUM ('low_score', 'delta_decline', 'cross_mismatch', 'mentor_not_recommend');
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+        END $$
+    """)
+    )
+
+    alert_type_enum = postgresql.ENUM(
         "low_score",
         "delta_decline",
         "cross_mismatch",
         "mentor_not_recommend",
         name="alert_type_enum",
         schema="surveys",
+        create_type=False,
     )
-    alert_type_enum.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "survey_alerts",
@@ -66,6 +78,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("survey_alerts", schema="surveys")
-    sa.Enum(name="alert_type_enum", schema="surveys").drop(
-        op.get_bind(), checkfirst=True
-    )
+    op.execute("DROP TYPE IF EXISTS surveys.alert_type_enum")
