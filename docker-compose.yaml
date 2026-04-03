@@ -115,7 +115,9 @@ services:
   promtail:
     image: grafana/promtail:3.4.2
     container_name: tg_bot.promtail
-    command: -config.file=/etc/promtail/promtail-config.yaml
+    command: -config.file=/etc/promtail/promtail-config.yaml -config.expand-env=true
+    environment:
+      LOKI_TENANT_ID: ${LOKI_TENANT_ID}
     volumes:
       - ./promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -139,6 +141,7 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASS: ${DB_PASS}
+      LOKI_TENANT_ID: ${LOKI_TENANT_ID}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
