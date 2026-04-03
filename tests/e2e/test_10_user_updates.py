@@ -37,11 +37,14 @@ async def test_change_mentee_mentor(
     setup: TestSetup,
 ):
     """Admin changes mentee's mentor via bot update flow."""
-    # Setup
+    # Setup: account1 = admin (navigates UI) + mentor record + manage_meetings permission
+    # account2 = student (default after /start) — appears in user selection list
     await account1.send_command_multi("/start", count=2)
     await account2.send_command_multi("/start", count=2)
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
+    # Add manage_meetings to admin role so account1 appears in get_all_with_permission
+    await setup.ensure_role_permission("admin", "manage_meetings")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
     # /menu -> Users
@@ -68,23 +71,25 @@ async def test_change_mentee_mentor(
         param_msg, text=mentor_param_btn.text
     )
 
-    # Choose mentor (account1)
+    # Choose mentor (account1 — admin with manage_meetings, visible in mentor list)
     mentor_btn = _find_button(mentor_select_msg, f"upd_mentor:{ACCOUNT_1_TG_ID}")
     assert mentor_btn is not None, (
         f"Should find mentor button for {ACCOUNT_1_TG_ID}. Buttons: "
         f"{[(b.text, b.data.decode()) for b in _get_buttons(mentor_select_msg)]}"
     )
     user_select_msg = await account1.click_button(
-        mentor_select_msg, text=mentor_btn.text
+        mentor_select_msg, data=mentor_btn.data.decode()
     )
 
-    # Choose user (account2)
+    # Choose user (account2 — student, visible in user list)
     user_btn = _find_button(user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
     assert user_btn is not None, (
         f"Should find user button for {ACCOUNT_2_TG_ID}. Buttons: "
         f"{[(b.text, b.data.decode()) for b in _get_buttons(user_select_msg)]}"
     )
-    result_msg = await account1.click_button(user_select_msg, text=user_btn.text)
+    result_msg = await account1.click_button(
+        user_select_msg, data=user_btn.data.decode()
+    )
     assert "обновлено" in result_msg.text.lower(), (
         f"Expected 'обновлено' in response, got: {result_msg.text[:200]}"
     )
@@ -169,7 +174,9 @@ async def test_update_user_info(
         f"Should find user button for {ACCOUNT_2_TG_ID}. Buttons: "
         f"{[(b.text, b.data.decode()) for b in _get_buttons(user_select_msg)]}"
     )
-    result_msg = await account1.click_button(user_select_msg, text=user_btn.text)
+    result_msg = await account1.click_button(
+        user_select_msg, data=user_btn.data.decode()
+    )
     assert "обновлено" in result_msg.text.lower(), (
         f"Expected 'обновлено', got: {result_msg.text[:200]}"
     )

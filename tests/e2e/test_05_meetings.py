@@ -67,7 +67,7 @@ async def test_create_meeting_fsm(
         f"Should find student button. Buttons: "
         f"{[(b.text, b.data.decode()) for b in _get_buttons(create_msg)]}"
     )
-    type_msg = await account1.click_button(create_msg, text=student_btn.text)
+    type_msg = await account1.click_button(create_msg, data=student_btn.data.decode())
 
     # Step 2: Skip meeting type
     skip_type_btn = _find_button(type_msg, "meeting_skip_type")

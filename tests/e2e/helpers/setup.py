@@ -101,6 +101,11 @@ class TestSetup:
         """
         import json
 
+        # Clean up from previous failed runs to avoid UniqueViolationError
+        await self._pool.execute(
+            "DELETE FROM surveys.survey_templates WHERE slug = $1", slug
+        )
+
         template_id = await self._pool.fetchval(
             """
             INSERT INTO surveys.survey_templates (title, slug, is_active)
@@ -115,7 +120,7 @@ class TestSetup:
             question_id = await self._pool.fetchval(
                 """
                 INSERT INTO surveys.survey_questions
-                    (template_id, title, question_type, position, is_required, config)
+                    (template_id, title, question_type, sort_order, is_required, config)
                 VALUES ($1, $2, $3, $4, $5, $6::jsonb)
                 RETURNING id
                 """,
@@ -130,7 +135,7 @@ class TestSetup:
                 await self._pool.execute(
                     """
                     INSERT INTO surveys.survey_question_options
-                        (question_id, value, label, position)
+                        (question_id, value, label, sort_order)
                     VALUES ($1, $2, $3, $4)
                     """,
                     question_id,
@@ -151,7 +156,7 @@ class TestSetup:
         return await self._pool.fetchval(
             """
             INSERT INTO surveys.survey_sessions
-                (template_id, respondent_telegram_id, context_type, context_id, status)
+                (template_id, respondent_id, context_type, context_id, status)
             VALUES ($1, $2, $3, $4, 'pending')
             RETURNING id
             """,
@@ -159,6 +164,37 @@ class TestSetup:
             respondent_id,
             context_type,
             context_id,
+        )
+
+    async def ensure_role_permission(self, role_name: str, permission_name: str):
+        """Ensure a role has a specific permission in role_permissions."""
+        await self._pool.execute(
+            """
+            INSERT INTO iam.role_permissions (role_id, permission_id)
+            SELECT r.id, p.id FROM iam.roles r, iam.permissions p
+            WHERE r.name = $1 AND p.codename = $2
+            ON CONFLICT DO NOTHING
+            """,
+            role_name,
+            permission_name,
+        )
+
+    async def add_fake_mentor(self, telegram_id: int, name: str):
+        """Create a non-placeholder user with role=mentor and a mentor record."""
+        await self._pool.execute(
+            """
+            INSERT INTO iam.users (telegram_id, name, role_id, is_placeholder)
+            VALUES ($1, $2, (SELECT id FROM iam.roles WHERE name = 'mentor'), false)
+            ON CONFLICT (telegram_id) DO UPDATE SET
+                role_id = (SELECT id FROM iam.roles WHERE name = 'mentor'),
+                is_placeholder = false
+            """,
+            telegram_id,
+            name,
+        )
+        await self._pool.execute(
+            "INSERT INTO iam.mentors (telegram_id) VALUES ($1) ON CONFLICT DO NOTHING",
+            telegram_id,
         )
 
     # --- Cohorts ---
@@ -226,6 +262,67 @@ class TestSetup:
         await self._pool.execute(
             f"UPDATE {table} SET updated_at = NOW() WHERE telegram_id = $1",
             telegram_id,
+        )
+
+    # --- Meetings ---
+
+    async def create_meeting(
+        self,
+        mentor_telegram_id: int,
+        student_telegram_id: int,
+        description: str = "E2E test meeting",
+    ) -> int:
+        """Create a meeting directly in DB. Returns meeting_id."""
+        meeting_id = await self._pool.fetchval(
+            """
+            INSERT INTO meetings.meetings
+                (mentor_telegram_id, student_telegram_id, description, call_status)
+            VALUES ($1, $2, $3, 'запланирован')
+            RETURNING id
+            """,
+            mentor_telegram_id,
+            student_telegram_id,
+            description,
+        )
+        # Add participants via association table
+        await self._pool.execute(
+            "INSERT INTO meetings.meeting_users (meeting_id, telegram_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            meeting_id,
+            mentor_telegram_id,
+        )
+        await self._pool.execute(
+            "INSERT INTO meetings.meeting_users (meeting_id, telegram_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            meeting_id,
+            student_telegram_id,
+        )
+        return meeting_id
+
+    async def create_fake_users(
+        self, count: int, role_name: str = "student"
+    ) -> list[int]:
+        """Create N fake non-placeholder users. Returns list of telegram_ids."""
+        ids = []
+        for i in range(count):
+            tg_id = -(900_000 + i)
+            await self._pool.execute(
+                """
+                INSERT INTO iam.users (telegram_id, name, role_id, is_placeholder)
+                VALUES ($1, $2, (SELECT id FROM iam.roles WHERE name = $3), false)
+                ON CONFLICT (telegram_id) DO NOTHING
+                """,
+                tg_id,
+                f"FakeUser_{i}",
+                role_name,
+            )
+            ids.append(tg_id)
+        return ids
+
+    async def create_role(self, name: str, display_name: str) -> int:
+        """Create a role directly in DB. Returns role_id."""
+        return await self._pool.fetchval(
+            "INSERT INTO iam.roles (name, display_name) VALUES ($1, $2) RETURNING id",
+            name,
+            display_name,
         )
 
     # --- Triggers ---

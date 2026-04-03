@@ -75,6 +75,21 @@ class NotionAssertions:
             f"Property {property_name}: expected >= {min_count} entries, got {count}"
         )
 
+    async def archive_test_pages(self, database_id: str, title_contains: str = "E2E"):
+        """Archive pages whose title contains the given substring (e.g. test data)."""
+        try:
+            results = await self._client.databases.query(
+                database_id=database_id,
+                filter={
+                    "property": "Name",
+                    "title": {"contains": title_contains},
+                },
+            )
+            for page in results.get("results", []):
+                await self._client.pages.update(page_id=page["id"], archived=True)
+        except Exception:
+            pass  # Notion may not be configured in test env
+
     @staticmethod
     def _extract_value(prop: dict) -> str:
         """Extract text value from a Notion property."""

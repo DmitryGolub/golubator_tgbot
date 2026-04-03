@@ -172,7 +172,7 @@ async def test_cohort_change_triggers_notification(
     if user_btn is None:
         pytest.skip("Cannot find user button")
         return
-    await account1.click_button(user_msg, text=user_btn.text)
+    await account1.click_button(user_msg, data=user_btn.data.decode())
 
     # Wait for notification on account2
     try:
@@ -224,13 +224,15 @@ async def test_onboarding_meeting_on_mentor_assign(
     if mentor_select_btn is None:
         pytest.skip("Cannot find mentor select button")
         return
-    user_msg = await account1.click_button(mentor_msg, text=mentor_select_btn.text)
+    user_msg = await account1.click_button(
+        mentor_msg, data=mentor_select_btn.data.decode()
+    )
 
     user_btn = _find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
     if user_btn is None:
         pytest.skip("Cannot find user button")
         return
-    result_msg = await account1.click_button(user_msg, text=user_btn.text)
+    result_msg = await account1.click_button(user_msg, data=user_btn.data.decode())
     assert "обновлено" in result_msg.text.lower()
 
     # Wait briefly for onboarding meeting to be created

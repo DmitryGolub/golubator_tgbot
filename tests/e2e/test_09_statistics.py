@@ -29,12 +29,12 @@ async def test_mentor_stats_display(
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
 
     menu_msg = await account1.send_command("/menu")
-    stats_btn = _find_button(menu_msg, "mentor_my_stats")
-    assert stats_btn is not None, (
-        "Mentor menu should have 'My stats' button (mentor_my_stats)"
+    info_btn = _find_button(menu_msg, "mentor_me_info")
+    assert info_btn is not None, (
+        "Mentor menu should have 'My info' button (mentor_me_info)"
     )
 
-    stats_msg = await account1.click_button(menu_msg, text=stats_btn.text)
+    stats_msg = await account1.click_button(menu_msg, text=info_btn.text)
     assert stats_msg.text is not None
     assert "Созвоны" in stats_msg.text, (
         f"Stats should contain 'Созвоны', got: {stats_msg.text[:200]}"

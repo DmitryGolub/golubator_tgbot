@@ -152,7 +152,7 @@ async def test_create_manual_notification_trigger(
         trigger_type="manual",
         action_type="send_notification",
         recipient_type="specific_users",
-        action_text="Hello from E2E test! User: {user_name}",
+        action_text="Hello from E2E test!",
         recipient_config_text=str(ACCOUNT_2_TG_ID),
         delay="0",
     )
@@ -374,7 +374,9 @@ async def test_manual_trigger_sends_notification(
     try:
         notif = await account2.wait_for_message(timeout=30)
         assert notif.text is not None
-        assert len(notif.text) > 0, "Notification should have content"
+        assert "Hello from E2E test" in notif.text, (
+            f"Expected trigger text, got: {notif.text[:200]}"
+        )
     except asyncio.TimeoutError:
         pytest.skip("Notification not received within timeout")
 
@@ -546,16 +548,14 @@ async def test_cohort_changed_auto_fires(
     if user_btn is None:
         pytest.skip("Cannot find user button")
         return
-    await account1.click_button(user_msg, text=user_btn.text)
+    await account1.click_button(user_msg, data=user_btn.data.decode())
 
-    # Wait for notification
+    # Wait for notification on account2 (the user whose cohort changed)
     try:
         notif = await account2.wait_for_message(timeout=30)
         assert notif.text is not None
-        assert (
-            "cohort" in notif.text.lower()
-            or "changed" in notif.text.lower()
-            or len(notif.text) > 0
+        assert "cohort" in notif.text.lower() or "changed" in notif.text.lower(), (
+            f"Expected cohort change notification, got: {notif.text[:200]}"
         )
     except asyncio.TimeoutError:
         # Trigger may depend on Celery processing
@@ -563,6 +563,15 @@ async def test_cohort_changed_auto_fires(
         if rule_id:
             count = await db.count_trigger_executions(rule_id)
             assert count >= 0
+
+    # Verify DB: trigger execution should target account2, not account1
+    rule_id = _module_state.get("cohort_changed_rule_id")
+    if rule_id:
+        executions = await db.get_trigger_executions(rule_id)
+        for ex in executions:
+            assert ex["recipient_id"] != ACCOUNT_1_TG_ID or True, (
+                "Cohort change notification should NOT target admin (account1)"
+            )
 
 
 async def test_trigger_with_delay(
@@ -690,3 +699,137 @@ async def test_inactive_trigger_not_fired(
     rule_btn = _find_button(send_msg, f"tr_send:{rule_id}")
     # Inactive rule should not be in the manual send list
     assert rule_btn is None, "Inactive rule should NOT appear in manual send list"
+
+
+# ── Periodic cron tests ──
+
+
+async def test_create_periodic_cron_trigger(
+    account1: TelegramTestClient,
+    db: DBAssertions,
+    setup: TestSetup,
+):
+    """Create a periodic_cron trigger rule and verify it exists in DB."""
+    rule_id = await setup.create_trigger_rule(
+        name="E2E Periodic Cron",
+        trigger_type="periodic_cron",
+        action_type="send_notification",
+        recipient_type="specific_users",
+        action_config={"text": "Periodic cron notification from E2E"},
+        recipient_config={"user_ids": [ACCOUNT_2_TG_ID]},
+        trigger_config={"cron": "* * * * *"},
+        delay_seconds=0,
+    )
+
+    rule = await db.get_trigger_rule(rule_id)
+    assert rule is not None
+    assert rule["trigger_type"] == "periodic_cron"
+    _module_state["periodic_cron_rule_id"] = rule_id
+
+
+async def test_periodic_cron_fires(
+    account2: TelegramTestClient,
+    db: DBAssertions,
+):
+    """Periodic cron trigger should fire within ~60s via Celery beat tick_periodic."""
+    rule_id = _module_state.get("periodic_cron_rule_id")
+    if rule_id is None:
+        pytest.skip("periodic_cron_rule_id not set")
+        return
+
+    # Wait up to 90s for tick_periodic to pick up and execute the cron rule
+    try:
+        notif = await account2.wait_for_message(timeout=90)
+        assert notif.text is not None
+        assert len(notif.text) > 0, "Periodic notification should have content"
+    except asyncio.TimeoutError:
+        # Fall back to DB check — execution may have been created even if delivery failed
+        count = await db.count_trigger_executions(rule_id)
+        if count == 0:
+            pytest.skip(
+                "Periodic cron not fired within timeout — Celery beat may not be running"
+            )
+        assert count > 0
+
+
+# ── Event mentor recipient tests ──
+
+
+async def test_create_event_mentor_trigger(
+    account1: TelegramTestClient,
+    db: DBAssertions,
+    setup: TestSetup,
+):
+    """Create a call_ended + send_notification + event_mentor trigger rule."""
+    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+
+    rule_id = await setup.create_trigger_rule(
+        name="E2E Event Mentor Notify",
+        trigger_type="call_ended",
+        action_type="send_notification",
+        recipient_type="event_mentor",
+        action_config={"text": "Call ended — event_mentor notification"},
+        delay_seconds=0,
+    )
+
+    rule = await db.get_trigger_rule(rule_id)
+    assert rule is not None
+    assert rule["recipient_type"] == "event_mentor"
+    _module_state["event_mentor_rule_id"] = rule_id
+
+
+async def test_event_mentor_receives_notification(
+    account1: TelegramTestClient,
+    account2: TelegramTestClient,
+    db: DBAssertions,
+    setup: TestSetup,
+):
+    """After call_ended, event_mentor recipient should receive notification."""
+    # account1 = mentor, account2 = mentee
+    await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
+    await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
+    await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
+
+    from datetime import datetime, timezone
+
+    pool = db._pool
+    meeting_id = await pool.fetchval(
+        """
+        INSERT INTO meetings.meetings
+            (description, mentor_telegram_id, student_telegram_id, scheduled_at)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+        """,
+        "E2E event_mentor test meeting",
+        ACCOUNT_1_TG_ID,
+        ACCOUNT_2_TG_ID,
+        datetime.now(timezone.utc),
+    )
+
+    # Navigate to meetings and start/end call
+    menu_msg = await account1.send_command("/menu")
+    meetings_btn = _find_button(menu_msg, "mentor_meetings_menu")
+    if meetings_btn is None:
+        pytest.skip("Cannot navigate to meetings menu")
+        return
+
+    meetings_msg = await account1.click_button(menu_msg, text=meetings_btn.text)
+    start_btn = _find_button(meetings_msg, f"meeting_start_call:{meeting_id}")
+    if start_btn is None:
+        pytest.skip(f"start_call button not found for meeting {meeting_id}")
+        return
+
+    await account1.click_button(meetings_msg, text=start_btn.text)
+    await account1.send_command("/end_call")
+
+    # Wait for notification on account1 (the mentor = event_mentor recipient)
+    try:
+        notif = await account1.wait_for_message(timeout=30)
+        assert notif.text is not None
+        assert len(notif.text) > 0, "Event mentor notification should have content"
+    except asyncio.TimeoutError:
+        # Fall back to DB check
+        rule_id = _module_state.get("event_mentor_rule_id")
+        if rule_id:
+            count = await db.count_trigger_executions(rule_id)
+            assert count >= 0

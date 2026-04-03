@@ -37,25 +37,35 @@ class TelegramTestClient:
         message: Message,
         text: str | None = None,
         index: int | None = None,
+        data: str | None = None,
         timeout: float = 15,
     ) -> Message:
         """Click an inline button and wait for the bot response (edit or new message).
 
         Uses polling approach: remembers last messages before click,
         then polls until a new/edited message appears.
+
+        Args:
+            text: Match button by display text (first match — ambiguous if duplicates).
+            index: Match button by position index.
+            data: Match button by callback_data (exact match — unambiguous).
         """
         # Remember state before click
         old_messages = await self._client.get_messages(self._bot, limit=3)
-        old_ids_texts = {m.id: (m.text, m.date) for m in old_messages}
+        old_snapshots = {
+            m.id: (m.text, m.edit_date, m.reply_markup) for m in old_messages
+        }
         max_old_id = max(m.id for m in old_messages) if old_messages else 0
 
         # Perform click
-        if text is not None:
+        if data is not None:
+            await message.click(data=data.encode() if isinstance(data, str) else data)
+        elif text is not None:
             await message.click(text=text)
         elif index is not None:
             await message.click(index)
         else:
-            raise ValueError("Specify text or index")
+            raise ValueError("Specify text, index, or data")
 
         # Poll for changes
         deadline = asyncio.get_event_loop().time() + timeout
@@ -66,14 +76,12 @@ class TelegramTestClient:
                 # New message appeared
                 if m.id > max_old_id:
                     return m
-                # Existing message was edited (text changed)
-                if m.id in old_ids_texts:
-                    old_text, old_date = old_ids_texts[m.id]
-                    if (
-                        m.text != old_text
-                        or m.edit_date is not None
-                        and (m.id not in old_ids_texts or m.edit_date != old_date)
-                    ):
+                # Existing message was edited
+                if m.id in old_snapshots:
+                    old_text, old_edit_date, old_markup = old_snapshots[m.id]
+                    if m.text != old_text:
+                        return m
+                    if m.edit_date != old_edit_date:
                         return m
 
         raise TimeoutError(
@@ -96,9 +104,77 @@ class TelegramTestClient:
             return responses
 
     async def wait_for_message(self, timeout: float = 30) -> Message:
-        """Wait for an incoming message from the bot (for notifications/triggers)."""
-        async with self._client.conversation(self._bot, timeout=timeout) as conv:
-            return await conv.get_response()
+        """Wait for an incoming message from the bot (for notifications/triggers).
+
+        Uses polling: remembers the latest message id, then polls until a new one appears.
+        """
+        old_messages = await self._client.get_messages(self._bot, limit=1)
+        max_old_id = max((m.id for m in old_messages), default=0)
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            await asyncio.sleep(1)
+            new_messages = await self._client.get_messages(self._bot, limit=3)
+            for m in new_messages:
+                if m.id > max_old_id:
+                    return m
+        raise asyncio.TimeoutError(f"No new message from bot within {timeout}s")
+
+    async def press_callback(
+        self,
+        callback_data: str,
+        button_text: str = "→",
+        timeout: float = 15,
+    ) -> Message:
+        """Trigger an arbitrary callback_data by sending a bot message with an inline button.
+
+        Steps:
+        1. Bot API sends a message to the user with an inline button carrying callback_data
+        2. Telethon clicks that button
+        3. Bot handles the callback and edits/sends a response
+
+        Useful for triggering callbacks not reachable via menu navigation (e.g. my_surveys).
+        """
+        import os
+
+        import httpx
+
+        # Step 1: Send message with inline button via Bot API
+        me = await self._client.get_me()
+        token = os.environ["BOT_TOKEN"]
+        keyboard = {
+            "inline_keyboard": [[{"text": button_text, "callback_data": callback_data}]]
+        }
+        async with httpx.AsyncClient() as http:
+            resp = await http.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={
+                    "chat_id": me.id,
+                    "text": "⏳",
+                    "reply_markup": keyboard,
+                },
+            )
+            resp.raise_for_status()
+
+        # Step 2: Wait for the message to appear and click the button
+        await asyncio.sleep(1)
+        messages = await self._client.get_messages(self._bot, limit=3)
+        target = None
+        for m in messages:
+            if m.reply_markup and hasattr(m.reply_markup, "rows"):
+                for row in m.reply_markup.rows:
+                    for btn in row.buttons:
+                        if btn.data and btn.data.decode() == callback_data:
+                            target = m
+                            break
+            if target:
+                break
+
+        if target is None:
+            raise ValueError(
+                f"Could not find bot message with button '{callback_data}'"
+            )
+
+        return await self.click_button(target, text=button_text, timeout=timeout)
 
     async def get_last_messages(self, limit: int = 5) -> list[Message]:
         """Get last messages from the bot chat."""

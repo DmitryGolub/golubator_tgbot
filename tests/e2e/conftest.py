@@ -105,8 +105,12 @@ async def wait_for_sync():
 
 
 @pytest_asyncio.fixture(autouse=True, scope="module", loop_scope="session")
-async def cleanup_between_modules(setup):
-    """Clean up DB and Redis between test modules."""
+async def cleanup_between_modules(setup, notion):
+    """Clean up DB, Redis, and Notion test data between test modules."""
     yield
     await setup.truncate_all()
     await setup.flush_redis(REDIS_URL)
+    # Archive Notion test pages to prevent accumulation
+    event_db_id = os.environ.get("NOTION_EVENT_DB_ID")
+    if event_db_id:
+        await notion.archive_test_pages(event_db_id, title_contains="E2E")

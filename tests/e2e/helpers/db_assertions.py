@@ -76,7 +76,7 @@ class DBAssertions:
         row = await self._pool.fetchrow(
             """
             SELECT * FROM surveys.survey_sessions
-            WHERE respondent_telegram_id = $1 AND status = 'completed'
+            WHERE respondent_id = $1 AND status = 'completed'
             ORDER BY created_at DESC LIMIT 1
             """,
             user_telegram_id,
@@ -152,14 +152,14 @@ class DBAssertions:
 
     async def get_survey_questions(self, template_id: int) -> list[dict]:
         rows = await self._pool.fetch(
-            "SELECT * FROM surveys.survey_questions WHERE template_id = $1 ORDER BY position",
+            "SELECT * FROM surveys.survey_questions WHERE template_id = $1 ORDER BY sort_order",
             template_id,
         )
         return [dict(r) for r in rows]
 
     async def get_survey_question_options(self, question_id: int) -> list[dict]:
         rows = await self._pool.fetch(
-            "SELECT * FROM surveys.survey_question_options WHERE question_id = $1 ORDER BY position",
+            "SELECT * FROM surveys.survey_question_options WHERE question_id = $1 ORDER BY sort_order",
             question_id,
         )
         return [dict(r) for r in rows]
@@ -173,7 +173,7 @@ class DBAssertions:
     ) -> int:
         query = (
             "SELECT COUNT(*) FROM surveys.survey_sessions "
-            "WHERE template_id = $1 AND respondent_telegram_id = $2"
+            "WHERE template_id = $1 AND respondent_id = $2"
         )
         params: list[Any] = [template_id, respondent_id]
         if context_type is not None:
@@ -205,6 +205,41 @@ class DBAssertions:
             "SELECT COUNT(*) FROM triggers.trigger_executions WHERE rule_id = $1",
             rule_id,
         )
+
+    async def assert_meeting_deleted(self, meeting_id: int):
+        row = await self._pool.fetchrow(
+            "SELECT id FROM meetings.meetings WHERE id = $1", meeting_id
+        )
+        assert row is None, f"Meeting {meeting_id} should be deleted but still exists"
+
+    async def get_survey_template_with_questions(
+        self, template_id: int
+    ) -> dict[str, Any] | None:
+        template = await self._pool.fetchrow(
+            "SELECT * FROM surveys.survey_templates WHERE id = $1", template_id
+        )
+        if not template:
+            return None
+        result = dict(template)
+        questions = await self.get_survey_questions(template_id)
+        for q in questions:
+            q["options"] = await self.get_survey_question_options(q["id"])
+        result["questions"] = questions
+        return result
+
+    async def count_users_with_role(self, role_name: str) -> int:
+        return await self._pool.fetchval(
+            """
+            SELECT COUNT(*) FROM iam.users u
+            JOIN iam.roles r ON u.role_id = r.id
+            WHERE r.name = $1
+            """,
+            role_name,
+        )
+
+    async def get_role_by_name(self, name: str) -> dict[str, Any] | None:
+        row = await self._pool.fetchrow("SELECT * FROM iam.roles WHERE name = $1", name)
+        return dict(row) if row else None
 
     # --- Notion sync ---
 
