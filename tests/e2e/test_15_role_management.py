@@ -3,7 +3,7 @@ import os
 
 from tests.e2e.helpers.buttons import find_button, get_buttons, button_labels
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -24,10 +24,10 @@ async def _navigate_to_roles(account: TelegramTestClient):
 async def test_edit_permissions_via_bot(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Toggle a permission on a role via bot UI."""
-    await account1.send_command_multi("/start", count=2)
+    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     roles_msg = await _navigate_to_roles(account1)
@@ -59,7 +59,7 @@ async def test_edit_permissions_via_bot(
     perm_ids_before = {p["id"] for p in perms_before}
 
     # Toggle
-    await perm_btn.click()
+    await account1.click_button(perms_msg, data=perm_btn.data.decode())
     await asyncio.sleep(1)
 
     # Check DB: permission count should have changed
@@ -73,7 +73,7 @@ async def test_edit_permissions_via_bot(
 async def test_delete_role_with_users_prevented(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Attempting to delete a role that has users should be prevented."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -94,30 +94,18 @@ async def test_delete_role_with_users_prevented(
     role_id = int(admin_btn.data.decode().split(":")[-1])
     detail_msg = await account1.click_button(roles_msg, text=admin_btn.text)
 
-    # Click delete
+    # UI should hide delete button for role with assigned users
     del_btn = find_button(detail_msg, f"rbac_del:{role_id}")
-    assert del_btn is not None, (
-        f"Should find delete button. Buttons: {button_labels(detail_msg)}"
-    )
-    confirm_msg = await account1.click_button(detail_msg, text=del_btn.text)
-
-    # Confirm delete
-    cdel_btn = find_button(confirm_msg, f"rbac_cdel:{role_id}")
-    assert cdel_btn is not None, (
-        f"Should find confirm delete button. Buttons: {button_labels(confirm_msg)}"
-    )
-    result_msg = await account1.click_button(confirm_msg, text=cdel_btn.text)
-
-    # Should be prevented
-    assert "нельзя удалить" in result_msg.text.lower(), (
-        f"Expected 'нельзя удалить', got: {result_msg.text[:200]}"
+    assert del_btn is None, (
+        f"Delete button should NOT appear for role with assigned users. "
+        f"Buttons: {button_labels(detail_msg)}"
     )
 
 
 async def test_delete_role_success(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Delete a role with no users — should succeed."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")

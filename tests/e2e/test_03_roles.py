@@ -1,7 +1,8 @@
 import os
 
+from tests.e2e.helpers.buttons import find_button, get_buttons
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -10,30 +11,10 @@ ACCOUNT_2_TG_ID = int(os.environ.get("TEST_ACCOUNT_2_TG_ID", "0"))
 _module_state = {}
 
 
-def _find_button(msg, data_prefix: str):
-    """Find inline button by callback_data prefix."""
-    if msg.reply_markup and hasattr(msg.reply_markup, "rows"):
-        for row in msg.reply_markup.rows:
-            for btn in row.buttons:
-                if btn.data and btn.data.decode().startswith(data_prefix):
-                    return btn
-    return None
-
-
-def _get_buttons(msg) -> list:
-    """Get all inline buttons from message."""
-    buttons = []
-    if msg.reply_markup and hasattr(msg.reply_markup, "rows"):
-        for row in msg.reply_markup.rows:
-            for btn in row.buttons:
-                buttons.append(btn)
-    return buttons
-
-
 async def test_create_role_via_bot(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create a role through bot FSM and verify in DB."""
     # Setup: register and make admin
@@ -44,7 +25,7 @@ async def test_create_role_via_bot(
     if menu_msg.reply_markup is None:
         await account1.send_command_multi("/start", count=2)
         menu_msg = await account1.send_command("/menu")
-    roles_btn = _find_button(menu_msg, "menu_roles")
+    roles_btn = find_button(menu_msg, "menu_roles")
     assert roles_btn is not None, (
         f"Admin menu should have 'Roles' button, got: {menu_msg.text[:200] if menu_msg.text else 'None'}"
     )
@@ -58,7 +39,7 @@ async def test_create_role_via_bot(
     await db._pool.execute("DELETE FROM iam.roles WHERE name = 'e2e_test_role'")
 
     # Click "Create role"
-    create_btn = _find_button(roles_msg, "rbac_create_role")
+    create_btn = find_button(roles_msg, "rbac_create_role")
     assert create_btn is not None, "Roles list should have 'Create role' button"
     await account1.click_button(roles_msg, text=create_btn.text)
 
@@ -88,22 +69,22 @@ async def test_assign_permissions_to_role(
 
     # Navigate to roles list
     menu_msg = await account1.send_command("/menu")
-    roles_btn = _find_button(menu_msg, "menu_roles")
+    roles_btn = find_button(menu_msg, "menu_roles")
     roles_msg = await account1.click_button(menu_msg, text=roles_btn.text)
 
     # Find and click role detail button
-    detail_btn = _find_button(roles_msg, f"rbac_role:{role_id}")
+    detail_btn = find_button(roles_msg, f"rbac_role:{role_id}")
     assert detail_btn is not None, f"Should find role detail button for id={role_id}"
     detail_msg = await account1.click_button(roles_msg, text=detail_btn.text)
 
     # Click "Permissions"
-    perms_btn = _find_button(detail_msg, "rbac_edit_perms:")
+    perms_btn = find_button(detail_msg, "rbac_edit_perms:")
     assert perms_btn is not None, "Role detail should have 'Permissions' button"
     perms_msg = await account1.click_button(detail_msg, text=perms_btn.text)
 
     # Find view_own_info toggle button — buttons show display names, not codenames
     # "Просмотр своей информации" is the display name for view_own_info
-    buttons = _get_buttons(perms_msg)
+    buttons = get_buttons(perms_msg)
     view_btn = None
     for btn in buttons:
         if btn.data and b"rbac_perm:" in btn.data:
@@ -129,7 +110,7 @@ async def test_assign_permissions_to_role(
 async def test_assign_role_to_user(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Assign the created role to account2 via setup helper."""
     # Ensure account2 is registered
@@ -151,7 +132,7 @@ async def test_menu_updates_after_role_change(
 
     assert msg.reply_markup is not None, "Menu should have inline keyboard"
 
-    buttons = _get_buttons(msg)
+    buttons = get_buttons(msg)
     callback_data = [
         btn.data.decode() if isinstance(btn.data, bytes) else btn.data
         for btn in buttons

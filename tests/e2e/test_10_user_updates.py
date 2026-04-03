@@ -1,40 +1,20 @@
 import os
 from typing import Callable
 
-import pytest
-
+from tests.e2e.helpers.buttons import find_button, get_buttons
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
 ACCOUNT_2_TG_ID = int(os.environ.get("TEST_ACCOUNT_2_TG_ID", "0"))
 
 
-def _find_button(msg, data_prefix: str):
-    """Find inline button by callback_data prefix."""
-    if msg.reply_markup and hasattr(msg.reply_markup, "rows"):
-        for row in msg.reply_markup.rows:
-            for btn in row.buttons:
-                if btn.data and btn.data.decode().startswith(data_prefix):
-                    return btn
-    return None
-
-
-def _get_buttons(msg) -> list:
-    """Get all inline buttons from message."""
-    buttons = []
-    if msg.reply_markup and hasattr(msg.reply_markup, "rows"):
-        for row in msg.reply_markup.rows:
-            buttons.extend(row.buttons)
-    return buttons
-
-
 async def test_change_mentee_mentor(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Admin changes mentee's mentor via bot update flow."""
     # Setup: account1 = admin (navigates UI) + mentor record + manage_meetings permission
@@ -49,43 +29,43 @@ async def test_change_mentee_mentor(
 
     # /menu -> Users
     menu_msg = await account1.send_command("/menu")
-    users_btn = _find_button(menu_msg, "menu_users")
+    users_btn = find_button(menu_msg, "menu_users")
     assert users_btn is not None, "Admin menu should have 'Users' button"
     users_msg = await account1.click_button(menu_msg, text=users_btn.text)
 
     # Click "Update"
-    update_btn = _find_button(users_msg, "user_update_menu")
+    update_btn = find_button(users_msg, "user_update_menu")
     assert update_btn is not None, (
         f"Users list should have 'Update' button. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in _get_buttons(users_msg)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(users_msg)]}"
     )
     param_msg = await account1.click_button(users_msg, text=update_btn.text)
 
     # Choose "Mentor" parameter
-    mentor_param_btn = _find_button(param_msg, "upd_param:mentor")
+    mentor_param_btn = find_button(param_msg, "upd_param:mentor")
     assert mentor_param_btn is not None, (
         f"Should find mentor param button. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in _get_buttons(param_msg)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(param_msg)]}"
     )
     mentor_select_msg = await account1.click_button(
         param_msg, text=mentor_param_btn.text
     )
 
     # Choose mentor (account1 — admin with manage_meetings, visible in mentor list)
-    mentor_btn = _find_button(mentor_select_msg, f"upd_mentor:{ACCOUNT_1_TG_ID}")
+    mentor_btn = find_button(mentor_select_msg, f"upd_mentor:{ACCOUNT_1_TG_ID}")
     assert mentor_btn is not None, (
         f"Should find mentor button for {ACCOUNT_1_TG_ID}. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in _get_buttons(mentor_select_msg)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(mentor_select_msg)]}"
     )
     user_select_msg = await account1.click_button(
         mentor_select_msg, data=mentor_btn.data.decode()
     )
 
     # Choose user (account2 — student, visible in user list)
-    user_btn = _find_button(user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
+    user_btn = find_button(user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
     assert user_btn is not None, (
         f"Should find user button for {ACCOUNT_2_TG_ID}. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in _get_buttons(user_select_msg)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(user_select_msg)]}"
     )
     result_msg = await account1.click_button(
         user_select_msg, data=user_btn.data.decode()
@@ -105,24 +85,19 @@ async def test_mentee_change_synced_to_notion(
     wait_for_sync: Callable,
 ):
     """After mentor assignment, mentee's synced_at should eventually be set."""
-    try:
-        result = await wait_for_sync(
-            lambda: db.get_mentee_synced_at(ACCOUNT_2_TG_ID),
-            max_wait=30,
-            interval=3,
-        )
-    except AssertionError:
-        pytest.skip("Notion sync not completed within timeout")
-        return
+    result = await wait_for_sync(
+        lambda: db.get_mentee_synced_at(ACCOUNT_2_TG_ID),
+        max_wait=60,
+        interval=3,
+    )
 
-    if result is None:
-        pytest.skip("Mentee synced_at not set — Notion may not be configured")
+    assert result is not None, "Mentee synced_at should be set after Notion sync"
 
 
 async def test_update_user_info(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Admin updates user's status cohort via bot."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -131,18 +106,18 @@ async def test_update_user_info(
 
     # /menu -> Users -> Update -> Status
     menu_msg = await account1.send_command("/menu")
-    users_btn = _find_button(menu_msg, "menu_users")
+    users_btn = find_button(menu_msg, "menu_users")
     users_msg = await account1.click_button(menu_msg, text=users_btn.text)
 
-    update_btn = _find_button(users_msg, "user_update_menu")
+    update_btn = find_button(users_msg, "user_update_menu")
     assert update_btn is not None
     param_msg = await account1.click_button(users_msg, text=update_btn.text)
 
     # Choose "Status" parameter
-    status_param_btn = _find_button(param_msg, "upd_param:status")
+    status_param_btn = find_button(param_msg, "upd_param:status")
     assert status_param_btn is not None, (
         f"Should find status param button. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in _get_buttons(param_msg)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(param_msg)]}"
     )
     status_select_msg = await account1.click_button(
         param_msg, text=status_param_btn.text
@@ -150,7 +125,7 @@ async def test_update_user_info(
 
     # Choose "search" status value
     search_btn = None
-    for btn in _get_buttons(status_select_msg):
+    for btn in get_buttons(status_select_msg):
         if btn.data and b"upd_enum:status:" in btn.data:
             if b"search" in btn.data.lower() or "search" in btn.text.lower():
                 search_btn = btn
@@ -158,21 +133,21 @@ async def test_update_user_info(
 
     if search_btn is None:
         # Fall back: pick any status button
-        search_btn = _find_button(status_select_msg, "upd_enum:status:")
+        search_btn = find_button(status_select_msg, "upd_enum:status:")
 
     assert search_btn is not None, (
         f"Should find status value button. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in _get_buttons(status_select_msg)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(status_select_msg)]}"
     )
     user_select_msg = await account1.click_button(
         status_select_msg, text=search_btn.text
     )
 
     # Choose user (account2)
-    user_btn = _find_button(user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
+    user_btn = find_button(user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
     assert user_btn is not None, (
         f"Should find user button for {ACCOUNT_2_TG_ID}. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in _get_buttons(user_select_msg)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(user_select_msg)]}"
     )
     result_msg = await account1.click_button(
         user_select_msg, data=user_btn.data.decode()

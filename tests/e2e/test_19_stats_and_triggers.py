@@ -1,10 +1,8 @@
 import os
 
-import pytest
-
 from tests.e2e.helpers.buttons import find_button, button_labels
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -16,10 +14,10 @@ _module_state = {}
 async def test_admin_view_mentor_detail_stats(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Admin selects a mentor and views their detailed stats."""
-    await account1.send_command_multi("/start", count=2)
+    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
 
@@ -28,9 +26,9 @@ async def test_admin_view_mentor_detail_stats(
 
     # Find a mentor button
     mentor_btn = find_button(select_msg, "mstats:")
-    if mentor_btn is None:
-        pytest.skip("No mentors available for stats view")
-        return
+    assert mentor_btn is not None, (
+        f"Should find mentor stats button. Buttons: {button_labels(select_msg)}"
+    )
 
     detail_msg = await account1.click_button(select_msg, text=mentor_btn.text)
 
@@ -46,7 +44,7 @@ async def test_admin_view_mentor_detail_stats(
 async def test_view_trigger_rule_detail(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Admin views trigger rule detail."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")

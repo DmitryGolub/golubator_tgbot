@@ -2,7 +2,7 @@ import os
 
 from tests.e2e.helpers.buttons import find_button, button_labels
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -12,10 +12,10 @@ ACCOUNT_2_TG_ID = int(os.environ.get("TEST_ACCOUNT_2_TG_ID", "0"))
 async def test_mentor_me_info(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Mentor views their own info via mentor_me_info."""
-    await account1.send_command_multi("/start", count=2)
+    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_role_permission("mentor", "view_own_info")
@@ -34,10 +34,11 @@ async def test_mentor_me_info(
 async def test_student_me_info(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Student views their own info via student_me_info."""
-    await account2.send_command_multi("/start", count=2)
+    await setup.ensure_user_record(ACCOUNT_2_TG_ID)
+    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.set_user_role(ACCOUNT_2_TG_ID, "student")
     await setup.ensure_role_permission("student", "view_own_info")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
@@ -58,7 +59,7 @@ async def test_student_me_info(
 async def test_mentor_students_menu(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Mentor views their students list."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
@@ -84,7 +85,7 @@ async def test_mentor_students_menu(
 async def test_my_surveys_menu(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Student views 'My surveys' menu via press_callback."""
     await setup.set_user_role(ACCOUNT_2_TG_ID, "student")

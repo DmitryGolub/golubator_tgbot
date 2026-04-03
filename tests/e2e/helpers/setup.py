@@ -2,7 +2,7 @@ import asyncpg
 from typing import Any
 
 
-class TestSetup:
+class E2ESetup:
     def __init__(self, pool: asyncpg.Pool):
         self._pool = pool
 
@@ -23,8 +23,18 @@ class TestSetup:
         if self._redis_url:
             await self.flush_redis(self._redis_url)
 
+    async def ensure_user_record(self, telegram_id: int, name: str = "E2E User"):
+        """Create a User record if it doesn't exist (FK dependency for mentors/mentees)."""
+        await self._pool.execute(
+            """INSERT INTO iam.users (telegram_id, name, is_placeholder)
+               VALUES ($1, $2, false) ON CONFLICT (telegram_id) DO NOTHING""",
+            telegram_id,
+            name,
+        )
+
     async def ensure_mentor_record(self, telegram_id: int):
         """Create a Mentor record if it doesn't exist."""
+        await self.ensure_user_record(telegram_id)
         existing = await self._pool.fetchrow(
             "SELECT id FROM iam.mentors WHERE telegram_id = $1", telegram_id
         )
@@ -37,6 +47,10 @@ class TestSetup:
         self, telegram_id: int, mentor_telegram_id: int | None = None
     ):
         """Create a Mentee record if it doesn't exist."""
+        await self.ensure_user_record(telegram_id)
+        if mentor_telegram_id:
+            await self.ensure_user_record(mentor_telegram_id)
+            await self.ensure_mentor_record(mentor_telegram_id)
         existing = await self._pool.fetchrow(
             "SELECT id FROM iam.mentees WHERE telegram_id = $1", telegram_id
         )
@@ -273,11 +287,13 @@ class TestSetup:
         description: str = "E2E test meeting",
     ) -> int:
         """Create a meeting directly in DB. Returns meeting_id."""
+        await self.ensure_user_record(mentor_telegram_id)
+        await self.ensure_user_record(student_telegram_id)
         meeting_id = await self._pool.fetchval(
             """
             INSERT INTO meetings.meetings
-                (mentor_telegram_id, student_telegram_id, description, call_status)
-            VALUES ($1, $2, $3, 'запланирован')
+                (mentor_telegram_id, student_telegram_id, description)
+            VALUES ($1, $2, $3)
             RETURNING id
             """,
             mentor_telegram_id,
@@ -319,6 +335,11 @@ class TestSetup:
 
     async def create_role(self, name: str, display_name: str) -> int:
         """Create a role directly in DB. Returns role_id."""
+        await self._pool.execute(
+            "DELETE FROM iam.role_permissions WHERE role_id IN (SELECT id FROM iam.roles WHERE name = $1)",
+            name,
+        )
+        await self._pool.execute("DELETE FROM iam.roles WHERE name = $1", name)
         return await self._pool.fetchval(
             "INSERT INTO iam.roles (name, display_name) VALUES ($1, $2) RETURNING id",
             name,

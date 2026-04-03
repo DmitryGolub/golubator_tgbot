@@ -10,7 +10,7 @@ from telethon import TelegramClient
 
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.notion_assertions import NotionAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 load_dotenv(".env.test", override=True)
@@ -59,8 +59,8 @@ async def db(db_pool) -> DBAssertions:
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def setup(db_pool) -> TestSetup:
-    s = TestSetup(db_pool)
+async def setup(db_pool) -> E2ESetup:
+    s = E2ESetup(db_pool)
     s._redis_url = REDIS_URL
     return s
 

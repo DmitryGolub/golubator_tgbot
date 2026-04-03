@@ -1,10 +1,8 @@
 import os
 
-import pytest
-
 from tests.e2e.helpers.buttons import find_button, get_buttons, button_labels
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -14,10 +12,10 @@ ACCOUNT_2_TG_ID = int(os.environ.get("TEST_ACCOUNT_2_TG_ID", "0"))
 async def test_user_list_pagination(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create enough users to trigger pagination, then navigate pages."""
-    await account1.send_command_multi("/start", count=2)
+    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Create 10 fake users to exceed default page size (6)
@@ -46,9 +44,9 @@ async def test_user_list_pagination(
 
     # Choose any role value
     role_btn = find_button(roles_msg, "upd_enum:role:")
-    if role_btn is None:
-        pytest.skip("No role values available")
-        return
+    assert role_btn is not None, (
+        f"Should find role value button. Buttons: {button_labels(roles_msg)}"
+    )
     users_list_msg = await account1.click_button(roles_msg, text=role_btn.text)
 
     # Check for pagination: look for page:users: button
@@ -59,15 +57,11 @@ async def test_user_list_pagination(
         user_buttons = [
             b for b in buttons if b.data and b.data.decode().startswith("upd_user:")
         ]
-        if len(user_buttons) >= 6:
-            pytest.fail(
-                f"Expected pagination with {len(user_buttons)} users but no page button found. "
-                f"Buttons: {button_labels(users_list_msg)}"
-            )
-        else:
-            pytest.skip(
-                f"Only {len(user_buttons)} users — not enough to trigger pagination"
-            )
+        assert len(user_buttons) < 6, (
+            f"Expected pagination with {len(user_buttons)} users but no page button found. "
+            f"Buttons: {button_labels(users_list_msg)}"
+        )
+        # Less than page_size users in this role — pagination not expected, test passes
         return
 
     # Navigate to page 2

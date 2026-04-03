@@ -2,7 +2,21 @@ from __future__ import annotations
 
 import asyncio
 from telethon import TelegramClient
+from telethon.errors import FloodWaitError
 from telethon.tl.custom import Message
+
+
+async def _send_with_flood_guard(conv, text: str):
+    """Send message with FloodWait retry (raises AssertionError if wait > 120s)."""
+    try:
+        await conv.send_message(text)
+    except FloodWaitError as e:
+        if e.seconds > 120:
+            raise AssertionError(
+                f"Telegram FloodWait {e.seconds}s — too many messages sent"
+            ) from e
+        await asyncio.sleep(e.seconds)
+        await conv.send_message(text)
 
 
 class TelegramTestClient:
@@ -15,7 +29,7 @@ class TelegramTestClient:
     async def send_command(self, command: str, timeout: float = 15) -> Message:
         """Send a command to the bot and get the first response."""
         async with self._client.conversation(self._bot, timeout=timeout) as conv:
-            await conv.send_message(command)
+            await _send_with_flood_guard(conv, command)
             return await conv.get_response()
 
     async def send_command_multi(
@@ -23,7 +37,7 @@ class TelegramTestClient:
     ) -> list[Message]:
         """Send a command and get multiple responses (e.g. welcome + menu)."""
         async with self._client.conversation(self._bot, timeout=timeout) as conv:
-            await conv.send_message(command)
+            await _send_with_flood_guard(conv, command)
             responses = []
             for _ in range(count):
                 try:
@@ -91,7 +105,7 @@ class TelegramTestClient:
     async def send_text_in_fsm(self, text: str, timeout: float = 15) -> Message:
         """Send text in an FSM dialog and get the next prompt/confirmation."""
         async with self._client.conversation(self._bot, timeout=timeout) as conv:
-            await conv.send_message(text)
+            await _send_with_flood_guard(conv, text)
             return await conv.get_response()
 
     async def fsm_dialog(self, steps: list[str], timeout: float = 15) -> list[Message]:
@@ -99,7 +113,7 @@ class TelegramTestClient:
         async with self._client.conversation(self._bot, timeout=timeout) as conv:
             responses = []
             for step in steps:
-                await conv.send_message(step)
+                await _send_with_flood_guard(conv, step)
                 responses.append(await conv.get_response())
             return responses
 

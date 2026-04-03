@@ -1,8 +1,6 @@
 import os
 from typing import Callable
 
-import pytest
-
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
@@ -87,14 +85,7 @@ async def test_notion_link_on_start(
 
         return None
 
-    try:
-        record = await wait_for_sync(_check_notion_linked, max_wait=30, interval=3)
-    except AssertionError:
-        pytest.skip(
-            f"Notion page was not linked for user {ACCOUNT_1_TG_ID} within timeout — "
-            "Notion integration may not be configured"
-        )
-        return
+    record = await wait_for_sync(_check_notion_linked, max_wait=60, interval=3)
 
     assert record.get("notion_page_id") is not None, (
         "Expected notion_page_id to be set on mentor or mentee record"

@@ -2,7 +2,7 @@ import os
 
 from tests.e2e.helpers.buttons import find_button, button_labels
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -13,13 +13,13 @@ async def test_mentor_update_student_status(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Mentor updates their student's status cohort via bot."""
     # Setup: account1 = mentor with update_student_status,
     #        account2 = mentee with Status cohort
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
+    await setup.ensure_user_record(ACCOUNT_2_TG_ID)
     await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_role_permission("mentor", "update_student_status")
@@ -39,7 +39,9 @@ async def test_mentor_update_student_status(
     assert update_btn is not None, (
         f"Students menu should have update button. Buttons: {button_labels(students_msg)}"
     )
-    status_msg = await account1.click_button(students_msg, text=update_btn.text)
+    status_msg = await account1.click_button(
+        students_msg, text=update_btn.text, timeout=30
+    )
 
     # Choose a status value (any available)
     status_btn = find_button(status_msg, "upd_enum:status:")

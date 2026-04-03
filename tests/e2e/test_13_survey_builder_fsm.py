@@ -2,7 +2,7 @@ import os
 
 from tests.e2e.helpers.buttons import find_button, button_labels
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -38,7 +38,7 @@ async def _enter_survey_header(
 async def test_create_survey_text_question(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create a survey with a single text question through the full FSM."""
     await account1.send_command_multi("/start", count=2)
@@ -80,7 +80,7 @@ async def test_create_survey_text_question(
 async def test_create_survey_rating_question(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create a survey with a rating question (min=1, max=10)."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -129,7 +129,7 @@ async def test_create_survey_rating_question(
 async def test_create_survey_choice_question(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create a survey with a single_choice question with 2 options."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -182,7 +182,7 @@ async def test_create_survey_choice_question(
 async def test_create_survey_multiple_questions(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create a survey with 2 questions (text + rating)."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -227,7 +227,7 @@ async def test_create_survey_multiple_questions(
 async def test_create_survey_cancel(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Cancel survey creation mid-FSM — template should NOT be created."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")

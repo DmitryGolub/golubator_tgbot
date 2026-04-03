@@ -1,7 +1,7 @@
 import os
 
 from tests.e2e.helpers.buttons import find_button, get_buttons, button_labels
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -9,10 +9,10 @@ ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
 
 async def test_help_command(
     account1: TelegramTestClient,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """/help shows menu with inline buttons."""
-    await account1.send_command_multi("/start", count=2)
+    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     help_msg = await account1.send_command("/help")
@@ -26,7 +26,7 @@ async def test_help_command(
 
 async def test_job_search_report(
     account1: TelegramTestClient,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Open job search report menu and select a period."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -49,7 +49,7 @@ async def test_job_search_report(
 
 async def test_education_feedback(
     account1: TelegramTestClient,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Open education feedback report and select a period."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -70,7 +70,7 @@ async def test_education_feedback(
 
 async def test_direction_students(
     account1: TelegramTestClient,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Lead views students by direction."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")

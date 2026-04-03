@@ -1,11 +1,9 @@
 import os
 from typing import Callable
 
-import pytest
-
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.notion_assertions import NotionAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -16,21 +14,13 @@ NOTION_MENTEE_DB_ID = os.environ.get(
     "NOTION_MENTEE_DB_ID", os.environ.get("NOTION_DATABASE_ID", "")
 )
 
-# TODO: Add module-scoped teardown to archive/delete test Notion pages after each run.
-# Without cleanup, tests are not deterministic:
-# - test_push_events_creates_page may pass falsely because notion_page_id remains from a previous run
-# - test_push_skips_synced may pass even if push is broken (synced_at already set)
-# - test_push_mentors_role doesn't verify the actual property value changed in Notion
-# Fix: add a fixture that calls notion.cleanup_test_pages() in teardown,
-# and reset notion_page_id/synced_at to NULL in setup before each push test.
-
 _module_state = {}
 
 
 async def test_push_mentors_role(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
     notion: NotionAssertions,
     wait_for_sync: Callable,
 ):
@@ -41,9 +31,9 @@ async def test_push_mentors_role(
 
     # Get mentor's notion_page_id
     mentor = await db.get_mentor(ACCOUNT_1_TG_ID)
-    if mentor is None or mentor.get("notion_page_id") is None:
-        pytest.skip("Mentor has no notion_page_id — Notion not configured")
-        return
+    assert mentor is not None and mentor.get("notion_page_id") is not None, (
+        "Mentor should have notion_page_id — Notion must be configured"
+    )
 
     page_id = mentor["notion_page_id"]
     _module_state["mentor_page_id"] = page_id
@@ -52,15 +42,11 @@ async def test_push_mentors_role(
     await setup.touch_updated_at("iam.mentors", ACCOUNT_1_TG_ID)
 
     # Wait for sync to push changes
-    try:
-        await wait_for_sync(
-            lambda: db.get_mentor_synced_at(ACCOUNT_1_TG_ID),
-            max_wait=30,
-            interval=3,
-        )
-    except AssertionError:
-        pytest.skip("Mentor sync not completed within timeout")
-        return
+    await wait_for_sync(
+        lambda: db.get_mentor_synced_at(ACCOUNT_1_TG_ID),
+        max_wait=60,
+        interval=3,
+    )
 
     # Verify in Notion
     page = await notion.get_page(page_id)
@@ -70,7 +56,7 @@ async def test_push_mentors_role(
 async def test_push_mentees_status_and_mentor(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
     notion: NotionAssertions,
     wait_for_sync: Callable,
 ):
@@ -79,9 +65,9 @@ async def test_push_mentees_status_and_mentor(
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
     mentee = await db.get_mentee(ACCOUNT_2_TG_ID)
-    if mentee is None or mentee.get("notion_page_id") is None:
-        pytest.skip("Mentee has no notion_page_id — Notion not configured")
-        return
+    assert mentee is not None and mentee.get("notion_page_id") is not None, (
+        "Mentee should have notion_page_id — Notion must be configured"
+    )
 
     page_id = mentee["notion_page_id"]
     _module_state["mentee_page_id"] = page_id
@@ -89,15 +75,11 @@ async def test_push_mentees_status_and_mentor(
     # Touch updated_at to force sync
     await setup.touch_updated_at("iam.mentees", ACCOUNT_2_TG_ID)
 
-    try:
-        await wait_for_sync(
-            lambda: db.get_mentee_synced_at(ACCOUNT_2_TG_ID),
-            max_wait=30,
-            interval=3,
-        )
-    except AssertionError:
-        pytest.skip("Mentee sync not completed within timeout")
-        return
+    await wait_for_sync(
+        lambda: db.get_mentee_synced_at(ACCOUNT_2_TG_ID),
+        max_wait=60,
+        interval=3,
+    )
 
     page = await notion.get_page(page_id)
     assert page is not None
@@ -105,7 +87,7 @@ async def test_push_mentees_status_and_mentor(
 
 async def test_push_events_creates_page(
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
     wait_for_sync: Callable,
 ):
     """Push should create a Notion page for a new meeting."""
@@ -133,36 +115,27 @@ async def test_push_events_creates_page(
         meeting_id,
     )
 
-    try:
-        result = await wait_for_sync(
-            lambda: db.get_meeting_notion_page_id(meeting_id),
-            max_wait=30,
-            interval=3,
-        )
-    except AssertionError:
-        pytest.skip("Meeting Notion sync not completed within timeout")
-        return
+    result = await wait_for_sync(
+        lambda: db.get_meeting_notion_page_id(meeting_id),
+        max_wait=60,
+        interval=3,
+    )
 
-    if result is None:
-        pytest.skip("Meeting notion_page_id not set — Notion may not be configured")
+    assert result is not None, "Meeting should have notion_page_id after sync"
 
 
 async def test_push_events_updates_page(
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
     notion: NotionAssertions,
     wait_for_sync: Callable,
 ):
     """Push should update an existing Notion page for a meeting."""
     meeting_id = _module_state.get("sync_meeting_id")
-    if meeting_id is None:
-        pytest.skip("No meeting created in previous test")
-        return
+    assert meeting_id is not None, "Previous test must create a meeting"
 
     page_id = await db.get_meeting_notion_page_id(meeting_id)
-    if page_id is None:
-        pytest.skip("Meeting has no notion_page_id")
-        return
+    assert page_id is not None, "Meeting should have notion_page_id"
 
     # Update meeting description
     pool = db._pool
@@ -185,11 +158,7 @@ async def test_push_events_updates_page(
             return current
         return None
 
-    try:
-        await wait_for_sync(_check_updated, max_wait=30, interval=3)
-    except AssertionError:
-        pytest.skip("Meeting update sync not completed")
-        return
+    await wait_for_sync(_check_updated, max_wait=60, interval=3)
 
     page = await notion.get_page(page_id)
     assert page is not None
@@ -200,16 +169,14 @@ async def test_push_skips_synced(
 ):
     """Already-synced entities should be skipped (synced_at >= updated_at)."""
     mentor = await db.get_mentor(ACCOUNT_1_TG_ID)
-    if mentor is None:
-        pytest.skip("No mentor record")
-        return
+    assert mentor is not None, "Mentor record should exist"
 
     synced_at = mentor.get("synced_at")
     updated_at = mentor.get("updated_at")
 
-    if synced_at is None or updated_at is None:
-        pytest.skip("Cannot verify sync skip — missing timestamps")
-        return
+    assert synced_at is not None and updated_at is not None, (
+        "Both synced_at and updated_at should be set after sync"
+    )
 
     # If synced_at >= updated_at, the entity is considered synced
     # This is the expected state after a successful push

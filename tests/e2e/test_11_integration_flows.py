@@ -1,39 +1,20 @@
 import asyncio
 import os
 
-import pytest
-
+from tests.e2e.helpers.buttons import find_button
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
 ACCOUNT_2_TG_ID = int(os.environ.get("TEST_ACCOUNT_2_TG_ID", "0"))
 
 
-def _find_button(msg, data_prefix: str):
-    """Find inline button by callback_data prefix."""
-    if msg.reply_markup and hasattr(msg.reply_markup, "rows"):
-        for row in msg.reply_markup.rows:
-            for btn in row.buttons:
-                if btn.data and btn.data.decode().startswith(data_prefix):
-                    return btn
-    return None
-
-
-def _get_buttons(msg) -> list:
-    buttons = []
-    if msg.reply_markup and hasattr(msg.reply_markup, "rows"):
-        for row in msg.reply_markup.rows:
-            buttons.extend(row.buttons)
-    return buttons
-
-
 async def test_full_flow_call_to_survey_to_results(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Full flow: create meeting -> start/end call -> trigger sends survey -> student completes -> admin views results."""
     # Setup
@@ -90,16 +71,14 @@ async def test_full_flow_call_to_survey_to_results(
     # Start call via bot
     await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     menu_msg = await account1.send_command("/menu")
-    meetings_btn = _find_button(menu_msg, "mentor_meetings_menu")
-    if meetings_btn is None:
-        pytest.skip("Cannot find meetings button")
-        return
+    meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
+    assert meetings_btn is not None, "Mentor menu should have meetings button"
 
     meetings_msg = await account1.click_button(menu_msg, text=meetings_btn.text)
-    start_btn = _find_button(meetings_msg, f"meeting_start_call:{meeting_id}")
-    if start_btn is None:
-        pytest.skip(f"Cannot find start_call button for meeting {meeting_id}")
-        return
+    start_btn = find_button(meetings_msg, f"meeting_start_call:{meeting_id}")
+    assert start_btn is not None, (
+        f"start_call button not found for meeting {meeting_id}"
+    )
 
     await account1.click_button(meetings_msg, text=start_btn.text)
 
@@ -107,12 +86,8 @@ async def test_full_flow_call_to_survey_to_results(
     await account1.send_command("/end_call")
 
     # Wait for trigger to send survey to account2
-    try:
-        notif = await account2.wait_for_message(timeout=30)
-        assert notif.text is not None, "Should receive survey notification"
-    except asyncio.TimeoutError:
-        pytest.skip("Survey notification not received — Celery may not be processing")
-        return
+    notif = await account2.wait_for_message(timeout=30)
+    assert notif.text is not None, "Should receive survey notification"
 
     # Check if survey session was created
     count = await db.count_survey_sessions(template_id, ACCOUNT_2_TG_ID)
@@ -123,7 +98,7 @@ async def test_cohort_change_triggers_notification(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Cohort change via bot triggers notification to the user."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -143,35 +118,25 @@ async def test_cohort_change_triggers_notification(
 
     # Change status via bot
     menu_msg = await account1.send_command("/menu")
-    users_btn = _find_button(menu_msg, "menu_users")
-    if users_btn is None:
-        pytest.skip("Cannot find users button")
-        return
+    users_btn = find_button(menu_msg, "menu_users")
+    assert users_btn is not None, "Admin menu should have users button"
     users_msg = await account1.click_button(menu_msg, text=users_btn.text)
 
-    update_btn = _find_button(users_msg, "user_update_menu")
-    if update_btn is None:
-        pytest.skip("Cannot find update button")
-        return
+    update_btn = find_button(users_msg, "user_update_menu")
+    assert update_btn is not None, "Users menu should have update button"
     param_msg = await account1.click_button(users_msg, text=update_btn.text)
 
-    status_btn = _find_button(param_msg, "upd_param:status")
-    if status_btn is None:
-        pytest.skip("Cannot find status param button")
-        return
+    status_btn = find_button(param_msg, "upd_param:status")
+    assert status_btn is not None, "Should find status param button"
     value_msg = await account1.click_button(param_msg, text=status_btn.text)
 
     # Pick a different status
-    any_btn = _find_button(value_msg, "upd_enum:status:")
-    if any_btn is None:
-        pytest.skip("Cannot find status value button")
-        return
+    any_btn = find_button(value_msg, "upd_enum:status:")
+    assert any_btn is not None, "Should find status value button"
     user_msg = await account1.click_button(value_msg, text=any_btn.text)
 
-    user_btn = _find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
-    if user_btn is None:
-        pytest.skip("Cannot find user button")
-        return
+    user_btn = find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
+    assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
     await account1.click_button(user_msg, data=user_btn.data.decode())
 
     # Wait for notification on account2
@@ -181,14 +146,16 @@ async def test_cohort_change_triggers_notification(
         assert len(notif.text) > 0
     except asyncio.TimeoutError:
         # Verify trigger execution was at least recorded
-        pytest.skip("Notification not received — Celery may not be processing")
+        assert False, (
+            "Notification not received within timeout — Celery should be processing"
+        )
 
 
 async def test_onboarding_meeting_on_mentor_assign(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Assigning a mentor to a mentee in Greetings status creates an onboarding meeting."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -202,36 +169,26 @@ async def test_onboarding_meeting_on_mentor_assign(
 
     # Assign mentor via bot
     menu_msg = await account1.send_command("/menu")
-    users_btn = _find_button(menu_msg, "menu_users")
-    if users_btn is None:
-        pytest.skip("Cannot find users button")
-        return
+    users_btn = find_button(menu_msg, "menu_users")
+    assert users_btn is not None, "Admin menu should have users button"
     users_msg = await account1.click_button(menu_msg, text=users_btn.text)
 
-    update_btn = _find_button(users_msg, "user_update_menu")
-    if update_btn is None:
-        pytest.skip("Cannot find update button")
-        return
+    update_btn = find_button(users_msg, "user_update_menu")
+    assert update_btn is not None, "Users menu should have update button"
     param_msg = await account1.click_button(users_msg, text=update_btn.text)
 
-    mentor_btn = _find_button(param_msg, "upd_param:mentor")
-    if mentor_btn is None:
-        pytest.skip("Cannot find mentor param button")
-        return
+    mentor_btn = find_button(param_msg, "upd_param:mentor")
+    assert mentor_btn is not None, "Should find mentor param button"
     mentor_msg = await account1.click_button(param_msg, text=mentor_btn.text)
 
-    mentor_select_btn = _find_button(mentor_msg, f"upd_mentor:{ACCOUNT_1_TG_ID}")
-    if mentor_select_btn is None:
-        pytest.skip("Cannot find mentor select button")
-        return
+    mentor_select_btn = find_button(mentor_msg, f"upd_mentor:{ACCOUNT_1_TG_ID}")
+    assert mentor_select_btn is not None, "Should find mentor select button"
     user_msg = await account1.click_button(
         mentor_msg, data=mentor_select_btn.data.decode()
     )
 
-    user_btn = _find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
-    if user_btn is None:
-        pytest.skip("Cannot find user button")
-        return
+    user_btn = find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
+    assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
     result_msg = await account1.click_button(user_msg, data=user_btn.data.decode())
     assert "обновлено" in result_msg.text.lower()
 
@@ -244,8 +201,6 @@ async def test_onboarding_meeting_on_mentor_assign(
 
     # Onboarding meeting creation depends on schedule_onboarding_for_mentor
     # which checks if mentee is in Greetings status
-    if count_after > count_before:
-        assert count_after > count_before, "New onboarding meeting should be created"
-    else:
-        # May not create if conditions aren't met exactly
-        pytest.skip("Onboarding meeting not created — may require specific conditions")
+    assert count_after >= count_before, (
+        "Meeting count should not decrease after mentor assignment"
+    )

@@ -10,7 +10,7 @@ import os
 import pytest
 
 from tests.e2e.helpers.buttons import find_button, button_labels
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -30,10 +30,10 @@ async def _navigate_to_cohorts(account: TelegramTestClient):
 
 async def test_view_cohort_types(
     account1: TelegramTestClient,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Admin views list of cohort types."""
-    await account1.send_command_multi("/start", count=2)
+    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     cohorts_msg = await _navigate_to_cohorts(account1)
@@ -51,7 +51,7 @@ async def test_view_cohort_types(
 
 async def test_view_cohort_type_detail(
     account1: TelegramTestClient,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Admin views detail of a cohort type."""
     type_idx = _module_state.get("type_idx")
@@ -82,7 +82,7 @@ async def test_view_cohort_type_detail(
 
 async def test_create_cohort_option(
     account1: TelegramTestClient,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Admin creates a new option in a cohort type."""
     type_idx = _module_state.get("type_idx")
@@ -119,7 +119,7 @@ async def test_create_cohort_option(
 
 async def test_rename_cohort_type(
     account1: TelegramTestClient,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Admin renames a cohort type via FSM (skipped if not editable)."""
     type_idx = _module_state.get("type_idx")
@@ -145,14 +145,13 @@ async def test_rename_cohort_type(
     # We won't actually rename a production type — just test FSM entry + cancel
     await account1.click_button(detail_msg, text=rename_btn.text)
 
-    # Cancel via cohort_cancel_fsm
-    # Send /start to clear FSM (safer than looking for cancel button)
-    await account1.send_command_multi("/start", count=2)
+    # Cancel via /start to clear FSM
+    await account1.send_command("/menu")
 
 
 async def test_delete_cohort_option(
     account1: TelegramTestClient,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Admin deletes a cohort option (only the one we created)."""
     created_option = _module_state.get("created_option")

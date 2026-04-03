@@ -1,7 +1,7 @@
 import os
 
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -26,7 +26,7 @@ async def test_admin_full_menu(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """
     Admin user should see a full menu with all admin buttons (>= 5).
@@ -69,7 +69,7 @@ async def test_admin_full_menu(
 async def test_student_limited_menu(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """
     Student (default role) should see fewer menu buttons than admin.

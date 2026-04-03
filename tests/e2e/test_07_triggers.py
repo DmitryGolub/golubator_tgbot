@@ -1,9 +1,9 @@
 import asyncio
 import os
-import pytest
 
+from tests.e2e.helpers.buttons import find_button, get_buttons
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -12,28 +12,10 @@ ACCOUNT_2_TG_ID = int(os.environ.get("TEST_ACCOUNT_2_TG_ID", "0"))
 _module_state = {}
 
 
-def _find_button(msg, data_prefix: str):
-    """Find inline button by callback_data prefix."""
-    if msg.reply_markup and hasattr(msg.reply_markup, "rows"):
-        for row in msg.reply_markup.rows:
-            for btn in row.buttons:
-                if btn.data and btn.data.decode().startswith(data_prefix):
-                    return btn
-    return None
-
-
-def _get_buttons(msg) -> list:
-    buttons = []
-    if msg.reply_markup and hasattr(msg.reply_markup, "rows"):
-        for row in msg.reply_markup.rows:
-            buttons.extend(row.buttons)
-    return buttons
-
-
 async def _navigate_to_triggers(account: TelegramTestClient):
     """Navigate to triggers menu, return the menu message."""
     menu_msg = await account.send_command("/menu")
-    triggers_btn = _find_button(menu_msg, "menu_triggers")
+    triggers_btn = find_button(menu_msg, "menu_triggers")
     assert triggers_btn is not None, "Admin menu should have 'Triggers' button"
     return await account.click_button(menu_msg, text=triggers_btn.text)
 
@@ -55,7 +37,7 @@ async def _create_trigger_fsm(
     """Navigate the TriggerRuleBuilderFSM to create a rule."""
     triggers_msg = await _navigate_to_triggers(account)
 
-    create_btn = _find_button(triggers_msg, "tr_action:create")
+    create_btn = find_button(triggers_msg, "tr_action:create")
     assert create_btn is not None, "Triggers menu should have 'Create' button"
     await account.click_button(triggers_msg, text=create_btn.text)
 
@@ -63,41 +45,41 @@ async def _create_trigger_fsm(
     name_resp = await account.send_text_in_fsm(name)
 
     # Trigger type
-    tt_btn = _find_button(name_resp, f"tr_type:{trigger_type}")
+    tt_btn = find_button(name_resp, f"tr_type:{trigger_type}")
     assert tt_btn is not None, (
         f"Should find trigger_type:{trigger_type}. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in _get_buttons(name_resp)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(name_resp)]}"
     )
     tt_resp = await account.click_button(name_resp, text=tt_btn.text)
 
     # Cohort config (for cohort_changed trigger)
     if trigger_type == "cohort_changed":
         ct_prefix = cohort_type or "*"
-        ct_btn = _find_button(tt_resp, f"tr_ctype:{ct_prefix}")
+        ct_btn = find_button(tt_resp, f"tr_ctype:{ct_prefix}")
         if ct_btn is None:
-            ct_btn = _find_button(tt_resp, "tr_ctype:")
+            ct_btn = find_button(tt_resp, "tr_ctype:")
         assert ct_btn is not None, "Should find cohort type button"
         ct_resp = await account.click_button(tt_resp, text=ct_btn.text)
 
         cf_prefix = cohort_from or "*"
-        cf_btn = _find_button(ct_resp, f"tr_cval:{cf_prefix}")
+        cf_btn = find_button(ct_resp, f"tr_cval:{cf_prefix}")
         if cf_btn is None:
-            cf_btn = _find_button(ct_resp, "tr_cval:")
+            cf_btn = find_button(ct_resp, "tr_cval:")
         assert cf_btn is not None, "Should find cohort from button"
         cf_resp = await account.click_button(ct_resp, text=cf_btn.text)
 
         cto_prefix = cohort_to or "*"
-        cto_btn = _find_button(cf_resp, f"tr_cval:{cto_prefix}")
+        cto_btn = find_button(cf_resp, f"tr_cval:{cto_prefix}")
         if cto_btn is None:
-            cto_btn = _find_button(cf_resp, "tr_cval:")
+            cto_btn = find_button(cf_resp, "tr_cval:")
         assert cto_btn is not None, "Should find cohort to button"
         tt_resp = await account.click_button(cf_resp, text=cto_btn.text)
 
     # Action type
-    at_btn = _find_button(tt_resp, f"tr_atype:{action_type}")
+    at_btn = find_button(tt_resp, f"tr_atype:{action_type}")
     assert at_btn is not None, (
         f"Should find trigger_action_type:{action_type}. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in _get_buttons(tt_resp)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(tt_resp)]}"
     )
     at_resp = await account.click_button(tt_resp, text=at_btn.text)
 
@@ -107,15 +89,15 @@ async def _create_trigger_fsm(
         at_resp = await account.send_text_in_fsm(action_text)
     elif action_type == "send_survey":
         assert survey_template_id is not None
-        tpl_btn = _find_button(at_resp, f"tr_survey:{survey_template_id}")
+        tpl_btn = find_button(at_resp, f"tr_survey:{survey_template_id}")
         assert tpl_btn is not None, "Should find survey template button"
         at_resp = await account.click_button(at_resp, text=tpl_btn.text)
 
     # Recipient type
-    rt_btn = _find_button(at_resp, f"tr_rtype:{recipient_type}")
+    rt_btn = find_button(at_resp, f"tr_rtype:{recipient_type}")
     assert rt_btn is not None, (
         f"Should find trigger_recipient:{recipient_type}. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in _get_buttons(at_resp)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(at_resp)]}"
     )
     await account.click_button(at_resp, text=rt_btn.text)
 
@@ -136,7 +118,7 @@ async def test_create_manual_notification_trigger(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create a manual + send_notification + specific_users trigger rule."""
     await account1.send_command_multi("/start", count=2)
@@ -168,7 +150,7 @@ async def test_create_manual_notification_trigger(
 async def test_create_call_ended_survey_trigger(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create a call_ended + send_survey + event_student trigger rule."""
     # Need a survey template
@@ -256,12 +238,12 @@ async def test_list_trigger_rules(
     """List trigger rules shows created rules."""
     triggers_msg = await _navigate_to_triggers(account1)
 
-    list_btn = _find_button(triggers_msg, "tr_action:list")
+    list_btn = find_button(triggers_msg, "tr_action:list")
     assert list_btn is not None
     list_msg = await account1.click_button(triggers_msg, text=list_btn.text)
 
     assert list_msg.reply_markup is not None, "Rules list should have buttons"
-    buttons = _get_buttons(list_msg)
+    buttons = get_buttons(list_msg)
     assert len(buttons) >= 1, "Should show at least one rule"
 
 
@@ -274,20 +256,20 @@ async def test_toggle_trigger_rule(
     assert rule_id is not None
 
     triggers_msg = await _navigate_to_triggers(account1)
-    list_btn = _find_button(triggers_msg, "tr_action:list")
+    list_btn = find_button(triggers_msg, "tr_action:list")
     list_msg = await account1.click_button(triggers_msg, text=list_btn.text)
 
-    detail_btn = _find_button(list_msg, f"tr_detail:{rule_id}")
+    detail_btn = find_button(list_msg, f"tr_detail:{rule_id}")
     assert detail_btn is not None
     detail_msg = await account1.click_button(list_msg, text=detail_btn.text)
 
-    toggle_btn = _find_button(detail_msg, f"tr_toggle:{rule_id}")
+    toggle_btn = find_button(detail_msg, f"tr_toggle:{rule_id}")
     assert toggle_btn is not None
     off_msg = await account1.click_button(detail_msg, text=toggle_btn.text)
     assert "выключено" in off_msg.text.lower()
 
     # Toggle back on
-    toggle_btn2 = _find_button(off_msg, f"tr_toggle:{rule_id}")
+    toggle_btn2 = find_button(off_msg, f"tr_toggle:{rule_id}")
     assert toggle_btn2 is not None
     on_msg = await account1.click_button(off_msg, text=toggle_btn2.text)
     assert "включено" in on_msg.text.lower()
@@ -302,20 +284,18 @@ async def test_delete_trigger_rule(
     rule_id = await setup_disposable_rule(db)
 
     triggers_msg = await _navigate_to_triggers(account1)
-    list_btn = _find_button(triggers_msg, "tr_action:list")
+    list_btn = find_button(triggers_msg, "tr_action:list")
     list_msg = await account1.click_button(triggers_msg, text=list_btn.text)
 
-    detail_btn = _find_button(list_msg, f"tr_detail:{rule_id}")
-    if detail_btn is None:
-        pytest.skip("Disposable rule not found in list")
-        return
+    detail_btn = find_button(list_msg, f"tr_detail:{rule_id}")
+    assert detail_btn is not None, f"Disposable rule {rule_id} not found in list"
     detail_msg = await account1.click_button(list_msg, text=detail_btn.text)
 
-    delete_btn = _find_button(detail_msg, f"tr_delete:{rule_id}")
+    delete_btn = find_button(detail_msg, f"tr_delete:{rule_id}")
     assert delete_btn is not None
     confirm_msg = await account1.click_button(detail_msg, text=delete_btn.text)
 
-    confirm_btn = _find_button(confirm_msg, f"tr_cdel:{rule_id}")
+    confirm_btn = find_button(confirm_msg, f"tr_cdel:{rule_id}")
     assert confirm_btn is not None
     await account1.click_button(confirm_msg, text=confirm_btn.text)
 
@@ -362,23 +342,20 @@ async def test_manual_trigger_sends_notification(
 
     triggers_msg = await _navigate_to_triggers(account1)
 
-    send_btn = _find_button(triggers_msg, "tr_action:manual_send")
+    send_btn = find_button(triggers_msg, "tr_action:manual_send")
     assert send_btn is not None, "Triggers menu should have 'Manual send' button"
     send_msg = await account1.click_button(triggers_msg, text=send_btn.text)
 
-    rule_btn = _find_button(send_msg, f"tr_send:{rule_id}")
+    rule_btn = find_button(send_msg, f"tr_send:{rule_id}")
     assert rule_btn is not None, f"Should find send button for rule {rule_id}"
     await account1.click_button(send_msg, text=rule_btn.text)
 
     # Wait for notification on account2
-    try:
-        notif = await account2.wait_for_message(timeout=30)
-        assert notif.text is not None
-        assert "Hello from E2E test" in notif.text, (
-            f"Expected trigger text, got: {notif.text[:200]}"
-        )
-    except asyncio.TimeoutError:
-        pytest.skip("Notification not received within timeout")
+    notif = await account2.wait_for_message(timeout=30)
+    assert notif.text is not None
+    assert "Hello from E2E test" in notif.text, (
+        f"Expected trigger text, got: {notif.text[:200]}"
+    )
 
 
 async def test_notification_template_substitution(
@@ -397,7 +374,7 @@ async def test_manual_trigger_sends_survey(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Manual trigger with send_survey creates a survey session."""
     template_id = _module_state.get("survey_template_id")
@@ -418,26 +395,23 @@ async def test_manual_trigger_sends_survey(
     )
 
     triggers_msg = await _navigate_to_triggers(account1)
-    send_btn = _find_button(triggers_msg, "tr_action:manual_send")
+    send_btn = find_button(triggers_msg, "tr_action:manual_send")
     send_msg = await account1.click_button(triggers_msg, text=send_btn.text)
 
-    rule_btn = _find_button(send_msg, f"tr_send:{rule_id}")
+    rule_btn = find_button(send_msg, f"tr_send:{rule_id}")
     assert rule_btn is not None
     await account1.click_button(send_msg, text=rule_btn.text)
 
     # Wait for survey notification on account2
-    try:
-        notif = await account2.wait_for_message(timeout=30)
-        assert notif.text is not None
-    except asyncio.TimeoutError:
-        pytest.skip("Survey notification not received within timeout")
+    notif = await account2.wait_for_message(timeout=30)
+    assert notif.text is not None
 
 
 async def test_trigger_call_ended_fires(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Call ended event fires trigger automatically."""
     # Create a meeting and complete a call
@@ -465,22 +439,20 @@ async def test_trigger_call_ended_fires(
     # Start and end call via bot
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     menu_msg = await account1.send_command("/menu")
-    meetings_btn = _find_button(menu_msg, "mentor_meetings_menu")
+    meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
     if meetings_btn is None:
         # Admin may not have meetings button — set mentor role
         await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
         menu_msg = await account1.send_command("/menu")
-        meetings_btn = _find_button(menu_msg, "mentor_meetings_menu")
+        meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
 
-    if meetings_btn is None:
-        pytest.skip("Cannot navigate to meetings menu")
-        return
+    assert meetings_btn is not None, "Should find meetings button in menu"
 
     meetings_msg = await account1.click_button(menu_msg, text=meetings_btn.text)
-    start_btn = _find_button(meetings_msg, f"meeting_start_call:{meeting_id}")
-    if start_btn is None:
-        pytest.skip(f"start_call button not found for meeting {meeting_id}")
-        return
+    start_btn = find_button(meetings_msg, f"meeting_start_call:{meeting_id}")
+    assert start_btn is not None, (
+        f"start_call button not found for meeting {meeting_id}"
+    )
 
     await account1.click_button(meetings_msg, text=start_btn.text)
     await account1.send_command("/end_call")
@@ -499,9 +471,7 @@ async def test_trigger_meeting_created_fires(
 ):
     """Verify meeting_created trigger has executions."""
     rule_id = _module_state.get("meeting_notify_rule_id")
-    if rule_id is None:
-        pytest.skip("meeting_notify_rule_id not set")
-        return
+    assert rule_id is not None, "meeting_notify_rule_id should be set by previous test"
 
     count = await db.count_trigger_executions(rule_id)
     assert count >= 0  # May be 0 if Celery is not processing
@@ -511,7 +481,7 @@ async def test_cohort_changed_auto_fires(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Cohort change through bot should fire cohort_changed trigger."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -519,35 +489,25 @@ async def test_cohort_changed_auto_fires(
 
     # Change status via update_user flow
     menu_msg = await account1.send_command("/menu")
-    users_btn = _find_button(menu_msg, "menu_users")
-    if users_btn is None:
-        pytest.skip("Cannot find users button")
-        return
+    users_btn = find_button(menu_msg, "menu_users")
+    assert users_btn is not None, "Admin menu should have users button"
     users_msg = await account1.click_button(menu_msg, text=users_btn.text)
 
-    update_btn = _find_button(users_msg, "user_update_menu")
-    if update_btn is None:
-        pytest.skip("Cannot find update button")
-        return
+    update_btn = find_button(users_msg, "user_update_menu")
+    assert update_btn is not None, "Users menu should have update button"
     param_msg = await account1.click_button(users_msg, text=update_btn.text)
 
-    status_btn = _find_button(param_msg, "upd_param:status")
-    if status_btn is None:
-        pytest.skip("Cannot find status param button")
-        return
+    status_btn = find_button(param_msg, "upd_param:status")
+    assert status_btn is not None, "Should find status param button"
     value_msg = await account1.click_button(param_msg, text=status_btn.text)
 
     # Pick any different status
-    any_status_btn = _find_button(value_msg, "upd_enum:status:")
-    if any_status_btn is None:
-        pytest.skip("Cannot find status value button")
-        return
+    any_status_btn = find_button(value_msg, "upd_enum:status:")
+    assert any_status_btn is not None, "Should find status value button"
     user_msg = await account1.click_button(value_msg, text=any_status_btn.text)
 
-    user_btn = _find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
-    if user_btn is None:
-        pytest.skip("Cannot find user button")
-        return
+    user_btn = find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
+    assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
     await account1.click_button(user_msg, data=user_btn.data.decode())
 
     # Wait for notification on account2 (the user whose cohort changed)
@@ -578,7 +538,7 @@ async def test_trigger_with_delay(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Trigger with 15s delay should fire after the delay."""
     rule_id = await setup.create_trigger_rule(
@@ -594,23 +554,17 @@ async def test_trigger_with_delay(
     # Manually send
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     triggers_msg = await _navigate_to_triggers(account1)
-    send_btn = _find_button(triggers_msg, "tr_action:manual_send")
+    send_btn = find_button(triggers_msg, "tr_action:manual_send")
     send_msg = await account1.click_button(triggers_msg, text=send_btn.text)
 
-    rule_btn = _find_button(send_msg, f"tr_send:{rule_id}")
-    if rule_btn is None:
-        pytest.skip("Delayed rule not found in manual send list")
-        return
+    rule_btn = find_button(send_msg, f"tr_send:{rule_id}")
+    assert rule_btn is not None, "Delayed rule should appear in manual send list"
     await account1.click_button(send_msg, text=rule_btn.text)
 
     # Wait for delayed notification
-    try:
-        notif = await account2.wait_for_message(timeout=45)
-        assert notif.text is not None
-        assert "Delayed" in notif.text or len(notif.text) > 0
-    except asyncio.TimeoutError:
-        # Delayed execution depends on Celery
-        pytest.skip("Delayed notification not received — Celery may not be processing")
+    notif = await account2.wait_for_message(timeout=45)
+    assert notif.text is not None
+    assert "Delayed" in notif.text or len(notif.text) > 0
 
 
 async def test_trigger_deduplication(
@@ -618,9 +572,7 @@ async def test_trigger_deduplication(
 ):
     """Trigger executions should not duplicate for same event."""
     rule_id = _module_state.get("manual_notify_rule_id")
-    if rule_id is None:
-        pytest.skip("manual_notify_rule_id not set")
-        return
+    assert rule_id is not None, "manual_notify_rule_id should be set by previous test"
 
     count = await db.count_trigger_executions(rule_id)
     # Just verify we can query; exact dedup logic depends on implementation
@@ -629,7 +581,7 @@ async def test_trigger_deduplication(
 
 async def test_trigger_by_cohort_recipients(
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create trigger with by_cohort recipients and verify in DB."""
     rule_id = await setup.create_trigger_rule(
@@ -649,7 +601,7 @@ async def test_trigger_by_cohort_recipients(
 
 async def test_trigger_by_state_recipients(
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create trigger with by_state recipients and verify in DB."""
     rule_id = await setup.create_trigger_rule(
@@ -671,7 +623,7 @@ async def test_inactive_trigger_not_fired(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Deactivated trigger should not fire when manually sent."""
     rule_id = await setup.create_trigger_rule(
@@ -693,10 +645,10 @@ async def test_inactive_trigger_not_fired(
     # Try manual send — rule should not appear in active list
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     triggers_msg = await _navigate_to_triggers(account1)
-    send_btn = _find_button(triggers_msg, "tr_action:manual_send")
+    send_btn = find_button(triggers_msg, "tr_action:manual_send")
     send_msg = await account1.click_button(triggers_msg, text=send_btn.text)
 
-    rule_btn = _find_button(send_msg, f"tr_send:{rule_id}")
+    rule_btn = find_button(send_msg, f"tr_send:{rule_id}")
     # Inactive rule should not be in the manual send list
     assert rule_btn is None, "Inactive rule should NOT appear in manual send list"
 
@@ -707,7 +659,7 @@ async def test_inactive_trigger_not_fired(
 async def test_create_periodic_cron_trigger(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create a periodic_cron trigger rule and verify it exists in DB."""
     rule_id = await setup.create_trigger_rule(
@@ -733,9 +685,7 @@ async def test_periodic_cron_fires(
 ):
     """Periodic cron trigger should fire within ~60s via Celery beat tick_periodic."""
     rule_id = _module_state.get("periodic_cron_rule_id")
-    if rule_id is None:
-        pytest.skip("periodic_cron_rule_id not set")
-        return
+    assert rule_id is not None, "periodic_cron_rule_id should be set by previous test"
 
     # Wait up to 90s for tick_periodic to pick up and execute the cron rule
     try:
@@ -745,11 +695,9 @@ async def test_periodic_cron_fires(
     except asyncio.TimeoutError:
         # Fall back to DB check — execution may have been created even if delivery failed
         count = await db.count_trigger_executions(rule_id)
-        if count == 0:
-            pytest.skip(
-                "Periodic cron not fired within timeout — Celery beat may not be running"
-            )
-        assert count > 0
+        assert count > 0, (
+            "Periodic cron not fired within timeout — Celery beat may not be running"
+        )
 
 
 # ── Event mentor recipient tests ──
@@ -758,7 +706,7 @@ async def test_periodic_cron_fires(
 async def test_create_event_mentor_trigger(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create a call_ended + send_notification + event_mentor trigger rule."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -782,7 +730,7 @@ async def test_event_mentor_receives_notification(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """After call_ended, event_mentor recipient should receive notification."""
     # account1 = mentor, account2 = mentee
@@ -808,16 +756,14 @@ async def test_event_mentor_receives_notification(
 
     # Navigate to meetings and start/end call
     menu_msg = await account1.send_command("/menu")
-    meetings_btn = _find_button(menu_msg, "mentor_meetings_menu")
-    if meetings_btn is None:
-        pytest.skip("Cannot navigate to meetings menu")
-        return
+    meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
+    assert meetings_btn is not None, "Mentor menu should have meetings button"
 
     meetings_msg = await account1.click_button(menu_msg, text=meetings_btn.text)
-    start_btn = _find_button(meetings_msg, f"meeting_start_call:{meeting_id}")
-    if start_btn is None:
-        pytest.skip(f"start_call button not found for meeting {meeting_id}")
-        return
+    start_btn = find_button(meetings_msg, f"meeting_start_call:{meeting_id}")
+    assert start_btn is not None, (
+        f"start_call button not found for meeting {meeting_id}"
+    )
 
     await account1.click_button(meetings_msg, text=start_btn.text)
     await account1.send_command("/end_call")

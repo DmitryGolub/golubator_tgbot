@@ -1,31 +1,20 @@
 import os
 from typing import Callable
 
-import pytest
-
+from tests.e2e.helpers.buttons import find_button, button_labels  # noqa: F401
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
 ACCOUNT_2_TG_ID = int(os.environ.get("TEST_ACCOUNT_2_TG_ID", "0"))
 
 
-def _find_button(msg, data_prefix: str):
-    """Find inline button by callback_data prefix."""
-    if msg.reply_markup and hasattr(msg.reply_markup, "rows"):
-        for row in msg.reply_markup.rows:
-            for btn in row.buttons:
-                if btn.data and btn.data.decode().startswith(data_prefix):
-                    return btn
-    return None
-
-
 async def test_create_cohort_type(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Admin creates a cohort type through bot FSM."""
     # Register both accounts
@@ -35,16 +24,15 @@ async def test_create_cohort_type(
 
     # /menu -> Cohorts
     menu_msg = await account1.send_command("/menu")
-    cohorts_btn = _find_button(menu_msg, "menu_cohorts")
+    cohorts_btn = find_button(menu_msg, "menu_cohorts")
     assert cohorts_btn is not None, "Admin menu should have 'Cohorts' button"
     cohorts_msg = await account1.click_button(menu_msg, text=cohorts_btn.text)
 
     # Click "Create cohort type"
-    create_btn = _find_button(cohorts_msg, "cohort_create_type")
-    if create_btn is None:
-        # May not be visible if no cohort types exist yet — look in the response
-        pytest.skip("cohort_create_type button not found in cohorts menu")
-        return
+    create_btn = find_button(cohorts_msg, "cohort_create_type")
+    assert create_btn is not None, (
+        f"cohort_create_type button not found in cohorts menu. Buttons: {button_labels(cohorts_msg)}"
+    )
 
     await account1.click_button(cohorts_msg, text=create_btn.text)
 
@@ -58,7 +46,7 @@ async def test_create_cohort_type(
 
 async def test_assign_user_to_cohort(
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Assign a cohort to user via setup helper and verify in DB."""
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
@@ -76,23 +64,20 @@ async def test_cohort_synced_to_notion(
     wait_for_sync: Callable,
 ):
     """After cohort assignment, mentee's notion_page_id should eventually appear."""
-    try:
-        result = await wait_for_sync(
-            lambda: db.get_mentee(ACCOUNT_2_TG_ID),
-            max_wait=30,
-            interval=3,
-        )
-    except AssertionError:
-        pytest.skip("Notion sync not available within timeout")
-        return
+    result = await wait_for_sync(
+        lambda: db.get_mentee(ACCOUNT_2_TG_ID),
+        max_wait=60,
+        interval=3,
+    )
 
-    if result is None or result.get("notion_page_id") is None:
-        pytest.skip("Mentee notion_page_id not set — Notion may not be configured")
+    assert result is not None and result.get("notion_page_id") is not None, (
+        "Mentee notion_page_id should be set after sync"
+    )
 
 
 async def test_stage_transition_created(
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Verify stage_transitions table is accessible and records exist after cohort change."""
     # Change cohort to trigger a transition (via setup — no StageTransition created

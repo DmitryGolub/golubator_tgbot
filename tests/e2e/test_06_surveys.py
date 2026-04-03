@@ -1,35 +1,15 @@
 import asyncio
 import os
 
-import pytest
-
+from tests.e2e.helpers.buttons import find_button, get_buttons
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import TestSetup
+from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
 ACCOUNT_2_TG_ID = int(os.environ.get("TEST_ACCOUNT_2_TG_ID", "0"))
 
 _module_state = {}
-
-
-def _find_button(msg, data_prefix: str):
-    """Find inline button by callback_data prefix."""
-    if msg.reply_markup and hasattr(msg.reply_markup, "rows"):
-        for row in msg.reply_markup.rows:
-            for btn in row.buttons:
-                if btn.data and btn.data.decode().startswith(data_prefix):
-                    return btn
-    return None
-
-
-def _get_buttons(msg) -> list:
-    """Get all inline buttons from message."""
-    buttons = []
-    if msg.reply_markup and hasattr(msg.reply_markup, "rows"):
-        for row in msg.reply_markup.rows:
-            buttons.extend(row.buttons)
-    return buttons
 
 
 # ── Template creation ──
@@ -39,7 +19,7 @@ async def test_create_survey_template(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Create a survey template with 4 question types through bot FSM."""
     await account1.send_command_multi("/start", count=2)
@@ -48,12 +28,12 @@ async def test_create_survey_template(
 
     # /menu -> Surveys
     menu_msg = await account1.send_command("/menu")
-    surveys_btn = _find_button(menu_msg, "menu_surveys")
+    surveys_btn = find_button(menu_msg, "menu_surveys")
     assert surveys_btn is not None, "Admin menu should have 'Surveys' button"
     surveys_msg = await account1.click_button(menu_msg, text=surveys_btn.text)
 
     # Create survey
-    create_btn = _find_button(surveys_msg, "sb_action:create")
+    create_btn = find_button(surveys_msg, "sb_action:create")
     assert create_btn is not None, "Survey menu should have 'Create' button"
     await account1.click_button(surveys_msg, text=create_btn.text)
 
@@ -62,14 +42,12 @@ async def test_create_survey_template(
     await account1.send_text_in_fsm("e2e_test_survey")
     await account1.send_text_in_fsm("Test description")
 
-    # The survey builder FSM is very long (title, slug, desc, then per-question:
-    # title -> type -> config/options -> add_more/finish). Rather than navigate
-    # the full FSM here, we verify the entry point works and create templates
-    # via setup helper in subsequent tests.
-    pytest.skip("Complex FSM — template created via setup in subsequent tests")
+    # The survey builder FSM is very long — verify entry point works,
+    # then cancel and create templates via setup helper in subsequent tests.
+    await account1.send_command("/menu")
 
 
-async def _create_template_via_setup(setup: TestSetup, db: DBAssertions) -> int:
+async def _create_template_via_setup(setup: E2ESetup, db: DBAssertions) -> int:
     """Helper: create survey template via DB setup."""
     template_id = await setup.create_survey_template(
         title="E2E Test Survey",
@@ -110,7 +88,7 @@ async def _create_template_via_setup(setup: TestSetup, db: DBAssertions) -> int:
 async def test_list_survey_templates(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """List survey templates shows created template."""
     # Ensure template exists
@@ -124,15 +102,15 @@ async def test_list_survey_templates(
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     menu_msg = await account1.send_command("/menu")
-    surveys_btn = _find_button(menu_msg, "menu_surveys")
+    surveys_btn = find_button(menu_msg, "menu_surveys")
     surveys_msg = await account1.click_button(menu_msg, text=surveys_btn.text)
 
-    list_btn = _find_button(surveys_msg, "sb_action:list")
+    list_btn = find_button(surveys_msg, "sb_action:list")
     assert list_btn is not None, "Survey menu should have 'List' button"
     list_msg = await account1.click_button(surveys_msg, text=list_btn.text)
 
     assert list_msg.reply_markup is not None, "Template list should have buttons"
-    buttons = _get_buttons(list_msg)
+    buttons = get_buttons(list_msg)
     assert len(buttons) >= 1, "Should have at least one template button"
 
 
@@ -146,18 +124,18 @@ async def test_toggle_survey_template(
 
     # Navigate to template detail
     menu_msg = await account1.send_command("/menu")
-    surveys_btn = _find_button(menu_msg, "menu_surveys")
+    surveys_btn = find_button(menu_msg, "menu_surveys")
     surveys_msg = await account1.click_button(menu_msg, text=surveys_btn.text)
 
-    list_btn = _find_button(surveys_msg, "sb_action:list")
+    list_btn = find_button(surveys_msg, "sb_action:list")
     list_msg = await account1.click_button(surveys_msg, text=list_btn.text)
 
-    detail_btn = _find_button(list_msg, f"sb_detail:{template_id}")
+    detail_btn = find_button(list_msg, f"sb_detail:{template_id}")
     assert detail_btn is not None, f"Should find template button for id={template_id}"
     detail_msg = await account1.click_button(list_msg, text=detail_btn.text)
 
     # Toggle off
-    toggle_btn = _find_button(detail_msg, f"sb_toggle:{template_id}")
+    toggle_btn = find_button(detail_msg, f"sb_toggle:{template_id}")
     assert toggle_btn is not None, "Template detail should have toggle button"
     off_msg = await account1.click_button(detail_msg, text=toggle_btn.text)
     assert "выключен" in off_msg.text.lower(), (
@@ -165,7 +143,7 @@ async def test_toggle_survey_template(
     )
 
     # Toggle back on
-    toggle_btn2 = _find_button(off_msg, f"sb_toggle:{template_id}")
+    toggle_btn2 = find_button(off_msg, f"sb_toggle:{template_id}")
     assert toggle_btn2 is not None
     on_msg = await account1.click_button(off_msg, text=toggle_btn2.text)
     assert "включен" in on_msg.text.lower(), (
@@ -179,7 +157,7 @@ async def test_toggle_survey_template(
 async def test_student_takes_survey_all_types(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Student completes a survey with all 4 question types."""
     template_id = _module_state.get("template_id")
@@ -199,7 +177,7 @@ async def test_student_takes_survey_all_types(
     surveys_msg = await account2.press_callback("my_surveys")
 
     # Start survey
-    start_btn = _find_button(surveys_msg, f"ds_start:{session_id}")
+    start_btn = find_button(surveys_msg, f"ds_start:{session_id}")
     assert start_btn is not None, (
         f"Should find start_survey button for session {session_id}. "
         f"Msg: {surveys_msg.text[:200] if surveys_msg.text else 'no text'}"
@@ -211,29 +189,29 @@ async def test_student_takes_survey_all_types(
     assert q1_resp.text is not None
 
     # Q2: rating — click "3"
-    rating_btn = _find_button(q1_resp, "ds_ans:3")
+    rating_btn = find_button(q1_resp, "ds_ans:3")
     assert rating_btn is not None, "Should find rating button '3'"
     q2_resp = await account2.click_button(q1_resp, text=rating_btn.text)
 
     # Q3: single_choice — click "Option A"
-    choice_btn = _find_button(q2_resp, "ds_ans:opt_a")
+    choice_btn = find_button(q2_resp, "ds_ans:opt_a")
     assert choice_btn is not None, "Should find single choice button 'opt_a'"
     q3_resp = await account2.click_button(q2_resp, text=choice_btn.text)
 
     # Q4: multiple_choice — select mc_a, mc_c, then done
     # Note: toggling mc options only updates FSM state + shows toast, no message edit.
     # Use raw click() for toggles, then click_button for "Done" which advances.
-    mc_a_btn = _find_button(q3_resp, "ds_ans:mc_a")
+    mc_a_btn = find_button(q3_resp, "ds_ans:mc_a")
     assert mc_a_btn is not None, "Should find multiple choice button 'mc_a'"
     await q3_resp.click(text=mc_a_btn.text)
     await asyncio.sleep(1)
 
-    mc_c_btn = _find_button(q3_resp, "ds_ans:mc_c")
+    mc_c_btn = find_button(q3_resp, "ds_ans:mc_c")
     assert mc_c_btn is not None, "Should find multiple choice button 'mc_c'"
     await q3_resp.click(text=mc_c_btn.text)
     await asyncio.sleep(1)
 
-    done_btn = _find_button(q3_resp, "ds_ans:__done__")
+    done_btn = find_button(q3_resp, "ds_ans:__done__")
     assert done_btn is not None, "Should find 'Done' button for multiple choice"
     final_msg = await account2.click_button(q3_resp, text=done_btn.text)
 
@@ -252,7 +230,7 @@ async def test_student_takes_survey_all_types(
 async def test_rating_buttons_range(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Rating question buttons should match configured min/max range."""
     template_id = _module_state.get("template_id")
@@ -264,7 +242,7 @@ async def test_rating_buttons_range(
 
     surveys_msg = await account2.press_callback("my_surveys")
 
-    start_btn = _find_button(surveys_msg, f"ds_start:{session_id}")
+    start_btn = find_button(surveys_msg, f"ds_start:{session_id}")
     assert start_btn is not None
     await account2.click_button(surveys_msg, text=start_btn.text)
 
@@ -272,7 +250,7 @@ async def test_rating_buttons_range(
     q1_resp = await account2.send_text_in_fsm("test")
 
     # Q2 is rating — check buttons 1-5
-    buttons = _get_buttons(q1_resp)
+    buttons = get_buttons(q1_resp)
     rating_texts = [
         b.text for b in buttons if b.data and b"ds_ans:" in b.data and b.text.isdigit()
     ]
@@ -280,7 +258,7 @@ async def test_rating_buttons_range(
     assert "5" in rating_texts, f"Should have button '5', got: {rating_texts}"
 
     # Cancel survey
-    cancel_btn = _find_button(q1_resp, "ds_ans:__cancel__")
+    cancel_btn = find_button(q1_resp, "ds_ans:__cancel__")
     if cancel_btn:
         await account2.click_button(q1_resp, text=cancel_btn.text)
 
@@ -288,7 +266,7 @@ async def test_rating_buttons_range(
 async def test_required_text_empty_answer(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Empty answer on required text question should be rejected."""
     template_id = _module_state.get("template_id")
@@ -300,7 +278,7 @@ async def test_required_text_empty_answer(
 
     surveys_msg = await account2.press_callback("my_surveys")
 
-    start_btn = _find_button(surveys_msg, f"ds_start:{session_id}")
+    start_btn = find_button(surveys_msg, f"ds_start:{session_id}")
     assert start_btn is not None
     await account2.click_button(surveys_msg, text=start_btn.text)
 
@@ -317,7 +295,7 @@ async def test_required_text_empty_answer(
 async def test_multiple_choice_no_selection_required(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Pressing Done without selection on required multiple_choice should not advance."""
     template_id = _module_state.get("template_id")
@@ -329,7 +307,7 @@ async def test_multiple_choice_no_selection_required(
 
     surveys_msg = await account2.press_callback("my_surveys")
 
-    start_btn = _find_button(surveys_msg, f"ds_start:{session_id}")
+    start_btn = find_button(surveys_msg, f"ds_start:{session_id}")
     assert start_btn is not None
     await account2.click_button(surveys_msg, text=start_btn.text)
 
@@ -337,24 +315,18 @@ async def test_multiple_choice_no_selection_required(
     q2_msg = await account2.send_text_in_fsm("test answer")
 
     # Q2 rating — click 3
-    rating_btn = _find_button(q2_msg, "ds_ans:3")
-    if rating_btn is None:
-        pytest.skip("Could not navigate to rating question")
-        return
+    rating_btn = find_button(q2_msg, "ds_ans:3")
+    assert rating_btn is not None, "Should find rating button '3' on Q2"
     q3_msg = await account2.click_button(q2_msg, text=rating_btn.text)
 
     # Q3 single choice — click first option
-    sc_btn = _find_button(q3_msg, "ds_ans:opt_a")
-    if sc_btn is None:
-        pytest.skip("Could not navigate to single choice question")
-        return
+    sc_btn = find_button(q3_msg, "ds_ans:opt_a")
+    assert sc_btn is not None, "Should find single choice button 'opt_a' on Q3"
     q4_msg = await account2.click_button(q3_msg, text=sc_btn.text)
 
     # Q4 multiple choice — click Done without selecting
-    done_btn = _find_button(q4_msg, "ds_ans:__done__")
-    if done_btn is None:
-        pytest.skip("Could not find Done button for multiple choice")
-        return
+    done_btn = find_button(q4_msg, "ds_ans:__done__")
+    assert done_btn is not None, "Should find 'Done' button for multiple choice on Q4"
 
     # Click done — should not advance (callback.answer with error toast, no message edit)
     await q4_msg.click(text=done_btn.text)
@@ -373,7 +345,7 @@ async def test_multiple_choice_no_selection_required(
 async def test_survey_cancel(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Cancel survey mid-way through."""
     template_id = _module_state.get("template_id")
@@ -385,7 +357,7 @@ async def test_survey_cancel(
 
     surveys_msg = await account2.press_callback("my_surveys")
 
-    start_btn = _find_button(surveys_msg, f"ds_start:{session_id}")
+    start_btn = find_button(surveys_msg, f"ds_start:{session_id}")
     assert start_btn is not None
     await account2.click_button(surveys_msg, text=start_btn.text)
 
@@ -393,7 +365,7 @@ async def test_survey_cancel(
     q1_resp = await account2.send_text_in_fsm("partial answer")
 
     # Cancel on Q2
-    cancel_btn = _find_button(q1_resp, "ds_ans:__cancel__")
+    cancel_btn = find_button(q1_resp, "ds_ans:__cancel__")
     assert cancel_btn is not None, "Should find cancel button"
     cancel_msg = await account2.click_button(q1_resp, text=cancel_btn.text)
     assert "отменён" in cancel_msg.text.lower(), (
@@ -417,23 +389,23 @@ async def test_survey_duplicate_prevented(
 async def test_view_survey_results(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: TestSetup,
+    setup: E2ESetup,
 ):
     """Admin views survey results."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     menu_msg = await account1.send_command("/menu")
-    surveys_btn = _find_button(menu_msg, "menu_surveys")
+    surveys_btn = find_button(menu_msg, "menu_surveys")
     surveys_msg = await account1.click_button(menu_msg, text=surveys_btn.text)
 
-    results_btn = _find_button(surveys_msg, "sb_action:results")
+    results_btn = find_button(surveys_msg, "sb_action:results")
     assert results_btn is not None, "Survey menu should have 'Results' button"
     results_msg = await account1.click_button(surveys_msg, text=results_btn.text)
 
     assert results_msg.reply_markup is not None, (
         "Results should show template selection"
     )
-    buttons = _get_buttons(results_msg)
+    buttons = get_buttons(results_msg)
     assert len(buttons) >= 1, "Should have at least one template to view results"
 
 
@@ -446,19 +418,17 @@ async def test_delete_survey_template(
     assert template_id is not None
 
     menu_msg = await account1.send_command("/menu")
-    surveys_btn = _find_button(menu_msg, "menu_surveys")
+    surveys_btn = find_button(menu_msg, "menu_surveys")
     surveys_msg = await account1.click_button(menu_msg, text=surveys_btn.text)
 
-    list_btn = _find_button(surveys_msg, "sb_action:list")
+    list_btn = find_button(surveys_msg, "sb_action:list")
     list_msg = await account1.click_button(surveys_msg, text=list_btn.text)
 
-    detail_btn = _find_button(list_msg, f"sb_detail:{template_id}")
-    if detail_btn is None:
-        pytest.skip("Template not found in list — may have been deleted")
-        return
+    detail_btn = find_button(list_msg, f"sb_detail:{template_id}")
+    assert detail_btn is not None, f"Template {template_id} should be in list"
     detail_msg = await account1.click_button(list_msg, text=detail_btn.text)
 
-    delete_btn = _find_button(detail_msg, f"sb_delete:{template_id}")
+    delete_btn = find_button(detail_msg, f"sb_delete:{template_id}")
     assert delete_btn is not None, "Template detail should have delete button"
     await account1.click_button(detail_msg, text=delete_btn.text)
 
