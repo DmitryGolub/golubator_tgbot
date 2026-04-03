@@ -1,0 +1,221 @@
+{
+  "uid": "service-health",
+  "title": "Service Health",
+  "description": "Operational monitoring: logs, error rates, service status",
+  "tags": ["ops", "loki"],
+  "editable": true,
+  "timezone": "browser",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "custom",
+        "label": "Service",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [
+          { "text": "All", "value": "$__all", "selected": true },
+          { "text": "bot", "value": "bot", "selected": false },
+          { "text": "celery_worker", "value": "celery_worker", "selected": false },
+          { "text": "celery_beat", "value": "celery_beat", "selected": false }
+        ],
+        "query": "bot,celery_worker,celery_beat",
+        "includeAll": true,
+        "multi": true,
+        "allValue": "bot|celery_worker|celery_beat"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Service Status",
+      "description": "Shows UP if logs received in the last 2 minutes",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "uid": "loki-logs", "type": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count_over_time({service=~\"$service\"} [2m])",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "special", "options": { "match": "null", "result": { "text": "DOWN", "color": "red" } } },
+            { "type": "range", "options": { "from": 1, "to": 999999, "result": { "text": "UP", "color": "green" } } },
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+          ],
+          "color": { "mode": "fixed" }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "textMode": "name"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Error Rate",
+      "description": "Errors per second by service",
+      "type": "timeseries",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "uid": "loki-logs", "type": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service)(rate({service=~\"$service\"} | json | level=\"ERROR\" [5m]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "drawStyle": "line",
+            "pointSize": 5
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Log Volume",
+      "description": "Total log lines per minute by service",
+      "type": "timeseries",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "uid": "loki-logs", "type": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service)(count_over_time({service=~\"$service\"} [1m]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "fillOpacity": 30,
+            "lineWidth": 2,
+            "drawStyle": "bars",
+            "stacking": { "mode": "normal" }
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Errors Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "uid": "loki-logs", "type": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service)(count_over_time({service=~\"$service\"} | json | level=\"ERROR\" [$__interval]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2,
+            "drawStyle": "line",
+            "pointSize": 5
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Warnings Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "uid": "loki-logs", "type": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service)(count_over_time({service=~\"$service\"} | json | level=\"WARNING\" [$__interval]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2,
+            "drawStyle": "line",
+            "pointSize": 5
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Recent Errors",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "uid": "loki-logs", "type": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service=~\"$service\"} | json | level=\"ERROR\""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Service Logs",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "datasource": { "uid": "loki-logs", "type": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service=~\"$service\"} | json"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    }
+  ],
+  "schemaVersion": 39
+}

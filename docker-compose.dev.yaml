@@ -12,6 +12,9 @@ services:
     volumes:
       - ./src:/app/src
       - ./migrations:/app/migrations
+  loki:
+    ports:
+      - "127.0.0.1:3100:3100"
   grafana:
     ports:
       - "127.0.0.1:3000:3000"

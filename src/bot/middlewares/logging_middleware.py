@@ -43,20 +43,23 @@ class LoggingMiddleware(BaseMiddleware):
             result = await handler(event, data)
             elapsed = (time.perf_counter() - start) * 1000
             logger.info(
-                "Update %s: %s user=%s [%.0fms]",
+                "Update %s handled",
                 event.update_id,
-                action,
-                user_id,
-                elapsed,
+                extra={
+                    "action": action,
+                    "elapsed_ms": round(elapsed, 1),
+                },
             )
             return result
         except Exception as exc:
             logger.error(
-                "Update %s FAILED: %s user=%s error=%s",
+                "Update %s failed: %s",
                 event.update_id,
-                action,
-                user_id,
                 exc,
+                extra={
+                    "action": action,
+                    "elapsed_ms": round((time.perf_counter() - start) * 1000, 1),
+                },
             )
             raise
         finally:
