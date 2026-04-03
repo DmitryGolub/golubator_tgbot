@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
@@ -189,3 +189,32 @@ class SurveySessionDAO:
             await session.commit()
             await session.refresh(survey_session)
             return survey_session
+
+    @classmethod
+    async def get_overdue_sessions(cls, min_age_hours: int = 24) -> list[SurveySession]:
+        """Get escalatable sessions older than min_age_hours that are not completed."""
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=min_age_hours)
+        async with async_session_maker() as session:
+            query = (
+                select(SurveySession)
+                .where(
+                    SurveySession.status.in_(
+                        [SessionStatus.pending, SessionStatus.in_progress]
+                    ),
+                    SurveySession.is_escalatable.is_(True),
+                    SurveySession.created_at < cutoff,
+                )
+                .order_by(SurveySession.created_at)
+            )
+            result = await session.execute(query)
+            return list(result.scalars().all())
+
+    @classmethod
+    async def update_escalation_field(cls, session_id: int, field: str, value) -> None:
+        async with async_session_maker() as db:
+            await db.execute(
+                update(SurveySession)
+                .where(SurveySession.id == session_id)
+                .values(**{field: value})
+            )
+            await db.commit()

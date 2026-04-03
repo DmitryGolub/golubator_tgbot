@@ -19,6 +19,10 @@ from src.models.survey_session import (
     SurveySession as SurveySession,
     SurveyAnswer as SurveyAnswer,
 )
+from src.models.survey_alert import (
+    AlertType as AlertType,
+    SurveyAlert as SurveyAlert,
+)
 from src.models.ui_text import UiText as UiText
 from src.models.stage_transition import StageTransition as StageTransition
 from src.models.trigger import (

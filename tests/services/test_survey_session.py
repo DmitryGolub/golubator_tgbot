@@ -89,9 +89,7 @@ class TestStartSession:
     async def test_in_progress_noop(self, mock_tmpl_dao, mock_sess_dao):
         from src.models.survey_session import SessionStatus
 
-        session = SimpleNamespace(
-            id=1, status=SessionStatus.in_progress, template_id=1
-        )
+        session = SimpleNamespace(id=1, status=SessionStatus.in_progress, template_id=1)
         mock_sess_dao.get_by_id = AsyncMock(return_value=session)
         result = await SurveySessionService().start_session(1)
         assert result is session
@@ -185,13 +183,17 @@ class TestCompleteSession:
     async def test_success(self, mock_tmpl_dao, mock_sess_dao):
         from src.models.survey_session import SessionStatus
 
-        session = SimpleNamespace(
-            id=1, status=SessionStatus.in_progress, template_id=1
-        )
+        session = SimpleNamespace(id=1, status=SessionStatus.in_progress, template_id=1)
         completed = SimpleNamespace(
-            id=1, status=SessionStatus.completed, template_id=1
+            id=1,
+            status=SessionStatus.completed,
+            template_id=1,
+            template=None,
+            answers=[],
+            respondent_id=1,
+            context_id=None,
         )
-        mock_sess_dao.get_by_id = AsyncMock(return_value=session)
+        mock_sess_dao.get_by_id = AsyncMock(side_effect=[session, completed])
         mock_sess_dao.complete = AsyncMock(return_value=completed)
         result = await SurveySessionService().complete_session(1)
         assert result is completed

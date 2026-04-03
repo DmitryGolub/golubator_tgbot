@@ -60,6 +60,14 @@ class SendSurveyAction(BaseAction):
             )
             return
 
+        # Mark non-escalatable if configured (e.g. one-off notifications)
+        if rule.action_config.get("escalatable") is False:
+            from src.dao.survey_session import SurveySessionDAO
+
+            await SurveySessionDAO.update_escalation_field(
+                session.id, "is_escalatable", False
+            )
+
         kb = InlineKeyboardBuilder()
         kb.button(
             text="Пройти опрос",

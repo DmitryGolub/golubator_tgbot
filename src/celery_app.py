@@ -22,6 +22,8 @@ celery_app = Celery(
         "src.tasks.notion_sync",
         "src.tasks.trigger",
         "src.tasks.weekly_survey",
+        "src.tasks.survey_alerts",
+        "src.tasks.survey_escalation",
     ],
 )
 
@@ -79,6 +81,16 @@ celery_app.conf.update(
         "surveys.send_probation_biweekly_mentor": {
             "task": "surveys.send_probation_biweekly_mentor",
             "schedule": crontab(minute=0, hour=12, day_of_week=1),
+        },
+        # Survey alerts: send notifications for low scores / trends / mismatches
+        "surveys.process_alerts": {
+            "task": "surveys.process_alerts",
+            "schedule": crontab(minute="*/5"),
+        },
+        # Survey escalation: remind / notify mentor / escalate unanswered surveys
+        "surveys.check_escalations": {
+            "task": "surveys.check_escalations",
+            "schedule": crontab(minute="*/30"),
         },
     },
 )

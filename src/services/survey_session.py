@@ -1,7 +1,11 @@
+import logging
+
 from src.dao.survey_session import SurveySessionDAO
 from src.dao.survey_template import SurveyTemplateDAO
 from src.models.survey_session import SessionStatus, SurveySession
 from src.models.survey_template import QuestionType, SurveyQuestion
+
+logger = logging.getLogger(__name__)
 
 
 class SessionNotFoundError(Exception):
@@ -128,4 +132,16 @@ class SurveySessionService:
         if session.status == SessionStatus.completed:
             raise SessionAlreadyCompletedError
 
-        return await SurveySessionDAO.complete(session_id)
+        session = await SurveySessionDAO.complete(session_id)
+
+        # Reload with answers for analytics
+        session = await SurveySessionDAO.get_by_id(session_id)
+        if session:
+            from src.services.survey_analytics import SurveyAnalytics
+
+            try:
+                await SurveyAnalytics().process_completed_session(session)
+            except Exception:
+                logger.exception("SurveyAnalytics failed for session %d", session_id)
+
+        return session
