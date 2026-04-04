@@ -77,11 +77,14 @@ async def test_full_flow_call_to_survey_to_results(
 
     await account1.click_button(meetings_msg, text=start_btn.text)
 
+    # Snapshot before ending call to avoid race condition
+    snap = await account2.snapshot_last_message_id()
+
     # End call
     await account1.send_command("/end_call")
 
     # Wait for trigger to send survey to account2
-    notif = await account2.wait_for_message(timeout=30)
+    notif = await account2.wait_for_message_after(snap, timeout=30)
     assert notif.text is not None, "Should receive survey notification"
 
     # Check if survey session was created
@@ -99,6 +102,8 @@ async def test_cohort_change_triggers_notification(
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
     await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
+    # Add a second status value so the keyboard offers an alternative to "study"
+    await setup.ensure_user_cohort(ACCOUNT_1_TG_ID, "Status", "job_search")
 
     # Create cohort_changed trigger
     await setup.create_trigger_rule(
@@ -125,10 +130,10 @@ async def test_cohort_change_triggers_notification(
     assert status_btn is not None, "Should find status param button"
     value_msg = await account1.click_button(param_msg, text=status_btn.text)
 
-    # Pick a different status
-    any_btn = find_button(value_msg, "upd_enum:status:")
-    assert any_btn is not None, "Should find status value button"
-    user_msg = await account1.click_button(value_msg, text=any_btn.text)
+    # Pick job_search — differs from account2's current "study" to avoid no-op
+    any_btn = find_button(value_msg, "upd_enum:status:job_search")
+    assert any_btn is not None, "Should find job_search status value button"
+    user_msg = await account1.click_button(value_msg, data=any_btn.data.decode())
 
     user_btn = find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
     assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"

@@ -27,6 +27,9 @@ async def test_mentor_update_student_status(
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
     await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
 
+    await account1.send_command_multi("/start", count=2)
+    await account2.send_command_multi("/start", count=2)
+
     # /menu -> "Мои ученики" -> "Обновить статус"
     menu_msg = await account1.send_command("/menu")
     students_btn = find_button(menu_msg, "mentor_students_menu")

@@ -37,7 +37,6 @@ async def test_view_cohort_types(
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Seed cohort data so the list is never empty after truncate_all
-    await setup.ensure_user_cohort(ACCOUNT_1_TG_ID, "Direction", "backend")
     await setup.ensure_user_cohort(ACCOUNT_1_TG_ID, "Status", "study")
 
     cohorts_msg = await _navigate_to_cohorts(account1)
