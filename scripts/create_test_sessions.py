@@ -14,6 +14,7 @@ async def main():
     for name, phone_key in [
         ("account1", "TEST_ACCOUNT_1_PHONE"),
         ("account2", "TEST_ACCOUNT_2_PHONE"),
+        ("account3", "TEST_ACCOUNT_3_PHONE"),
     ]:
         client = TelegramClient(f"tests/e2e/sessions/{name}", api_id, api_hash)
         await client.start(phone=os.environ[phone_key])
