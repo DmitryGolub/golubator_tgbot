@@ -166,6 +166,13 @@ class BotSetup:
         if existing == cohort_value:
             return
 
+        # Ensure the cohort value exists so the keyboard button will be present
+        await self._pool.execute(
+            "INSERT INTO integrations.cohorts (type, value) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            cohort_type,
+            cohort_value,
+        )
+
         msg = await self._admin.send_command("/menu")
         msg = await self._admin.click_button(msg, data="menu_users")
         msg = await self._admin.click_button(msg, data="user_update_menu")
