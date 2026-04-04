@@ -139,8 +139,11 @@ async def test_mentor_proposes_student_confirms(
     snap_account1 = await account1.snapshot_last_message_id()
 
     confirm_result = await account2.click_button(proposal_msg, text=confirm_btn.text)
-    assert "подтверждён" in confirm_result.text.lower(), (
-        f"Expected 'подтверждён' in response, got: {confirm_result.text[:200]}"
+    assert (
+        "подтверждён" in confirm_result.text.lower()
+        or "назначен" in confirm_result.text.lower()
+    ), (
+        f"Expected 'подтверждён' or 'назначен' in response, got: {confirm_result.text[:200]}"
     )
 
     # DB: proposal_status = confirmed

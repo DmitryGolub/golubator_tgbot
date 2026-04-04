@@ -124,21 +124,35 @@ class TelegramTestClient:
         # Poll for changes
         deadline = asyncio.get_event_loop().time() + timeout
         interval = 0.1
+        clicked_id = message.id
         while asyncio.get_event_loop().time() < deadline:
             await asyncio.sleep(interval)
             interval = min(interval * 2, 0.5)
             new_messages = await self._client.get_messages(self._bot, limit=5)
+
+            # Priority 1: edit of the CLICKED message (most reliable)
             for m in new_messages:
-                # New message appeared
-                if m.id > max_old_id:
-                    return m
-                # Existing message was edited
-                if m.id in old_snapshots:
+                if m.id == clicked_id and m.id in old_snapshots:
                     old_text, old_edit_date, old_markup = old_snapshots[m.id]
-                    if m.text != old_text:
+                    if m.text != old_text or m.edit_date != old_edit_date:
                         return m
-                    if m.edit_date != old_edit_date:
+
+            # Priority 2: edit of any other known message
+            for m in new_messages:
+                if m.id in old_snapshots and m.id != clicked_id:
+                    old_text, old_edit_date, old_markup = old_snapshots[m.id]
+                    if m.text != old_text or m.edit_date != old_edit_date:
                         return m
+
+            # Priority 3: new message (fallback for .answer() handlers)
+            new_msgs = [m for m in new_messages if m.id > max_old_id]
+            if new_msgs:
+                with_kb = [
+                    m
+                    for m in new_msgs
+                    if m.reply_markup and hasattr(m.reply_markup, "rows")
+                ]
+                return with_kb[0] if with_kb else new_msgs[0]
 
         raise TimeoutError(
             f"No response from bot within {timeout}s after clicking button"

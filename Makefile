@@ -11,7 +11,7 @@ up-prod:
 	docker compose --profile app --profile monitoring up -d --build
 
 down:
-	docker compose down
+	docker compose --profile app --profile dev --profile monitoring down
 
 logs:
 	docker compose logs -f
