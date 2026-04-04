@@ -9,6 +9,7 @@ import os
 
 import pytest
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, button_labels
 from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
@@ -31,13 +32,14 @@ async def _navigate_to_cohorts(account: TelegramTestClient):
 async def test_view_cohort_types(
     account1: TelegramTestClient,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Admin views list of cohort types."""
     await setup.ensure_user_record(ACCOUNT_1_TG_ID)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Seed cohort data so the list is never empty after truncate_all
-    await setup.ensure_user_cohort(ACCOUNT_1_TG_ID, "Status", "study")
+    await bot_setup.set_user_cohort(ACCOUNT_1_TG_ID, "Status", "study")
 
     cohorts_msg = await _navigate_to_cohorts(account1)
     assert cohorts_msg.text is not None
@@ -55,6 +57,7 @@ async def test_view_cohort_types(
 async def test_view_cohort_type_detail(
     account1: TelegramTestClient,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Admin views detail of a cohort type."""
     type_idx = _module_state.get("type_idx")
@@ -62,7 +65,7 @@ async def test_view_cohort_type_detail(
         pytest.skip("Previous test must find a cohort type")
         return
 
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     cohorts_msg = await _navigate_to_cohorts(account1)
     type_btn = find_button(cohorts_msg, f"ctype:{type_idx}")
@@ -86,6 +89,7 @@ async def test_view_cohort_type_detail(
 async def test_create_cohort_option(
     account1: TelegramTestClient,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Admin creates a new option in a cohort type."""
     type_idx = _module_state.get("type_idx")
@@ -93,7 +97,7 @@ async def test_create_cohort_option(
         pytest.skip("No cohort type available")
         return
 
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     cohorts_msg = await _navigate_to_cohorts(account1)
     type_btn = find_button(cohorts_msg, f"ctype:{type_idx}")
@@ -123,6 +127,7 @@ async def test_create_cohort_option(
 async def test_rename_cohort_type(
     account1: TelegramTestClient,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Admin renames a cohort type via FSM (skipped if not editable)."""
     type_idx = _module_state.get("type_idx")
@@ -130,7 +135,7 @@ async def test_rename_cohort_type(
         pytest.skip("No cohort type available")
         return
 
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     cohorts_msg = await _navigate_to_cohorts(account1)
     type_btn = find_button(cohorts_msg, f"ctype:{type_idx}")
@@ -155,6 +160,7 @@ async def test_rename_cohort_type(
 async def test_delete_cohort_option(
     account1: TelegramTestClient,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Admin deletes a cohort option (only the one we created)."""
     created_option = _module_state.get("created_option")
@@ -163,7 +169,7 @@ async def test_delete_cohort_option(
         return
 
     type_idx = _module_state.get("type_idx")
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     cohorts_msg = await _navigate_to_cohorts(account1)
     type_btn = find_button(cohorts_msg, f"ctype:{type_idx}")

@@ -418,8 +418,9 @@ async def cb_choose_user_for_update(
     else:
         value_human = str(chosen_value)
 
+    username_part = f" @{e(user.username)}" if user.username else ""
     await _msg(callback).edit_text(
-        f"Пользователь {e(user.name)} @{e(user.username)}\n"
+        f"Пользователь {e(user.name)}{username_part}\n"
         f"{e(param_human.title())} обновлено на: {e(value_human)}",
         reply_markup=await back_to_menu_keyboard(),
     )

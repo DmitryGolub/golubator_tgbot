@@ -1,6 +1,7 @@
 import asyncio
 import os
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -15,19 +16,20 @@ async def test_full_flow_call_to_survey_to_results(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
     test_run_id: str,
 ):
     """Full flow: create meeting -> start/end call -> trigger sends survey -> student completes -> admin views results."""
     # Setup
     await account1.send_command_multi("/start", count=2)
     await account2.send_command_multi("/start", count=2)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
-    await setup.set_user_role(ACCOUNT_2_TG_ID, "student")
+    await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
 
     # Create survey template
-    template_id = await setup.create_survey_template(
+    template_id = await bot_setup.create_survey_template(
         title="Integration Flow Survey",
         slug="e2e_integration_flow",
         questions=[
@@ -40,7 +42,7 @@ async def test_full_flow_call_to_survey_to_results(
     )
 
     # Create call_ended trigger that sends survey
-    await setup.create_trigger_rule(
+    await bot_setup.create_trigger_rule(
         name="E2E Integration Call Survey",
         trigger_type="call_ended",
         action_type="send_survey",
@@ -64,7 +66,7 @@ async def test_full_flow_call_to_survey_to_results(
     )
 
     # Start call via bot
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     menu_msg = await account1.send_command("/menu")
     meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
     assert meetings_btn is not None, "Mentor menu should have meetings button"
@@ -97,16 +99,17 @@ async def test_cohort_change_triggers_notification(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Cohort change via bot triggers notification to the user."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
-    await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
+    await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
     # Add a second status value so the keyboard offers an alternative to "study"
-    await setup.ensure_user_cohort(ACCOUNT_1_TG_ID, "Status", "job_search")
+    await bot_setup.set_user_cohort(ACCOUNT_1_TG_ID, "Status", "job_search")
 
     # Create cohort_changed trigger
-    await setup.create_trigger_rule(
+    await bot_setup.create_trigger_rule(
         name="E2E Integration Cohort Notify",
         trigger_type="cohort_changed",
         action_type="send_notification",
@@ -159,13 +162,14 @@ async def test_onboarding_meeting_on_mentor_assign(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
     wait_for_sync,
 ):
     """Assigning a mentor to a mentee in Greetings status creates an onboarding meeting."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
-    await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "Greetings")
+    await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "Greetings")
 
     # Get meetings count before
     meetings_before = await db.get_meetings_for_mentor(ACCOUNT_1_TG_ID)

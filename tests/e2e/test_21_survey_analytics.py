@@ -2,6 +2,7 @@ import asyncio
 import os
 from datetime import datetime, timezone
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -23,17 +24,18 @@ async def test_low_score_alert_created(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Student fills survey with low rating -> SurveyAlert(low_score) in DB."""
     await asyncio.gather(
         account1.send_command_multi("/start", count=2),
         account2.send_command_multi("/start", count=2),
     )
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
-    await setup.set_user_role(ACCOUNT_2_TG_ID, "student")
+    await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
 
-    template_id = await setup.create_survey_template(
+    template_id = await bot_setup.create_survey_template(
         title="E2E Alert Rating",
         slug="e2e_alert_rating",
         questions=[
@@ -78,9 +80,10 @@ async def test_mentor_not_recommend_alert(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Mentor passes greeting_mentor_feedback, chooses 'No' -> alert(mentor_not_recommend)."""
-    template_id = await setup.create_survey_template(
+    template_id = await bot_setup.create_survey_template(
         title="E2E Greeting Mentor Feedback",
         slug="greeting_mentor_feedback",
         questions=[
@@ -143,7 +146,9 @@ async def test_mentor_not_recommend_alert(
 # ── Celery-dependent: alert + escalation pipeline (parallelized) ──
 
 
-async def test_setup_all_celery_conditions(db: DBAssertions, setup: E2ESetup):
+async def test_setup_all_celery_conditions(
+    db: DBAssertions, setup: E2ESetup, bot_setup: BotSetup
+):
     """Создаём 3 escalation-сессии параллельно, чтобы затем ждать их одновременно."""
     template_id = _module_state["alert_template_id"]
 
@@ -181,8 +186,8 @@ async def test_setup_all_celery_conditions(db: DBAssertions, setup: E2ESetup):
 
     # Роли для получателей эскалации
     await asyncio.gather(
-        setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "Study"),
-        setup.set_user_role(ACCOUNT_1_TG_ID, "education_lead"),
+        bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "Study"),
+        bot_setup.set_user_role(ACCOUNT_1_TG_ID, "education_lead"),
     )
 
     _module_state["escalation_session_id"] = s_reminder

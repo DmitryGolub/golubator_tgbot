@@ -1,8 +1,8 @@
 import os
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, get_buttons
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -14,12 +14,12 @@ _module_state = {}
 async def test_create_role_via_bot(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Create a role through bot FSM and verify in DB."""
     # Setup: register and make admin
     await account1.send_command_multi("/start", count=2)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     # Navigate: /menu -> Roles (retry after /start if permissions not cached)
     menu_msg = await account1.send_command("/menu")
     if menu_msg.reply_markup is None:
@@ -110,14 +110,14 @@ async def test_assign_permissions_to_role(
 async def test_assign_role_to_user(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Assign the created role to account2 via setup helper."""
     # Ensure account2 is registered
     await account2.send_command_multi("/start", count=2)
 
     # Assign role via direct DB (FSM navigation is too complex for this test)
-    await setup.set_user_role(ACCOUNT_2_TG_ID, "e2e_test_role")
+    await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "e2e_test_role")
 
     # DB check
     await db.assert_user_has_role(ACCOUNT_2_TG_ID, "e2e_test_role")

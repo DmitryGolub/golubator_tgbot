@@ -1,6 +1,7 @@
 import asyncio
 import os
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, get_buttons
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -19,12 +20,12 @@ async def test_create_survey_template(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Create a survey template with 4 question types through bot FSM."""
     await account1.send_command_multi("/start", count=2)
     await account2.send_command_multi("/start", count=2)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # /menu -> Surveys
     menu_msg = await account1.send_command("/menu")
@@ -47,9 +48,9 @@ async def test_create_survey_template(
     await account1.send_command("/menu")
 
 
-async def _create_template_via_setup(setup: E2ESetup, db: DBAssertions) -> int:
-    """Helper: create survey template via DB setup."""
-    template_id = await setup.create_survey_template(
+async def _create_template_via_bot(bot_setup: BotSetup, db: DBAssertions) -> int:
+    """Helper: create survey template via bot setup."""
+    template_id = await bot_setup.create_survey_template(
         title="E2E Test Survey",
         slug="e2e_test_survey",
         questions=[
@@ -89,17 +90,18 @@ async def test_list_survey_templates(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """List survey templates shows created template."""
     # Ensure template exists
     template = await db.get_survey_template_by_slug("e2e_test_survey")
     if template is None:
-        template_id = await _create_template_via_setup(setup, db)
+        template_id = await _create_template_via_bot(bot_setup, db)
         _module_state["template_id"] = template_id
     else:
         _module_state["template_id"] = template["id"]
 
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     menu_msg = await account1.send_command("/menu")
     surveys_btn = find_button(menu_msg, "menu_surveys")
@@ -158,17 +160,18 @@ async def test_student_takes_survey_all_types(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Student completes a survey with all 4 question types."""
     template_id = _module_state.get("template_id")
     if template_id is None:
-        template_id = await _create_template_via_setup(setup, db)
+        template_id = await _create_template_via_bot(bot_setup, db)
         _module_state["template_id"] = template_id
 
     await account2.send_command_multi("/start", count=2)
 
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
-    await setup.set_user_role(ACCOUNT_2_TG_ID, "student")
+    await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
 
     session_id = await setup.create_survey_session(template_id, ACCOUNT_2_TG_ID)
     _module_state["session_id"] = session_id
@@ -389,10 +392,10 @@ async def test_survey_duplicate_prevented(
 async def test_view_survey_results(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Admin views survey results."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     menu_msg = await account1.send_command("/menu")
     surveys_btn = find_button(menu_msg, "menu_surveys")

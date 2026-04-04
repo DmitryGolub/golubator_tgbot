@@ -1,7 +1,7 @@
 import os
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.db_assertions import DBAssertions
-from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -26,14 +26,14 @@ async def test_admin_full_menu(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """
     Admin user should see a full menu with all admin buttons (>= 5).
     """
     # Register account1 and assign admin role
     await account1.send_command_multi("/start", count=2)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Request menu — bot may send text + keyboard as one message,
     # or access_denied if permissions not yet cached
@@ -69,7 +69,6 @@ async def test_admin_full_menu(
 async def test_student_limited_menu(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
 ):
     """
     Student (default role) should see fewer menu buttons than admin.

@@ -1,5 +1,6 @@
 import os
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, button_labels
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -15,13 +16,14 @@ async def test_delete_meeting(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
     test_run_id: str,
 ):
     """Delete a meeting through the bot UI."""
     # Setup
     await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.ensure_user_record(ACCOUNT_2_TG_ID)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
@@ -58,14 +60,15 @@ async def test_student_views_meetings(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
     test_run_id: str,
 ):
     """Student views their meetings list."""
     # Setup
     await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.ensure_user_record(ACCOUNT_2_TG_ID)
-    await setup.set_user_role(ACCOUNT_2_TG_ID, "student")
-    await setup.ensure_role_permission("student", "view_own_meetings")
+    await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
+    await bot_setup.ensure_role_permission("student", "view_own_meetings")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
     # Create a meeting so student has something to see

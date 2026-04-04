@@ -1,3 +1,4 @@
+import html
 import logging
 from string import Template
 
@@ -32,6 +33,8 @@ class SendNotificationAction(BaseAction):
             text = Template(text).safe_substitute(context)
         except (ValueError, TypeError):
             pass
+
+        text = html.escape(text)
 
         try:
             await bot.send_message(recipient_id, text, parse_mode="HTML")

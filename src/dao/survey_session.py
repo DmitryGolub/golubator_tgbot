@@ -162,31 +162,44 @@ class SurveySessionDAO:
         value_choice: list | None = None,
     ) -> SurveyAnswer:
         async with async_session_maker() as session:
-            existing = await session.execute(
-                select(SurveyAnswer).where(
-                    SurveyAnswer.session_id == session_id,
-                    SurveyAnswer.question_id == question_id,
+            try:
+                existing = await session.execute(
+                    select(SurveyAnswer).where(
+                        SurveyAnswer.session_id == session_id,
+                        SurveyAnswer.question_id == question_id,
+                    )
                 )
-            )
-            answer = existing.scalar_one_or_none()
+                answer = existing.scalar_one_or_none()
 
-            if answer:
-                answer.value_text = value_text
-                answer.value_int = value_int
-                answer.value_choice = value_choice
-            else:
-                answer = SurveyAnswer(
-                    session_id=session_id,
-                    question_id=question_id,
-                    value_text=value_text,
-                    value_int=value_int,
-                    value_choice=value_choice,
+                if answer:
+                    answer.value_text = value_text
+                    answer.value_int = value_int
+                    answer.value_choice = value_choice
+                else:
+                    answer = SurveyAnswer(
+                        session_id=session_id,
+                        question_id=question_id,
+                        value_text=value_text,
+                        value_int=value_int,
+                        value_choice=value_choice,
+                    )
+                    session.add(answer)
+
+                await session.commit()
+                await session.refresh(answer)
+                return answer
+            except IntegrityError:
+                await session.rollback()
+                existing = await session.execute(
+                    select(SurveyAnswer).where(
+                        SurveyAnswer.session_id == session_id,
+                        SurveyAnswer.question_id == question_id,
+                    )
                 )
-                session.add(answer)
-
-            await session.commit()
-            await session.refresh(answer)
-            return answer
+                answer = existing.scalar_one_or_none()
+                if answer:
+                    return answer
+                raise
 
     @classmethod
     async def complete(cls, session_id: int) -> Optional[SurveySession]:

@@ -64,15 +64,15 @@ async def cb_surveys_menu(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(SurveyBuilderActionCB.filter(F.action == "list"))
 async def cb_list_templates(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
     await state.clear()
     service = SurveyTemplateService()
     templates = await service.list_active()
 
     if not templates:
-        await callback.answer("Нет созданных опросов")
+        await callback.message.edit_text("Нет созданных опросов")
         return
 
-    await callback.answer()
     await callback.message.edit_text(
         "Список опросов:",
         reply_markup=templates_list_keyboard(templates),
@@ -83,15 +83,16 @@ async def cb_list_templates(callback: CallbackQuery, state: FSMContext):
 async def cb_template_detail(
     callback: CallbackQuery, callback_data: SurveyTemplateDetailCB
 ):
+    await callback.answer()
     service = SurveyTemplateService()
     try:
         template = await service.get(callback_data.template_id)
     except TemplateNotFoundError:
-        await callback.answer("Опрос не найден")
+        await callback.message.edit_text("Опрос не найден")
         return
     except Exception:
         logger.exception("Unexpected error in cb_template_detail")
-        await callback.answer("Произошла ошибка")
+        await callback.message.edit_text("Произошла ошибка")
         return
 
     questions_text = ""
@@ -113,7 +114,6 @@ async def cb_template_detail(
         f"{questions_text}"
     )
 
-    await callback.answer()
     await callback.message.edit_text(
         text, reply_markup=template_detail_keyboard(template)
     )
@@ -123,20 +123,20 @@ async def cb_template_detail(
 async def cb_toggle_template(
     callback: CallbackQuery, callback_data: SurveyTemplateToggleCB
 ):
+    await callback.answer()
     service = SurveyTemplateService()
     try:
         template = await service.get(callback_data.template_id)
         template = await service.toggle_active(template.id, not template.is_active)
     except TemplateNotFoundError:
-        await callback.answer("Опрос не найден")
+        await callback.message.edit_text("Опрос не найден")
         return
     except Exception:
         logger.exception("Unexpected error in cb_toggle_template")
-        await callback.answer("Произошла ошибка")
+        await callback.message.edit_text("Произошла ошибка")
         return
 
     status = "включен" if template.is_active else "выключен"
-    await callback.answer(f"Опрос {status}")
     await callback.message.edit_text(
         f"Опрос <b>{template.title}</b> — {status}.",
         reply_markup=template_detail_keyboard(template),
@@ -147,18 +147,18 @@ async def cb_toggle_template(
 async def cb_delete_template(
     callback: CallbackQuery, callback_data: SurveyTemplateDeleteCB
 ):
+    await callback.answer()
     service = SurveyTemplateService()
     try:
         await service.delete(callback_data.template_id)
     except TemplateNotFoundError:
-        await callback.answer("Опрос не найден")
+        await callback.message.edit_text("Опрос не найден")
         return
     except Exception:
         logger.exception("Unexpected error in cb_delete_template")
-        await callback.answer("Произошла ошибка")
+        await callback.message.edit_text("Произошла ошибка")
         return
 
-    await callback.answer("Опрос удалён")
     templates = await service.list_active()
     if templates:
         await callback.message.edit_text(
@@ -445,6 +445,7 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Добавьте хотя бы один вопрос")
         return
 
+    await callback.answer()
     service = SurveyTemplateService()
     try:
         template = await service.create(
@@ -455,11 +456,10 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
             questions=questions,
         )
     except SlugAlreadyExistsError:
-        await callback.answer("Опрос с таким slug уже существует")
+        await callback.message.edit_text("Опрос с таким slug уже существует")
         return
 
     await state.clear()
-    await callback.answer("Опрос создан!")
 
     questions_text = ""
     for q in template.questions:
@@ -481,14 +481,14 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(SurveyBuilderActionCB.filter(F.action == "results"))
 async def cb_results_templates(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
     await state.clear()
     service = SurveyTemplateService()
     templates = await service.list_active()
     if not templates:
-        await callback.answer("Нет опросов")
+        await callback.message.edit_text("Нет опросов")
         return
 
-    await callback.answer()
     await callback.message.edit_text(
         "Выберите опрос для просмотра результатов:",
         reply_markup=results_templates_keyboard(templates),

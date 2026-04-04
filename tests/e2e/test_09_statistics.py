@@ -1,5 +1,6 @@
 import os
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -13,10 +14,11 @@ async def test_mentor_stats_display(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Mentor can view own stats via menu."""
     await account1.send_command_multi("/start", count=2)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
 
     menu_msg = await account1.send_command("/menu")
@@ -36,9 +38,10 @@ async def test_admin_mentor_stats(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Admin can view mentor stats selection list."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
 
     menu_msg = await account1.send_command("/menu")

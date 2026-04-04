@@ -202,5 +202,5 @@ async def _resolve_role(respondent_id: int) -> str:
 
 @celery_app.task(name="surveys.check_escalations")
 def check_survey_escalations() -> None:
-    """Every 30 minutes: check unanswered surveys and escalate."""
+    """Every 2 minutes: check unanswered surveys and escalate."""
     run_async(_check_survey_escalations_async())

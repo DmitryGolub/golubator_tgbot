@@ -84,6 +84,10 @@ async def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
         needed_keys.append("menu.btn.my_info_student")
         buttons_spec.append(("menu.btn.my_info_student", "student_me_info"))
 
+    if "view_own_info" in permissions:
+        needed_keys.append("menu.btn.feedback_report")
+        buttons_spec.append(("menu.btn.feedback_report", "feedback_report_menu"))
+
     texts = await UiTextService.get_many(needed_keys) if needed_keys else {}
 
     kb = InlineKeyboardBuilder()

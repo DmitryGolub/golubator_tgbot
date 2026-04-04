@@ -1,5 +1,6 @@
 import os
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, get_buttons, button_labels
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -24,13 +25,14 @@ async def test_edit_permissions_via_bot(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Toggle a permission on a role via bot UI."""
     await setup.ensure_user_record(ACCOUNT_1_TG_ID)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Create a dedicated test role to avoid mutating admin permissions
-    test_role_id = await setup.create_test_role_with_perms(
+    test_role_id = await bot_setup.create_test_role_with_perms(
         "e2e_perm_test",
         "E2E Perm Test",
         ["view_students", "view_own_info"],
@@ -78,10 +80,10 @@ async def test_edit_permissions_via_bot(
 async def test_delete_role_with_users_prevented(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Attempting to delete a role that has users should be prevented."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Find a role that has users (e.g. "admin" since account1 uses it)
     roles_msg = await _navigate_to_roles(account1)
@@ -110,13 +112,13 @@ async def test_delete_role_with_users_prevented(
 async def test_delete_role_success(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Delete a role with no users — should succeed."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Create an empty role via DB
-    role_id = await setup.create_role("e2e_temp_role", "E2E Temp Role")
+    role_id = await bot_setup.create_role("e2e_temp_role", "E2E Temp Role")
     _module_state["temp_role_id"] = role_id
 
     roles_msg = await _navigate_to_roles(account1)

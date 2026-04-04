@@ -1,5 +1,6 @@
 import os
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, get_buttons, button_labels
 from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
@@ -10,10 +11,11 @@ ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
 async def test_help_command(
     account1: TelegramTestClient,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """/help shows menu with inline buttons."""
     await setup.ensure_user_record(ACCOUNT_1_TG_ID)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     help_msg = await account1.send_command("/help")
     assert help_msg.text is not None
@@ -26,11 +28,11 @@ async def test_help_command(
 
 async def test_job_search_report(
     account1: TelegramTestClient,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Open job search report menu and select a period."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
-    await setup.ensure_role_permission("admin", "view_job_search_reports")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.ensure_role_permission("admin", "view_job_search_reports")
 
     # Navigate via press_callback (may not be in main menu for all roles)
     period_msg = await account1.press_callback("job_search_report_menu")
@@ -49,11 +51,11 @@ async def test_job_search_report(
 
 async def test_education_feedback(
     account1: TelegramTestClient,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Open education feedback report and select a period."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
-    await setup.ensure_role_permission("admin", "view_education_feedback")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.ensure_role_permission("admin", "view_education_feedback")
 
     period_msg = await account1.press_callback("education_feedback_menu")
     assert period_msg.text is not None
@@ -70,11 +72,11 @@ async def test_education_feedback(
 
 async def test_direction_students(
     account1: TelegramTestClient,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Lead views students by direction."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
-    await setup.ensure_role_permission("admin", "view_direction_students")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.ensure_role_permission("admin", "view_direction_students")
 
     result_msg = await account1.press_callback("lead_direction_students")
     assert result_msg.text is not None

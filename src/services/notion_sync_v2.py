@@ -116,22 +116,23 @@ async def _ensure_user_exists(
             if not real_user:
                 # No real user yet — update placeholder PK (CASCADE updates all FKs)
                 try:
-                    result = await session.execute(
-                        update(User)
-                        .where(User.telegram_id == current_placeholder_id)
-                        .values(telegram_id=telegram_id, is_placeholder=False)
-                        .returning(User.telegram_id)
-                    )
-                    await session.flush()
-                    if result.scalar_one_or_none() is None:
-                        # Another webhook already performed the merge — skip
-                        logger.debug(
-                            "Placeholder merge skipped (already merged): %s -> %s",
-                            current_placeholder_id,
-                            telegram_id,
+                    async with session.begin_nested():
+                        result = await session.execute(
+                            update(User)
+                            .where(User.telegram_id == current_placeholder_id)
+                            .values(telegram_id=telegram_id, is_placeholder=False)
+                            .returning(User.telegram_id)
                         )
+                        await session.flush()
+                        if result.scalar_one_or_none() is None:
+                            # Another webhook already performed the merge — skip
+                            logger.debug(
+                                "Placeholder merge skipped (already merged): %s -> %s",
+                                current_placeholder_id,
+                                telegram_id,
+                            )
                 except IntegrityError:
-                    await session.rollback()
+                    # Savepoint rolled back automatically; outer transaction intact
                     logger.warning(
                         "IntegrityError during placeholder merge %s -> %s, skipping",
                         current_placeholder_id,
@@ -525,6 +526,7 @@ class NotionSyncServiceV2:
             getattr(data, "mentor_email", None),
         )
 
+        new_mentee: Mentee | None = None
         if mentee:
             # Always try to fill missing mentor_id (handles out-of-order sync)
             if resolved_mentor_id is not None and mentee.mentor_id is None:
@@ -595,7 +597,7 @@ class NotionSyncServiceV2:
             )
             new_mentee.telegram_id = user_tid
 
-        mentee_record = mentee or new_mentee  # type: ignore[possibly-undefined]
+        mentee_record = mentee or new_mentee
         return await self._sync_cohorts(
             session,
             mentee_record.telegram_id,

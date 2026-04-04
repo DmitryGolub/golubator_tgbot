@@ -56,9 +56,14 @@ async def cmd_start(message: Message):
 
     username = (user.username or "").strip()
 
+    def _task_done(task: asyncio.Task) -> None:
+        _background_tasks.discard(task)
+        if not task.cancelled() and task.exception():
+            logger.error("Background task failed: %s", task.exception())
+
     task = asyncio.create_task(_link_notion_page(user.id, username))
     _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    task.add_done_callback(_task_done)
 
     welcome = await UiTextService.get("start.welcome", name=user.first_name)
     await message.answer(welcome)

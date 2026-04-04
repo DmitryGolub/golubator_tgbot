@@ -1,5 +1,6 @@
 import os
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, button_labels
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -14,18 +15,19 @@ async def test_mentor_update_student_status(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Mentor updates their student's status cohort via bot."""
     # Setup: account1 = mentor with update_student_status,
     #        account2 = mentee with Status cohort
     await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.ensure_user_record(ACCOUNT_2_TG_ID)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
-    await setup.ensure_role_permission("mentor", "update_student_status")
-    await setup.ensure_role_permission("mentor", "view_students")
+    await bot_setup.ensure_role_permission("mentor", "update_student_status")
+    await bot_setup.ensure_role_permission("mentor", "view_students")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
-    await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
+    await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
 
     await account1.send_command_multi("/start", count=2)
     await account2.send_command_multi("/start", count=2)

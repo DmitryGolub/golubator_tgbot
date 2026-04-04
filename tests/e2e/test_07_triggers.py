@@ -3,6 +3,7 @@ import os
 
 import pytest
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, get_buttons
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -121,14 +122,15 @@ async def test_create_manual_notification_trigger(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Create a manual + send_notification + specific_users trigger rule."""
     await account1.send_command_multi("/start", count=2)
     await account2.send_command_multi("/start", count=2)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
-    await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
+    await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
 
     result = await _create_trigger_fsm(
         account1,
@@ -153,10 +155,11 @@ async def test_create_call_ended_survey_trigger(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Create a call_ended + send_survey + event_student trigger rule."""
     # Need a survey template
-    template_id = await setup.create_survey_template(
+    template_id = await bot_setup.create_survey_template(
         title="E2E Post-Call Survey",
         slug="e2e_post_call",
         questions=[
@@ -380,13 +383,14 @@ async def test_manual_trigger_sends_survey(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Manual trigger with send_survey creates a survey session."""
     template_id = _module_state.get("survey_template_id")
     assert template_id is not None
 
-    # Create a manual survey trigger via setup
-    rule_id = await setup.create_trigger_rule(
+    # Create a manual survey trigger via bot setup
+    rule_id = await bot_setup.create_trigger_rule(
         name="E2E Manual Survey Send",
         trigger_type="manual",
         action_type="send_survey",
@@ -420,11 +424,12 @@ async def test_trigger_call_ended_fires(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
     test_run_id: str,
 ):
     """Call ended event fires trigger automatically."""
     # Create a meeting and complete a call
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
@@ -440,12 +445,12 @@ async def test_trigger_call_ended_fires(
     )
 
     # Start and end call via bot
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     menu_msg = await account1.send_command("/menu")
     meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
     if meetings_btn is None:
         # Admin may not have meetings button — set mentor role
-        await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
+        await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
         menu_msg = await account1.send_command("/menu")
         meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
 
@@ -484,10 +489,11 @@ async def test_cohort_changed_auto_fires(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Cohort change through bot should fire cohort_changed trigger."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
-    await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
 
     # Change status via update_user flow
     menu_msg = await account1.send_command("/menu")
@@ -541,9 +547,10 @@ async def test_trigger_with_delay(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Trigger with 15s delay should fire after the delay."""
-    rule_id = await setup.create_trigger_rule(
+    rule_id = await bot_setup.create_trigger_rule(
         name="E2E Delayed Notify",
         trigger_type="manual",
         action_type="send_notification",
@@ -554,7 +561,7 @@ async def test_trigger_with_delay(
     )
 
     # Manually send
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     triggers_msg = await _navigate_to_triggers(account1)
     send_btn = find_button(triggers_msg, "tr_action:manual_send")
     send_msg = await account1.click_button(triggers_msg, text=send_btn.text)
@@ -586,10 +593,10 @@ async def test_trigger_deduplication(
 
 async def test_trigger_by_cohort_recipients(
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Create trigger with by_cohort recipients and verify in DB."""
-    rule_id = await setup.create_trigger_rule(
+    rule_id = await bot_setup.create_trigger_rule(
         name="E2E By Cohort",
         trigger_type="manual",
         action_type="send_notification",
@@ -606,10 +613,10 @@ async def test_trigger_by_cohort_recipients(
 
 async def test_trigger_by_state_recipients(
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Create trigger with by_state recipients and verify in DB."""
-    rule_id = await setup.create_trigger_rule(
+    rule_id = await bot_setup.create_trigger_rule(
         name="E2E By State",
         trigger_type="manual",
         action_type="send_notification",
@@ -629,9 +636,10 @@ async def test_inactive_trigger_not_fired(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Deactivated trigger should not fire when manually sent."""
-    rule_id = await setup.create_trigger_rule(
+    rule_id = await bot_setup.create_trigger_rule(
         name="E2E Inactive Rule",
         trigger_type="manual",
         action_type="send_notification",
@@ -648,7 +656,7 @@ async def test_inactive_trigger_not_fired(
     )
 
     # Try manual send — rule should not appear in active list
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     triggers_msg = await _navigate_to_triggers(account1)
     send_btn = find_button(triggers_msg, "tr_action:manual_send")
     send_msg = await account1.click_button(triggers_msg, text=send_btn.text)
@@ -664,10 +672,10 @@ async def test_inactive_trigger_not_fired(
 async def test_create_periodic_cron_trigger(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Create a periodic_cron trigger rule and verify it exists in DB."""
-    rule_id = await setup.create_trigger_rule(
+    rule_id = await bot_setup.create_trigger_rule(
         name="E2E Periodic Cron",
         trigger_type="periodic_cron",
         action_type="send_notification",
@@ -715,12 +723,12 @@ async def test_periodic_cron_fires(
 async def test_create_event_mentor_trigger(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Create a call_ended + send_notification + event_mentor trigger rule."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
-    rule_id = await setup.create_trigger_rule(
+    rule_id = await bot_setup.create_trigger_rule(
         name="E2E Event Mentor Notify",
         trigger_type="call_ended",
         action_type="send_notification",
@@ -740,11 +748,12 @@ async def test_event_mentor_receives_notification(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
     test_run_id: str,
 ):
     """After call_ended, event_mentor recipient should receive notification."""
     # account1 = mentor, account2 = mentee
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 

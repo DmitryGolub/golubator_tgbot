@@ -1,6 +1,7 @@
 import os
 from typing import Callable
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, button_labels  # noqa: F401
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -14,13 +15,13 @@ async def test_create_cohort_type(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Admin creates a cohort type through bot FSM."""
     # Register both accounts
     await account1.send_command_multi("/start", count=2)
     await account2.send_command_multi("/start", count=2)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # /menu -> Cohorts
     menu_msg = await account1.send_command("/menu")
@@ -47,10 +48,11 @@ async def test_create_cohort_type(
 async def test_assign_user_to_cohort(
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Assign a cohort to user via setup helper and verify in DB."""
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
-    await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
+    await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
 
     cohorts = await db.get_user_cohorts(ACCOUNT_2_TG_ID)
     assert len(cohorts) > 0, "User should have at least one cohort"

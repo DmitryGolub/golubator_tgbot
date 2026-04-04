@@ -1,6 +1,7 @@
 import os
 from typing import Callable
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.notion_assertions import NotionAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -21,12 +22,13 @@ async def test_push_mentors_role(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
     notion: NotionAssertions,
     wait_for_sync: Callable,
 ):
     """Push should update mentor's Role property in Notion."""
     await account1.send_command_multi("/start", count=2)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
 
     # Get mentor's notion_page_id

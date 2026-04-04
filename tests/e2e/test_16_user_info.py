@@ -1,5 +1,6 @@
 import os
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, button_labels
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -13,12 +14,13 @@ async def test_mentor_me_info(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Mentor views their own info via mentor_me_info."""
     await setup.ensure_user_record(ACCOUNT_1_TG_ID)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
-    await setup.ensure_role_permission("mentor", "view_own_info")
+    await bot_setup.ensure_role_permission("mentor", "view_own_info")
 
     menu_msg = await account1.send_command("/menu")
     me_btn = find_button(menu_msg, "mentor_me_info")
@@ -35,12 +37,13 @@ async def test_student_me_info(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Student views their own info via student_me_info."""
     await setup.ensure_user_record(ACCOUNT_2_TG_ID)
     await setup.ensure_user_record(ACCOUNT_1_TG_ID)
-    await setup.set_user_role(ACCOUNT_2_TG_ID, "student")
-    await setup.ensure_role_permission("student", "view_own_info")
+    await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
+    await bot_setup.ensure_role_permission("student", "view_own_info")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
     menu_msg = await account2.send_command("/menu")
@@ -60,11 +63,12 @@ async def test_mentor_students_menu(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Mentor views their students list."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
-    await setup.ensure_role_permission("mentor", "view_students")
+    await bot_setup.ensure_role_permission("mentor", "view_students")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
     menu_msg = await account1.send_command("/menu")
@@ -85,10 +89,10 @@ async def test_mentor_students_menu(
 async def test_my_surveys_menu(
     account2: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Student views 'My surveys' menu via press_callback."""
-    await setup.set_user_role(ACCOUNT_2_TG_ID, "student")
+    await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
 
     surveys_msg = await account2.press_callback("my_surveys")
 

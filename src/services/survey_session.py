@@ -69,9 +69,9 @@ class SurveySessionService:
             raise SessionNotFoundError
         return session
 
-    async def start_session(self, session_id: int) -> SurveySession:
+    async def start_session(self, session_id: int, caller_id: int) -> SurveySession:
         session = await SurveySessionDAO.get_by_id(session_id)
-        if not session:
+        if not session or session.respondent_id != caller_id:
             raise SessionNotFoundError
         if session.status == SessionStatus.completed:
             raise SessionAlreadyCompletedError

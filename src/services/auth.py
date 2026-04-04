@@ -53,6 +53,7 @@ class AuthService:
             role.id = cached["id"]
             role.name = cached["name"]
             role.display_name = cached["display_name"]
+            role.permissions = []
             return role
 
         user = await UserDAO.find_one_or_none(telegram_id=user_id)

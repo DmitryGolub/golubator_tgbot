@@ -1,5 +1,6 @@
 import os
 
+from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, button_labels
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -15,10 +16,11 @@ async def test_admin_view_mentor_detail_stats(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Admin selects a mentor and views their detailed stats."""
     await setup.ensure_user_record(ACCOUNT_1_TG_ID)
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
 
     # Navigate via press_callback to admin_mentor_stats
@@ -44,13 +46,13 @@ async def test_admin_view_mentor_detail_stats(
 async def test_view_trigger_rule_detail(
     account1: TelegramTestClient,
     db: DBAssertions,
-    setup: E2ESetup,
+    bot_setup: BotSetup,
 ):
     """Admin views trigger rule detail."""
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Create a trigger rule so we have something to view
-    rule_id = await setup.create_trigger_rule(
+    rule_id = await bot_setup.create_trigger_rule(
         name="E2E Detail Test Rule",
         trigger_type="manual",
         action_type="send_notification",

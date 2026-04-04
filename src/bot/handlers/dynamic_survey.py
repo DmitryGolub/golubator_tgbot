@@ -51,7 +51,9 @@ async def cb_start_survey(
     service = SurveySessionService()
 
     try:
-        session = await service.start_session(callback_data.session_id)
+        session = await service.start_session(
+            callback_data.session_id, callback.from_user.id
+        )
     except SessionNotFoundError:
         logger.warning("Survey session %s not found", callback_data.session_id)
         await state.clear()

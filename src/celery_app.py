@@ -87,7 +87,7 @@ celery_app.conf.update(
             "task": "surveys.process_alerts",
             "schedule": crontab(minute="*/5"),
         },
-        # Survey escalation: remind / notify mentor / escalate unanswered surveys
+        # Survey escalation: remind / notify mentor / escalate unanswered surveys (every 2 min)
         "surveys.check_escalations": {
             "task": "surveys.check_escalations",
             "schedule": crontab(minute="*/2"),

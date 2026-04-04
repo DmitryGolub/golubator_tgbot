@@ -308,6 +308,14 @@ TEMPLATES = [
                 "config": {"min": 1, "max": 10},
                 "options": [],
             },
+            {
+                "sort_order": 6,
+                "title": "Что одно мы могли бы улучшить?",
+                "question_type": "text",
+                "is_required": False,
+                "config": None,
+                "options": [],
+            },
         ],
     },
     {
@@ -1125,6 +1133,30 @@ UI_TEXTS = [
         "education.choose_period",
         "Выберите период:",
         "Education feedback: choose period",
+    ),
+    # ── Feedback report ──
+    (
+        "menu.btn.feedback_report",
+        "📮 Обратная связь / Баг",
+        "Menu button: feedback report",
+    ),
+    ("feedback.choose_type", "Выберите тип обращения:", "Feedback: choose type"),
+    ("feedback.enter_text", "Введите текст обращения:", "Feedback: enter text"),
+    (
+        "feedback.choose_recipient",
+        "Кому направить обращение?",
+        "Feedback: choose recipient",
+    ),
+    (
+        "feedback.attach_photo",
+        "Прикрепите фото или нажмите «Пропустить»:",
+        "Feedback: attach photo",
+    ),
+    ("feedback.sent", "✅ Ваше обращение отправлено.", "Feedback: sent confirmation"),
+    (
+        "feedback.bug_sent",
+        "✅ Баг-репорт отправлен.",
+        "Feedback: bug sent confirmation",
     ),
     # ── Common ──
     ("common.cancel", "❌ Отмена", "Cancel button"),

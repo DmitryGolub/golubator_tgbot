@@ -129,6 +129,7 @@ class CohortDAO:
                 .outerjoin(Mentee, Mentee.telegram_id == User.telegram_id)
                 .where(
                     UserCohort.user_telegram_id != lead_telegram_id,
+                    User.is_placeholder.is_(False),
                 )
                 .order_by(lead_cohorts.c.value, User.name)
             )
@@ -177,6 +178,7 @@ class CohortDAO:
                         UserCohort.user_telegram_id == user_telegram_id,
                         Cohort.type == cohort_type,
                     )
+                    .with_for_update()
                 )
                 old_value = old_result.scalar_one_or_none()
 

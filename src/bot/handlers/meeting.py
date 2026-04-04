@@ -440,11 +440,17 @@ async def cb_meeting_choose_date(
 
 
 def _parse_time(value: str) -> str | None:
-    raw = (value or "").strip().replace(":", "")
+    raw = (value or "").strip()
+    if ":" in raw:
+        try:
+            return datetime.strptime(raw, "%H:%M").strftime("%H:%M")
+        except ValueError:
+            return None
     if len(raw) == 4 and raw.isdigit():
-        hh, mm = raw[:2], raw[2:]
-        if 0 <= int(hh) <= 23 and 0 <= int(mm) <= 59:
-            return f"{hh}:{mm}"
+        try:
+            return datetime.strptime(raw, "%H%M").strftime("%H:%M")
+        except ValueError:
+            return None
     return None
 
 

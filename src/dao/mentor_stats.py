@@ -9,6 +9,13 @@ from src.models.meeting import Meeting, MeetingUser
 from src.models.survey_session import SessionStatus, SurveyAnswer, SurveySession
 from src.models.survey_template import SurveyQuestion, SurveyTemplate
 
+_POST_CALL_STUDENT_SLUG = "post_call_student"
+# sort_order values in SurveyQuestion for the post_call_student template:
+#   2 = mentor_style, 3 = knowledge_depth, 4 = understanding
+_MENTOR_STYLE_SORT_ORDER = 2
+_KNOWLEDGE_DEPTH_SORT_ORDER = 3
+_UNDERSTANDING_SORT_ORDER = 4
+
 
 class MentorStatsDAO:
     @classmethod
@@ -40,7 +47,7 @@ class MentorStatsDAO:
 
             # Survey filter: join through Meeting to filter by mentor
             survey_meeting_filter = [
-                SurveyTemplate.slug == "post_call_student",
+                SurveyTemplate.slug == _POST_CALL_STUDENT_SLUG,
                 SurveySession.context_type == "meeting",
                 SurveySession.context_id.op("~")(r"^\d+$"),
                 SurveySession.status == SessionStatus.completed,
@@ -93,7 +100,7 @@ class MentorStatsDAO:
                 .join(Meeting, Meeting.id == cast(SurveySession.context_id, Integer))
                 .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
                 .where(
-                    SurveyTemplate.slug == "post_call_student",
+                    SurveyTemplate.slug == _POST_CALL_STUDENT_SLUG,
                     SurveySession.context_type == "meeting",
                     SurveySession.context_id.op("~")(r"^\d+$"),
                     SurveySession.status == SessionStatus.completed,
@@ -106,31 +113,32 @@ class MentorStatsDAO:
             avg_rows = (await session.execute(avg_query)).fetchall()
             avgs = {row.sort_order: round(float(row.avg_value), 2) for row in avg_rows}
 
+            rating_orders = (
+                _MENTOR_STYLE_SORT_ORDER,
+                _KNOWLEDGE_DEPTH_SORT_ORDER,
+                _UNDERSTANDING_SORT_ORDER,
+            )
             return {
                 "mentor_id": mentor_id,
                 "total_calls": total_calls,
                 "total_surveys": total_surveys,
-                "avg_mentor_style": avgs.get(2),
-                "avg_knowledge_depth": avgs.get(3),
-                "avg_understanding": avgs.get(4),
+                "avg_mentor_style": avgs.get(_MENTOR_STYLE_SORT_ORDER),
+                "avg_knowledge_depth": avgs.get(_KNOWLEDGE_DEPTH_SORT_ORDER),
+                "avg_understanding": avgs.get(_UNDERSTANDING_SORT_ORDER),
                 "avg_satisfaction": (
                     round(
                         sum(
                             v
-                            for v in [avgs.get(2), avgs.get(3), avgs.get(4)]
+                            for v in [avgs.get(o) for o in rating_orders]
                             if v is not None
                         )
                         / max(
-                            sum(
-                                1
-                                for v in [avgs.get(2), avgs.get(3), avgs.get(4)]
-                                if v is not None
-                            ),
+                            sum(1 for o in rating_orders if avgs.get(o) is not None),
                             1,
                         ),
                         2,
                     )
-                    if any(avgs.get(i) is not None for i in (2, 3, 4))
+                    if any(avgs.get(o) is not None for o in rating_orders)
                     else None
                 ),
             }

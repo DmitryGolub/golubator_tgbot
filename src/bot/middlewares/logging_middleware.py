@@ -51,11 +51,10 @@ class LoggingMiddleware(BaseMiddleware):
                 },
             )
             return result
-        except Exception as exc:
-            logger.error(
-                "Update %s failed: %s",
+        except Exception:
+            logger.exception(
+                "Update %s failed",
                 event.update_id,
-                exc,
                 extra={
                     "action": action,
                     "elapsed_ms": round((time.perf_counter() - start) * 1000, 1),

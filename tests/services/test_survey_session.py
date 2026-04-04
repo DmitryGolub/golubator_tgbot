@@ -66,32 +66,50 @@ class TestStartSession:
     async def test_not_found(self, mock_tmpl_dao, mock_sess_dao):
         mock_sess_dao.get_by_id = AsyncMock(return_value=None)
         with pytest.raises(SessionNotFoundError):
-            await SurveySessionService().start_session(1)
+            await SurveySessionService().start_session(1, caller_id=42)
+
+    async def test_wrong_caller(self, mock_tmpl_dao, mock_sess_dao):
+        from src.models.survey_session import SessionStatus
+
+        session = SimpleNamespace(
+            id=1, status=SessionStatus.pending, respondent_id=99, template_id=1
+        )
+        mock_sess_dao.get_by_id = AsyncMock(return_value=session)
+        with pytest.raises(SessionNotFoundError):
+            await SurveySessionService().start_session(1, caller_id=42)
 
     async def test_already_completed(self, mock_tmpl_dao, mock_sess_dao):
         from src.models.survey_session import SessionStatus
 
-        session = SimpleNamespace(id=1, status=SessionStatus.completed, template_id=1)
+        session = SimpleNamespace(
+            id=1, status=SessionStatus.completed, respondent_id=42, template_id=1
+        )
         mock_sess_dao.get_by_id = AsyncMock(return_value=session)
         with pytest.raises(SessionAlreadyCompletedError):
-            await SurveySessionService().start_session(1)
+            await SurveySessionService().start_session(1, caller_id=42)
 
     async def test_pending_starts(self, mock_tmpl_dao, mock_sess_dao):
         from src.models.survey_session import SessionStatus
 
-        session = SimpleNamespace(id=1, status=SessionStatus.pending, template_id=1)
-        started = SimpleNamespace(id=1, status=SessionStatus.in_progress, template_id=1)
+        session = SimpleNamespace(
+            id=1, status=SessionStatus.pending, respondent_id=42, template_id=1
+        )
+        started = SimpleNamespace(
+            id=1, status=SessionStatus.in_progress, respondent_id=42, template_id=1
+        )
         mock_sess_dao.get_by_id = AsyncMock(return_value=session)
         mock_sess_dao.start = AsyncMock(return_value=started)
-        result = await SurveySessionService().start_session(1)
+        result = await SurveySessionService().start_session(1, caller_id=42)
         assert result is started
 
     async def test_in_progress_noop(self, mock_tmpl_dao, mock_sess_dao):
         from src.models.survey_session import SessionStatus
 
-        session = SimpleNamespace(id=1, status=SessionStatus.in_progress, template_id=1)
+        session = SimpleNamespace(
+            id=1, status=SessionStatus.in_progress, respondent_id=42, template_id=1
+        )
         mock_sess_dao.get_by_id = AsyncMock(return_value=session)
-        result = await SurveySessionService().start_session(1)
+        result = await SurveySessionService().start_session(1, caller_id=42)
         assert result is session
         mock_sess_dao.start.assert_not_called()
 

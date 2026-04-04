@@ -24,6 +24,8 @@ SESSION_DIR = "tests/e2e/sessions"
 
 ACCOUNT_1_SESSION = os.environ["TEST_ACCOUNT_1_SESSION"]
 ACCOUNT_2_SESSION = os.environ["TEST_ACCOUNT_2_SESSION"]
+ACCOUNT_3_SESSION = os.environ["TEST_ACCOUNT_3_SESSION"]
+ACCOUNT_3_TG_ID = int(os.environ["TEST_ACCOUNT_3_TG_ID"])
 
 # ── DB config ──
 DB_DSN = (
@@ -94,6 +96,23 @@ async def account2(bot_username) -> TelegramTestClient:
     await client.connect()
     yield TelegramTestClient(client, bot_username)
     await client.disconnect()
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def account3(bot_username) -> TelegramTestClient:
+    client = TelegramClient(f"{SESSION_DIR}/{ACCOUNT_3_SESSION}", API_ID, API_HASH)
+    await client.connect()
+    tc = TelegramTestClient(client, bot_username)
+    await tc.send_command_multi("/start", count=2)  # bootstrap admin role via ADMIN_IDS
+    yield tc
+    await client.disconnect()
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def bot_setup(account3, db_pool):
+    from tests.e2e.helpers.bot_setup import BotSetup
+
+    return BotSetup(account3, db_pool)
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")

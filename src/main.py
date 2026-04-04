@@ -23,6 +23,7 @@ from src.bot.handlers.mentor_stats import router as mentor_stats_router
 from src.bot.handlers.user.direction_students import router as direction_students_router
 from src.bot.handlers.job_search_report import router as job_search_report_router
 from src.bot.handlers.education_feedback import router as education_feedback_router
+from src.bot.handlers.feedback_report import router as feedback_report_router
 from src.bot.middlewares.logging_middleware import LoggingMiddleware
 from src.bot.middlewares.user_sync_middleware import UserSyncMiddleware
 from src.core.config import settings
@@ -67,6 +68,7 @@ async def main():
         direction_students_router,
         job_search_report_router,
         education_feedback_router,
+        feedback_report_router,
     )
 
     health_runner = await start_health_server()
@@ -82,9 +84,11 @@ async def main():
 async def _initial_sync(**kwargs) -> None:
     from src.celery_app import celery_app
 
-    await asyncio.to_thread(celery_app.send_task, "notion.backup_pull_users")
-    await asyncio.to_thread(celery_app.send_task, "notion.backup_pull_events")
-    await asyncio.to_thread(celery_app.send_task, "notion.backup_pull_cohorts")
+    await asyncio.gather(
+        asyncio.to_thread(celery_app.send_task, "notion.backup_pull_users"),
+        asyncio.to_thread(celery_app.send_task, "notion.backup_pull_events"),
+        asyncio.to_thread(celery_app.send_task, "notion.backup_pull_cohorts"),
+    )
 
     logger.info("Initial sync tasks dispatched to Celery")
 

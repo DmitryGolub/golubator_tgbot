@@ -57,6 +57,17 @@ class TriggerExecutionDAO:
                     existing_exec = existing.scalar_one_or_none()
                     if existing_exec:
                         return existing_exec, True
+                else:
+                    existing = await session.execute(
+                        select(TriggerExecution).where(
+                            TriggerExecution.rule_id == rule_id,
+                            TriggerExecution.recipient_id == recipient_id,
+                            TriggerExecution.event_key.is_(None),
+                        )
+                    )
+                    found = existing.scalar_one_or_none()
+                    if found:
+                        return found, True
                 raise
 
             return execution, False

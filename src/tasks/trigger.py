@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, timezone
 
 from aiogram import Bot
@@ -161,13 +162,14 @@ def _match_cron(expr: str, now: datetime) -> bool:
     if len(parts) != 5:
         return False
 
+    dow_expr = re.sub(r"\b7\b", "0", parts[4])  # 7 (Sun alt) → 0 (Sun canonical)
     checks = [
         (parts[0], now.minute),
         (parts[1], now.hour),
         (parts[2], now.day),
         (parts[3], now.month),
         (
-            parts[4],
+            dow_expr,
             now.isoweekday() % 7,
         ),  # isoweekday: Mon=1..Sun=7 → 0=Sun,1=Mon..6=Sat (cron convention)
     ]
