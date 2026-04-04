@@ -51,21 +51,14 @@ async def test_full_flow_call_to_survey_to_results(
         delay_seconds=0,
     )
 
-    # Create meeting via DB
-    pool = db._pool
+    # Create meeting via setup helper
     from datetime import datetime, timezone
 
-    meeting_id = await pool.fetchval(
-        """
-        INSERT INTO meetings.meetings
-            (description, mentor_telegram_id, student_telegram_id, scheduled_at)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id
-        """,
-        "Integration flow meeting",
+    meeting_id = await setup.create_meeting(
         ACCOUNT_1_TG_ID,
         ACCOUNT_2_TG_ID,
-        datetime.now(timezone.utc),
+        description="Integration flow meeting",
+        scheduled_at=datetime.now(timezone.utc),
     )
 
     # Start call via bot
@@ -137,11 +130,14 @@ async def test_cohort_change_triggers_notification(
 
     user_btn = find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
     assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
+
+    # Snapshot before the action that triggers notification
+    snap = await account2.snapshot_last_message_id()
     await account1.click_button(user_msg, data=user_btn.data.decode())
 
     # Wait for notification on account2
     try:
-        notif = await account2.wait_for_message(timeout=30)
+        notif = await account2.wait_for_message_after(snap, timeout=30)
         assert notif.text is not None
         assert len(notif.text) > 0
     except asyncio.TimeoutError:
@@ -156,6 +152,7 @@ async def test_onboarding_meeting_on_mentor_assign(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    wait_for_sync,
 ):
     """Assigning a mentor to a mentee in Greetings status creates an onboarding meeting."""
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
@@ -192,11 +189,12 @@ async def test_onboarding_meeting_on_mentor_assign(
     result_msg = await account1.click_button(user_msg, data=user_btn.data.decode())
     assert "обновлено" in result_msg.text.lower()
 
-    # Wait briefly for onboarding meeting to be created
-    await asyncio.sleep(5)
+    # Wait for onboarding meeting to be created (DB op inside handler)
+    async def _check_meetings():
+        m = await db.get_meetings_for_mentor(ACCOUNT_1_TG_ID)
+        return m if len(m) > count_before else None
 
-    # Check if a new meeting was created
-    meetings_after = await db.get_meetings_for_mentor(ACCOUNT_1_TG_ID)
+    meetings_after = await wait_for_sync(_check_meetings, max_wait=15, interval=1) or []
     count_after = len(meetings_after)
 
     # Onboarding meeting creation depends on schedule_onboarding_for_mentor

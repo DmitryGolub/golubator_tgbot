@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 from tests.e2e.helpers.buttons import find_button, get_buttons, button_labels
@@ -30,15 +29,22 @@ async def test_edit_permissions_via_bot(
     await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
+    # Create a dedicated test role to avoid mutating admin permissions
+    test_role_id = await setup.create_test_role_with_perms(
+        "e2e_perm_test",
+        "E2E Perm Test",
+        ["view_students", "view_own_info"],
+    )
+    _module_state["test_role_id"] = test_role_id
+
     roles_msg = await _navigate_to_roles(account1)
 
-    # Find any role detail button
-    role_btn = find_button(roles_msg, "rbac_role:")
+    # Find the test role button
+    role_btn = find_button(roles_msg, f"rbac_role:{test_role_id}")
     assert role_btn is not None, (
-        f"Should find role detail button. Buttons: {button_labels(roles_msg)}"
+        f"Should find test role button. Buttons: {button_labels(roles_msg)}"
     )
-    role_id = int(role_btn.data.decode().split(":")[-1])
-    _module_state["test_role_id"] = role_id
+    role_id = test_role_id
     detail_msg = await account1.click_button(roles_msg, text=role_btn.text)
 
     # Click "Edit permissions"
@@ -60,7 +66,6 @@ async def test_edit_permissions_via_bot(
 
     # Toggle
     await account1.click_button(perms_msg, data=perm_btn.data.decode())
-    await asyncio.sleep(1)
 
     # Check DB: permission count should have changed
     perms_after = await db.get_role_permissions(role_id)

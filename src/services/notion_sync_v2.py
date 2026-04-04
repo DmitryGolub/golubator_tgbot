@@ -817,7 +817,6 @@ class NotionSyncServiceV2:
                     select(Mentor)
                     .options(selectinload(Mentor.user).selectinload(User.role_rel))
                     .where(
-                        Mentor.notion_page_id.isnot(None),
                         Mentor.updated_at.isnot(None),
                         (Mentor.synced_at.is_(None))
                         | (Mentor.updated_at > Mentor.synced_at),
@@ -828,24 +827,49 @@ class NotionSyncServiceV2:
                 now = datetime.now(timezone.utc)
                 for mentor in mentors:
                     try:
-                        props: dict = {}
-                        if mentor.user and mentor.user.role_rel:
-                            notion_role = _DB_ROLE_TO_NOTION.get(
-                                mentor.user.role_rel.name
+                        if mentor.notion_page_id is None:
+                            # Create new Notion page
+                            name = (
+                                mentor.name
+                                or (mentor.user.name if mentor.user else None)
+                                or "Unknown"
                             )
-                            if notion_role:
-                                props["Role"] = {"select": {"name": notion_role}}
-                        if props:
-                            await self.mentor_repo.update_properties(
-                                mentor.notion_page_id, props
+                            role_name = (
+                                _DB_ROLE_TO_NOTION.get(mentor.user.role_rel.name)
+                                if mentor.user and mentor.user.role_rel
+                                else "mentor"
                             )
+                            page_id = await self.mentor_repo.create_page(
+                                name=name,
+                                telegram_id=mentor.telegram_id or 0,
+                                role=role_name or "mentor",
+                            )
+                            if page_id:
+                                await session.execute(
+                                    update(Mentor)
+                                    .where(Mentor.id == mentor.id)
+                                    .values(notion_page_id=page_id, synced_at=now)
+                                )
+                                pushed += 1
+                        else:
+                            props: dict = {}
+                            if mentor.user and mentor.user.role_rel:
+                                notion_role = _DB_ROLE_TO_NOTION.get(
+                                    mentor.user.role_rel.name
+                                )
+                                if notion_role:
+                                    props["Role"] = {"select": {"name": notion_role}}
+                            if props:
+                                await self.mentor_repo.update_properties(
+                                    mentor.notion_page_id, props
+                                )
 
-                        await session.execute(
-                            update(Mentor)
-                            .where(Mentor.id == mentor.id)
-                            .values(synced_at=now)
-                        )
-                        pushed += 1
+                            await session.execute(
+                                update(Mentor)
+                                .where(Mentor.id == mentor.id)
+                                .values(synced_at=now)
+                            )
+                            pushed += 1
                     except Exception as exc:
                         logger.error(
                             "Failed to push mentor %s to Notion: %s",
@@ -870,8 +894,9 @@ class NotionSyncServiceV2:
         try:
             async with factory() as session:
                 result = await session.execute(
-                    select(Mentee).where(
-                        Mentee.notion_page_id.isnot(None),
+                    select(Mentee)
+                    .options(selectinload(Mentee.mentor))
+                    .where(
                         Mentee.updated_at.isnot(None),
                         (Mentee.synced_at.is_(None))
                         | (Mentee.updated_at > Mentee.synced_at),
@@ -882,6 +907,30 @@ class NotionSyncServiceV2:
                 now = datetime.now(timezone.utc)
                 for mentee in mentees:
                     try:
+                        if mentee.notion_page_id is None:
+                            # Create new Notion page
+                            username = (
+                                mentee.doc_name
+                                or (
+                                    mentee.user.username
+                                    if hasattr(mentee, "user") and mentee.user
+                                    else None
+                                )
+                                or "unknown"
+                            )
+                            page_id = await self.mentee_repo.create_page(
+                                username=username,
+                                telegram_id=mentee.telegram_id or 0,
+                            )
+                            if page_id:
+                                await session.execute(
+                                    update(Mentee)
+                                    .where(Mentee.id == mentee.id)
+                                    .values(notion_page_id=page_id, synced_at=now)
+                                )
+                                pushed += 1
+                            continue
+
                         props: dict = {}
                         if mentee.doc_name:
                             props["Doc name"] = {

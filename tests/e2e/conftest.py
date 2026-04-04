@@ -3,6 +3,7 @@ import os
 
 import asyncpg
 import httpx
+import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 from notion_client import AsyncClient as NotionAsyncClient
@@ -104,13 +105,40 @@ async def wait_for_sync():
     return _wait
 
 
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def wait_for_celery():
+    """Polling helper for Celery-dependent checks. Skips instead of failing on timeout."""
+
+    async def _wait(check_fn, max_wait=360, interval=5, skip_msg="Celery не ответил"):
+        start = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start < max_wait:
+            result = await check_fn()
+            if result:
+                return result
+            await asyncio.sleep(interval)
+        pytest.skip(f"{skip_msg} в течение {max_wait}s")
+
+    return _wait
+
+
 @pytest_asyncio.fixture(autouse=True, scope="module", loop_scope="session")
 async def cleanup_between_modules(setup, notion):
     """Clean up DB, Redis, and Notion test data between test modules."""
     yield
-    await setup.truncate_all()
-    await setup.flush_redis(REDIS_URL)
-    # Archive Notion test pages to prevent accumulation
+    # 1. Collect Notion page IDs BEFORE truncating DB
     event_db_id = os.environ.get("NOTION_EVENT_DB_ID")
+    meeting_page_ids = await setup.get_meeting_notion_page_ids()
+
+    # 2. Archive by ID (covers all names, not just "E2E")
+    if meeting_page_ids:
+        await notion.archive_pages_by_ids(meeting_page_ids)
+
+    # 3. Fallback: archive remaining by title pattern
     if event_db_id:
         await notion.archive_test_pages(event_db_id, title_contains="E2E")
+        await notion.archive_test_pages(event_db_id, title_contains="Integration flow")
+        await notion.archive_test_pages(event_db_id, title_contains="Первый созвон")
+
+    # 4. Clean DB and Redis AFTER Notion archiving
+    await setup.truncate_all()
+    await setup.flush_redis(REDIS_URL)

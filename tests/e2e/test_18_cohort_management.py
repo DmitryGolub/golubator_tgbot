@@ -36,14 +36,18 @@ async def test_view_cohort_types(
     await setup.ensure_user_record(ACCOUNT_1_TG_ID)
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
+    # Seed cohort data so the list is never empty after truncate_all
+    await setup.ensure_user_cohort(ACCOUNT_1_TG_ID, "Direction", "backend")
+    await setup.ensure_user_cohort(ACCOUNT_1_TG_ID, "Status", "study")
+
     cohorts_msg = await _navigate_to_cohorts(account1)
     assert cohorts_msg.text is not None
 
-    # Should either show cohort types or "not found"
+    # Should show cohort types
     type_btn = find_button(cohorts_msg, "ctype:")
-    if type_btn is None:
-        pytest.skip("No cohort types available — Notion may not be configured")
-        return
+    assert type_btn is not None, (
+        f"Cohort types should be visible after seeding. Buttons: {button_labels(cohorts_msg)}"
+    )
 
     # Save index for subsequent tests
     _module_state["type_idx"] = type_btn.data.decode().split(":")[-1]

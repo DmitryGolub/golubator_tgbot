@@ -266,3 +266,56 @@ class DBAssertions:
             telegram_id,
         )
         return [dict(r) for r in rows]
+
+    # --- Survey alerts ---
+
+    @staticmethod
+    def _parse_alert_row(row) -> dict:
+        import json as _json
+
+        d = dict(row)
+        if isinstance(d.get("details"), str):
+            d["details"] = _json.loads(d["details"])
+        return d
+
+    async def get_survey_alerts_for_session(self, session_id: int) -> list[dict]:
+        """Get all alerts triggered by a survey session."""
+        rows = await self._pool.fetch(
+            "SELECT * FROM surveys.survey_alerts WHERE session_id = $1 ORDER BY created_at",
+            session_id,
+        )
+        return [self._parse_alert_row(r) for r in rows]
+
+    async def get_survey_alerts_by_type(
+        self, session_id: int, alert_type: str
+    ) -> list[dict]:
+        """Get alerts of specific type for a session."""
+        rows = await self._pool.fetch(
+            "SELECT * FROM surveys.survey_alerts WHERE session_id = $1 AND alert_type = $2 ORDER BY created_at",
+            session_id,
+            alert_type,
+        )
+        return [self._parse_alert_row(r) for r in rows]
+
+    async def get_session_escalation_fields(self, session_id: int) -> dict | None:
+        """Get escalation fields (reminder_sent_at, mentor_notified_at, escalated_at, is_escalatable)."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT reminder_sent_at, mentor_notified_at, escalated_at, is_escalatable
+            FROM surveys.survey_sessions WHERE id = $1
+            """,
+            session_id,
+        )
+        return dict(row) if row else None
+
+    async def get_latest_pending_session(self, respondent_id: int) -> dict | None:
+        """Get most recent non-completed session for a user."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT * FROM surveys.survey_sessions
+            WHERE respondent_id = $1 AND status != 'completed'
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            respondent_id,
+        )
+        return dict(row) if row else None

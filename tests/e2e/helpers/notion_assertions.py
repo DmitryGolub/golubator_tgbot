@@ -87,8 +87,16 @@ class NotionAssertions:
             )
             for page in results.get("results", []):
                 await self._client.pages.update(page_id=page["id"], archived=True)
-        except Exception:
-            pass  # Notion may not be configured in test env
+        except Exception as e:
+            print(f"[cleanup] archive_test_pages failed: {e}")
+
+    async def archive_pages_by_ids(self, page_ids: list[str]) -> None:
+        """Archive Notion pages by their IDs. Logs errors instead of silencing them."""
+        for page_id in page_ids:
+            try:
+                await self._client.pages.update(page_id=page_id, archived=True)
+            except Exception as e:
+                print(f"[cleanup] Failed to archive Notion page {page_id}: {e}")
 
     @staticmethod
     def _extract_value(prop: dict) -> str:

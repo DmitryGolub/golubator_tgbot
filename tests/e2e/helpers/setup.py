@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import asyncpg
+from datetime import datetime
 from typing import Any
 
 
@@ -192,6 +195,9 @@ class E2ESetup:
             role_name,
             permission_name,
         )
+        # Flush Redis to invalidate permission cache
+        if self._redis_url:
+            await self.flush_redis(self._redis_url)
 
     async def add_fake_mentor(self, telegram_id: int, name: str):
         """Create a non-placeholder user with role=mentor and a mentor record."""
@@ -278,6 +284,13 @@ class E2ESetup:
             telegram_id,
         )
 
+    async def get_meeting_notion_page_ids(self) -> list[str]:
+        """Collect all non-null notion_page_id from meetings.meetings."""
+        rows = await self._pool.fetch(
+            "SELECT notion_page_id FROM meetings.meetings WHERE notion_page_id IS NOT NULL"
+        )
+        return [row["notion_page_id"] for row in rows]
+
     # --- Meetings ---
 
     async def create_meeting(
@@ -285,6 +298,7 @@ class E2ESetup:
         mentor_telegram_id: int,
         student_telegram_id: int,
         description: str = "E2E test meeting",
+        scheduled_at: "datetime | None" = None,
     ) -> int:
         """Create a meeting directly in DB. Returns meeting_id."""
         await self.ensure_user_record(mentor_telegram_id)
@@ -292,22 +306,23 @@ class E2ESetup:
         meeting_id = await self._pool.fetchval(
             """
             INSERT INTO meetings.meetings
-                (mentor_telegram_id, student_telegram_id, description)
-            VALUES ($1, $2, $3)
+                (mentor_telegram_id, student_telegram_id, description, scheduled_at)
+            VALUES ($1, $2, $3, $4)
             RETURNING id
             """,
             mentor_telegram_id,
             student_telegram_id,
             description,
+            scheduled_at,
         )
         # Add participants via association table
         await self._pool.execute(
-            "INSERT INTO meetings.meeting_users (meeting_id, telegram_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            "INSERT INTO meetings.meeting_users (meeting_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
             meeting_id,
             mentor_telegram_id,
         )
         await self._pool.execute(
-            "INSERT INTO meetings.meeting_users (meeting_id, telegram_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            "INSERT INTO meetings.meeting_users (meeting_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
             meeting_id,
             student_telegram_id,
         )
@@ -333,6 +348,24 @@ class E2ESetup:
             ids.append(tg_id)
         return ids
 
+    async def create_test_role_with_perms(
+        self, name: str, display_name: str, permissions: list[str]
+    ) -> int:
+        """Create a role with specific permissions. Returns role_id."""
+        role_id = await self.create_role(name, display_name)
+        for perm in permissions:
+            await self._pool.execute(
+                """
+                INSERT INTO iam.role_permissions (role_id, permission_id)
+                SELECT $1, p.id FROM iam.permissions p
+                WHERE p.codename = $2
+                ON CONFLICT DO NOTHING
+                """,
+                role_id,
+                perm,
+            )
+        return role_id
+
     async def create_role(self, name: str, display_name: str) -> int:
         """Create a role directly in DB. Returns role_id."""
         await self._pool.execute(
@@ -344,6 +377,23 @@ class E2ESetup:
             "INSERT INTO iam.roles (name, display_name) VALUES ($1, $2) RETURNING id",
             name,
             display_name,
+        )
+
+    # --- Survey escalation ---
+
+    async def backdate_session(self, session_id: int, hours_ago: int) -> None:
+        """Backdate session created_at for escalation testing."""
+        await self._pool.execute(
+            f"UPDATE surveys.survey_sessions SET created_at = NOW() - INTERVAL '{hours_ago} hours' WHERE id = $1",
+            session_id,
+        )
+
+    async def set_session_field(self, session_id: int, field: str, value: Any) -> None:
+        """Update a single field on a survey session (e.g. is_escalatable, reminder_sent_at)."""
+        await self._pool.execute(
+            f"UPDATE surveys.survey_sessions SET {field} = $1 WHERE id = $2",
+            value,
+            session_id,
         )
 
     # --- Triggers ---

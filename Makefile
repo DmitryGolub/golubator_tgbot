@@ -1,14 +1,14 @@
 DC_FILE := docker-compose.yaml
 
-.PHONY: init up up-prod down logs ps test migrate reset clean restart cert-init cert-renew nginx-deploy backfill-transitions test-e2e-up test-e2e-down test-e2e-reset test-e2e
+.PHONY: init up up-prod down logs ps test migrate reset clean restart monitoring cert-init cert-renew nginx-deploy backfill-transitions test-e2e-up test-e2e-down test-e2e-reset test-e2e
 
 init: up logs
 
 up:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --profile dev up -d --build
+	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --profile app --profile dev up -d --build
 
 up-prod:
-	docker compose up -d --build
+	docker compose --profile app --profile monitoring up -d --build
 
 down:
 	docker compose down
@@ -26,12 +26,15 @@ migrate:
 	uv run alembic upgrade head
 
 reset:
-	docker compose --profile dev down -v --remove-orphans
+	docker compose --profile app --profile dev --profile monitoring down -v --remove-orphans
 
 restart: reset up
 
 clean:
-	docker compose --profile dev down -v --rmi local --remove-orphans
+	docker compose --profile app --profile dev --profile monitoring down -v --rmi local --remove-orphans
+
+monitoring:
+	docker compose --profile monitoring up -d
 
 nginx-deploy:
 	sudo cp nginx/notion.pigeon.careers /etc/nginx/sites-available/notion.pigeon.careers
@@ -62,15 +65,15 @@ backfill-transitions:
 
 # ── E2E tests ──
 test-e2e-up:
-	docker compose --profile test up -d --build
+	docker compose --env-file .env.test --profile test up -d --build
 
 test-e2e-down:
-	docker compose --profile test down
+	docker compose --env-file .env.test --profile test down
 
 test-e2e-reset:
-	docker compose --profile test down -v --remove-orphans
+	docker compose --env-file .env.test --profile test down -v --remove-orphans
 
 test-e2e:
-	docker compose --profile test up -d --build
+	docker compose --env-file .env.test --profile test up -d --build
 	uv run pytest tests/e2e/ -v --timeout=120
-	docker compose --profile test down
+	docker compose --env-file .env.test --profile test down

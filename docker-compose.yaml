@@ -25,6 +25,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: [app]
 
   redis:
     image: redis:7-alpine
@@ -39,6 +40,7 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+    profiles: [app]
 
   migrations:
     <<: *app-base
@@ -48,6 +50,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    profiles: [app]
 
   bot:
     <<: *app-base
@@ -65,6 +68,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    profiles: [app]
 
   celery_worker:
     <<: *app-base
@@ -81,6 +85,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    profiles: [app]
 
   celery_beat:
     <<: *app-base
@@ -97,8 +102,10 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    profiles: [app]
 
   loki:
+    profiles: [monitoring]
     image: grafana/loki:3.4.2
     container_name: tg_bot.loki
     command: -config.file=/etc/loki/loki-config.yaml
@@ -113,6 +120,7 @@ services:
     restart: unless-stopped
 
   promtail:
+    profiles: [monitoring]
     image: grafana/promtail:3.4.2
     container_name: tg_bot.promtail
     command: -config.file=/etc/promtail/promtail-config.yaml -config.expand-env=true
@@ -129,6 +137,7 @@ services:
     restart: unless-stopped
 
   grafana:
+    profiles: [monitoring]
     image: grafana/grafana-oss:11.5.2
     container_name: tg_bot.grafana
     ports:
@@ -157,16 +166,18 @@ services:
   db_test:
     image: postgres:16-alpine
     container_name: tg_bot.db_test
+    env_file:
+      - .env.test
     environment:
-      POSTGRES_DB: botdb_test
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
       - db_test_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d botdb_test"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5

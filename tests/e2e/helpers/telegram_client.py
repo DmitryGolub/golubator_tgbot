@@ -117,7 +117,31 @@ class TelegramTestClient:
                 responses.append(await conv.get_response())
             return responses
 
-    async def wait_for_message(self, timeout: float = 30) -> Message:
+    async def snapshot_last_message_id(self) -> int:
+        """Capture the current last message id for later use with wait_for_message_after."""
+        messages = await self._client.get_messages(self._bot, limit=1)
+        return max((m.id for m in messages), default=0)
+
+    async def wait_for_message_after(
+        self, after_id: int, timeout: float = 15
+    ) -> Message:
+        """Wait for a message with id > after_id.
+
+        Use with snapshot_last_message_id() taken BEFORE the action that triggers
+        the expected message, to avoid race conditions.
+        """
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            await asyncio.sleep(0.5)
+            new_messages = await self._client.get_messages(self._bot, limit=5)
+            for m in new_messages:
+                if m.id > after_id:
+                    return m
+        raise asyncio.TimeoutError(
+            f"No new message from bot within {timeout}s (after_id={after_id})"
+        )
+
+    async def wait_for_message(self, timeout: float = 15) -> Message:
         """Wait for an incoming message from the bot (for notifications/triggers).
 
         Uses polling: remembers the latest message id, then polls until a new one appears.
@@ -126,7 +150,7 @@ class TelegramTestClient:
         max_old_id = max((m.id for m in old_messages), default=0)
         deadline = asyncio.get_event_loop().time() + timeout
         while asyncio.get_event_loop().time() < deadline:
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
             new_messages = await self._client.get_messages(self._bot, limit=3)
             for m in new_messages:
                 if m.id > max_old_id:

@@ -85,10 +85,12 @@ async def cb_menu_cohorts(callback: CallbackQuery, state: FSMContext):
     types_with_counts = await CohortDAO.get_types_with_value_counts()
     if not types_with_counts:
         text = await UiTextService.get("cohort.not_found")
+        kb = InlineKeyboardBuilder()
+        kb.button(text="➕ Создать тип", callback_data="cohort_create_type")
+        kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
+        kb.adjust(1)
         try:
-            await callback.message.edit_text(
-                text, reply_markup=await back_to_menu_keyboard()
-            )
+            await callback.message.edit_text(text, reply_markup=kb.as_markup())
         except TelegramBadRequest as exc:
             if "message is not modified" not in str(exc).lower():
                 raise

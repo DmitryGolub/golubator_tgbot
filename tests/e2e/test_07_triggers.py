@@ -348,10 +348,13 @@ async def test_manual_trigger_sends_notification(
 
     rule_btn = find_button(send_msg, f"tr_send:{rule_id}")
     assert rule_btn is not None, f"Should find send button for rule {rule_id}"
+
+    # Snapshot before triggering so we don't miss the notification
+    snap = await account2.snapshot_last_message_id()
     await account1.click_button(send_msg, text=rule_btn.text)
 
     # Wait for notification on account2
-    notif = await account2.wait_for_message(timeout=30)
+    notif = await account2.wait_for_message_after(snap, timeout=30)
     assert notif.text is not None
     assert "Hello from E2E test" in notif.text, (
         f"Expected trigger text, got: {notif.text[:200]}"
@@ -400,10 +403,13 @@ async def test_manual_trigger_sends_survey(
 
     rule_btn = find_button(send_msg, f"tr_send:{rule_id}")
     assert rule_btn is not None
+
+    # Snapshot before triggering
+    snap = await account2.snapshot_last_message_id()
     await account1.click_button(send_msg, text=rule_btn.text)
 
     # Wait for survey notification on account2
-    notif = await account2.wait_for_message(timeout=30)
+    notif = await account2.wait_for_message_after(snap, timeout=30)
     assert notif.text is not None
 
 
@@ -420,20 +426,13 @@ async def test_trigger_call_ended_fires(
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
     # Create meeting via setup
-    pool = db._pool
     from datetime import datetime, timezone
 
-    meeting_id = await pool.fetchval(
-        """
-        INSERT INTO meetings.meetings
-            (description, mentor_telegram_id, student_telegram_id, scheduled_at)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id
-        """,
-        "E2E trigger test meeting",
+    meeting_id = await setup.create_meeting(
         ACCOUNT_1_TG_ID,
         ACCOUNT_2_TG_ID,
-        datetime.now(timezone.utc),
+        description="E2E trigger test meeting",
+        scheduled_at=datetime.now(timezone.utc),
     )
 
     # Start and end call via bot
@@ -458,7 +457,6 @@ async def test_trigger_call_ended_fires(
     await account1.send_command("/end_call")
 
     # Check trigger execution
-    await asyncio.sleep(5)
     rule_id = _module_state.get("call_survey_rule_id")
     if rule_id:
         count = await db.count_trigger_executions(rule_id)
@@ -559,10 +557,13 @@ async def test_trigger_with_delay(
 
     rule_btn = find_button(send_msg, f"tr_send:{rule_id}")
     assert rule_btn is not None, "Delayed rule should appear in manual send list"
+
+    # Snapshot before triggering delayed notification
+    snap = await account2.snapshot_last_message_id()
     await account1.click_button(send_msg, text=rule_btn.text)
 
     # Wait for delayed notification
-    notif = await account2.wait_for_message(timeout=45)
+    notif = await account2.wait_for_message_after(snap, timeout=45)
     assert notif.text is not None
     assert "Delayed" in notif.text or len(notif.text) > 0
 
@@ -687,9 +688,12 @@ async def test_periodic_cron_fires(
     rule_id = _module_state.get("periodic_cron_rule_id")
     assert rule_id is not None, "periodic_cron_rule_id should be set by previous test"
 
+    # Snapshot before waiting for periodic trigger
+    snap = await account2.snapshot_last_message_id()
+
     # Wait up to 90s for tick_periodic to pick up and execute the cron rule
     try:
-        notif = await account2.wait_for_message(timeout=90)
+        notif = await account2.wait_for_message_after(snap, timeout=90)
         assert notif.text is not None
         assert len(notif.text) > 0, "Periodic notification should have content"
     except asyncio.TimeoutError:
@@ -740,18 +744,11 @@ async def test_event_mentor_receives_notification(
 
     from datetime import datetime, timezone
 
-    pool = db._pool
-    meeting_id = await pool.fetchval(
-        """
-        INSERT INTO meetings.meetings
-            (description, mentor_telegram_id, student_telegram_id, scheduled_at)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id
-        """,
-        "E2E event_mentor test meeting",
+    meeting_id = await setup.create_meeting(
         ACCOUNT_1_TG_ID,
         ACCOUNT_2_TG_ID,
-        datetime.now(timezone.utc),
+        description="E2E event_mentor test meeting",
+        scheduled_at=datetime.now(timezone.utc),
     )
 
     # Navigate to meetings and start/end call
