@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.education_feedback import education_period_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.bot.utils import safe_edit_text
 from src.services.education_feedback import EducationFeedbackService
 from src.services.ui_text import UiTextService
 
@@ -17,7 +18,7 @@ router.callback_query.filter(PermissionFilter("view_education_feedback"))
 async def cb_education_menu(callback: CallbackQuery):
     await callback.answer()
     text = await UiTextService.get("education.choose_period")
-    await callback.message.edit_text(text, reply_markup=education_period_keyboard())
+    await safe_edit_text(callback, text, reply_markup=education_period_keyboard())
 
 
 @router.callback_query(F.data.startswith("education_period:"))
@@ -36,4 +37,4 @@ async def cb_education_period(callback: CallbackQuery):
     if not text:
         text = await UiTextService.get("education.no_data")
 
-    await callback.message.edit_text(text, reply_markup=await back_to_menu_keyboard())
+    await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())

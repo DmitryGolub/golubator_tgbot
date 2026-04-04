@@ -13,6 +13,7 @@ from src.bot.keyboards.cohort import (
     cohort_options_select_keyboard,
 )
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.bot.utils import safe_edit_text
 from src.dao.cohort import CohortDAO
 from src.services.notion_client import get_notion_service
 from src.services.ui_text import UiTextService
@@ -31,15 +32,13 @@ async def show_cohort_types(callback: CallbackQuery, state: FSMContext):
     types_with_counts = await CohortDAO.get_types_with_value_counts()
     if not types_with_counts:
         text = await UiTextService.get("cohort.not_found")
-        await callback.message.edit_text(
-            text, reply_markup=await back_to_menu_keyboard()
-        )
+        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
         return
 
     header = await UiTextService.get("cohort.types.header")
     markup, types_map = cohort_types_keyboard(types_with_counts)
     await state.update_data(cohort_types_map=types_map)
-    await callback.message.edit_text(header, reply_markup=markup)
+    await safe_edit_text(callback, header, reply_markup=markup)
 
 
 @router.callback_query(CohortTypeCB.filter())
@@ -52,7 +51,8 @@ async def show_cohort_type_detail(
     types_map = data.get("cohort_types_map", {})
     type_name = types_map.get(str(callback_data.idx))
     if not type_name:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Тип когорты не найден. Попробуйте снова.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -67,7 +67,8 @@ async def show_cohort_type_detail(
         types = await notion.get_cohort_types()
     except Exception:
         logger.exception("Failed to fetch cohort types from Notion")
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Не удалось загрузить данные из Notion. Попробуйте позже.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -77,7 +78,8 @@ async def show_cohort_type_detail(
 
     info = next((t for t in types if t.name == type_name), None)
     if not info:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             f'Тип "{e(type_name)}" не найден.',
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -96,7 +98,8 @@ async def show_cohort_type_detail(
         f"{'✏️ Редактируемые опции' if info.editable else '🔒 Опции не редактируются через API'}"
     )
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         text,
         reply_markup=cohort_type_detail_keyboard(info, callback_data.idx),
     )
@@ -112,7 +115,8 @@ async def show_options_list(
     types_map = data.get("cohort_types_map", {})
     type_name = types_map.get(str(callback_data.idx))
     if not type_name:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Тип когорты не найден. Попробуйте снова.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -127,7 +131,8 @@ async def show_options_list(
         options = await notion.get_options(type_name)
     except Exception:
         logger.exception("Failed to fetch cohort options from Notion")
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Не удалось загрузить данные из Notion. Попробуйте позже.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -139,7 +144,8 @@ async def show_options_list(
     action_label = "переименования" if action == "rename" else "удаления"
 
     if not options:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             f"Нет опций для {action_label}.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -151,7 +157,8 @@ async def show_options_list(
         current_type_name=type_name,
     )
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"Выберите опцию для {action_label} в <b>{e(type_name)}</b>:",
         reply_markup=markup,
     )

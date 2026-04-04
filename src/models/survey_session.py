@@ -79,6 +79,7 @@ class SurveySession(Base):
         session_status_enum,
         nullable=False,
         default=SessionStatus.pending,
+        server_default=text("'pending'"),
     )
     started_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

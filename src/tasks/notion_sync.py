@@ -2,7 +2,7 @@ import logging
 
 from src.celery_app import celery_app
 from src.services.notion.client import NotionDatabaseUnavailableError
-from src.tasks._db import run_async
+from src.tasks._db import celery_db, run_async
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +23,17 @@ def push_changes() -> None:
         return
 
     async def _push():
-        mentors = await sync.push_mentors()
-        mentees = await sync.push_mentees()
-        events = await sync.push_events()
-        if mentors or mentees or events:
-            logger.info(
-                "Push complete: %d mentors, %d mentees, %d events",
-                mentors,
-                mentees,
-                events,
-            )
+        async with celery_db():
+            mentors = await sync.push_mentors()
+            mentees = await sync.push_mentees()
+            events = await sync.push_events()
+            if mentors or mentees or events:
+                logger.info(
+                    "Push complete: %d mentors, %d mentees, %d events",
+                    mentors,
+                    mentees,
+                    events,
+                )
 
     try:
         run_async(_push())
@@ -47,12 +48,13 @@ def backup_pull_users() -> None:
         return
 
     async def _pull():
-        mentors = await sync.backup_pull_mentors()
-        mentees = await sync.backup_pull_mentees()
-        if mentors or mentees:
-            logger.info(
-                "Backup pull complete: %d mentors, %d mentees", mentors, mentees
-            )
+        async with celery_db():
+            mentors = await sync.backup_pull_mentors()
+            mentees = await sync.backup_pull_mentees()
+            if mentors or mentees:
+                logger.info(
+                    "Backup pull complete: %d mentors, %d mentees", mentors, mentees
+                )
 
     try:
         run_async(_pull())
@@ -65,8 +67,13 @@ def backup_pull_events() -> None:
     sync = _get_sync_v2()
     if not sync:
         return
+
+    async def _pull():
+        async with celery_db():
+            await sync.backup_pull_events()
+
     try:
-        run_async(sync.backup_pull_events())
+        run_async(_pull())
     except NotionDatabaseUnavailableError as exc:
         logger.warning("backup_pull_events skipped: %s", exc)
 
@@ -76,7 +83,12 @@ def backup_pull_cohorts() -> None:
     sync = _get_sync_v2()
     if not sync:
         return
+
+    async def _pull():
+        async with celery_db():
+            await sync.backup_pull_cohorts()
+
     try:
-        run_async(sync.backup_pull_cohorts())
+        run_async(_pull())
     except NotionDatabaseUnavailableError as exc:
         logger.warning("backup_pull_cohorts skipped: %s", exc)

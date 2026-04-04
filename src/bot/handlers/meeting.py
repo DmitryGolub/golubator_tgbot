@@ -41,6 +41,7 @@ from src.dao.user import UserDAO
 from src.dao.mentee import MenteeDAO
 from src.models.meeting import CallStatus, ProposalStatus
 from src.services.auth import AuthService
+from src.bot.utils import safe_edit_text
 from src.utils.escape import e
 import logging
 from src.tasks.meeting import (
@@ -236,7 +237,8 @@ async def cb_mentor_meetings(callback: CallbackQuery):
         mentor_tg_ids=mentor_tg_ids,
     )
     text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=0)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         text,
         reply_markup=mentor_meetings_keyboard(
             visible, page=0, viewer_id=callback.from_user.id
@@ -259,8 +261,8 @@ async def cb_student_meetings(callback: CallbackQuery):
     )
     text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids)
     try:
-        await callback.message.edit_text(
-            text, reply_markup=await _menu_kb(callback.from_user.id)
+        await safe_edit_text(
+            callback, text, reply_markup=await _menu_kb(callback.from_user.id)
         )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
@@ -317,7 +319,8 @@ async def cb_start_meeting_call(
         viewer_is_mentor=True,
         mentor_tg_ids=mentor_tg_ids,
     )
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         text,
         reply_markup=mentor_meetings_keyboard(
             visible, page=0, viewer_id=callback.from_user.id
@@ -331,14 +334,16 @@ async def cb_meeting_create(callback: CallbackQuery, state: FSMContext):
 
     mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     if not mentees:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "У вас пока нет учеников.",
             reply_markup=await _menu_kb(callback.from_user.id),
         )
         return
 
     await state.set_state(CreateMeetingFSM.choosing_student)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Выберите ученика для созвона:",
         reply_markup=meeting_students_keyboard(mentees),
     )
@@ -354,7 +359,8 @@ async def cb_student_propose_meeting(callback: CallbackQuery, state: FSMContext)
 
     mentee = await MenteeDAO.find_by_telegram_id(user_id)
     if not mentee or not mentee.mentor or not mentee.mentor.telegram_id:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "У вас нет ментора. Обратитесь к куратору.",
             reply_markup=await _menu_kb(user_id),
         )
@@ -366,7 +372,8 @@ async def cb_student_propose_meeting(callback: CallbackQuery, state: FSMContext)
         student_id=user_id,
     )
     await state.set_state(CreateMeetingFSM.waiting_date)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Выберите дату для созвона с ментором:",
         reply_markup=meeting_calendar_keyboard(datetime.now(MSK).date()),
     )
@@ -386,7 +393,8 @@ async def cb_choose_meeting_student(
 
     mentee = await MenteeDAO.find_one_or_none(id=callback_data.mentee_id)
     if not mentee:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Ученик не найден.",
             reply_markup=await _menu_kb(callback.from_user.id),
         )
@@ -394,7 +402,8 @@ async def cb_choose_meeting_student(
         return
 
     if not mentee.telegram_id:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "У ученика не привязан Telegram.",
             reply_markup=await _menu_kb(callback.from_user.id),
         )
@@ -407,7 +416,8 @@ async def cb_choose_meeting_student(
     )
     await state.set_state(CreateMeetingFSM.choosing_type)
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Выберите тип встречи:",
         reply_markup=meeting_type_keyboard(),
     )
@@ -427,7 +437,8 @@ async def cb_choose_meeting_type(
     from src.bot.keyboards.meeting import MEETING_TYPES
 
     if callback_data.type_idx >= len(MEETING_TYPES):
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Неверный тип встречи.",
             reply_markup=await _menu_kb(callback.from_user.id),
         )
@@ -437,7 +448,8 @@ async def cb_choose_meeting_type(
     await state.update_data(event_type=MEETING_TYPES[callback_data.type_idx])
     await state.set_state(CreateMeetingFSM.waiting_description)
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Введите описание встречи:",
         reply_markup=meeting_cancel_keyboard(),
     )
@@ -452,7 +464,8 @@ async def cb_skip_meeting_type(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(CreateMeetingFSM.waiting_description)
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Введите описание встречи:",
         reply_markup=meeting_cancel_keyboard(),
     )
@@ -531,7 +544,8 @@ async def cb_meeting_choose_date(
     else:
         await state.set_state(CreateMeetingFSM.waiting_time)
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"Дата выбрана: {chosen_date:%d.%m.%Y}\nТеперь выберите время или введите его в формате HH:MM.",
         reply_markup=meeting_time_keyboard(),
     )
@@ -605,7 +619,8 @@ async def cb_meeting_choose_time(
     chosen_date = data.get("chosen_date")
     if not chosen_date:
         await state.clear()
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Дата не выбрана, начните заново.",
             reply_markup=await _menu_kb(callback.from_user.id),
         )
@@ -622,7 +637,8 @@ async def cb_meeting_choose_time(
     else:
         await state.set_state(CreateMeetingFSM.waiting_link)
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Введите ссылку на встречу (Telemost, Zoom, Google Meet и т.д.):",
         reply_markup=meeting_skip_cancel_keyboard(),
     )
@@ -880,7 +896,7 @@ async def cb_meeting_skip_link(callback: CallbackQuery, state: FSMContext):
         user_id=callback.from_user.id,
         state=state,
         link=None,
-        reply_func=callback.message.edit_text,
+        reply_func=lambda text, **kw: safe_edit_text(callback, text, **kw),
         bot=callback.bot,
     )
 
@@ -911,7 +927,7 @@ async def cb_reschedule_skip_link(callback: CallbackQuery, state: FSMContext):
         user_id=callback.from_user.id,
         state=state,
         link=None,
-        reply_func=callback.message.edit_text,
+        reply_func=lambda text, **kw: safe_edit_text(callback, text, **kw),
         bot=callback.bot,
     )
 
@@ -926,7 +942,8 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
     )
 
     if not deleted:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Созвон не найден или у вас нет прав на удаление.",
             reply_markup=mentor_meetings_keyboard(),
         )
@@ -946,7 +963,8 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
         mentor_tg_ids=mentor_tg_ids,
     )
     text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=0)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"Созвон #{callback_data.meeting_id} удалён.\n\n{text}",
         reply_markup=mentor_meetings_keyboard(
             visible, page=0, viewer_id=callback.from_user.id
@@ -983,7 +1001,8 @@ async def cb_confirm_meeting(callback: CallbackQuery, callback_data: ConfirmMeet
         except Exception as exc:
             logger.error("Failed to notify proposer %s: %s", proposed_by, exc)
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "✅ Созвон подтверждён.",
         reply_markup=await _menu_kb(user_id),
     )
@@ -1014,7 +1033,8 @@ async def cb_decline_meeting(callback: CallbackQuery, callback_data: DeclineMeet
                 logger.error(
                     "Failed to notify proposer %s: %s", reverted.proposed_by, exc
                 )
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Перенос отклонён.",
             reply_markup=await _menu_kb(user_id),
         )
@@ -1030,7 +1050,8 @@ async def cb_decline_meeting(callback: CallbackQuery, callback_data: DeclineMeet
                 )
             except Exception as exc:
                 logger.error("Failed to notify proposer %s: %s", proposed_by, exc)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Предложение отклонено.",
             reply_markup=await _menu_kb(user_id),
         )
@@ -1058,7 +1079,8 @@ async def cb_propose_new_time(
         original_meeting_id=meeting.id,
     )
     await state.set_state(CreateMeetingFSM.waiting_date)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Выберите новую дату:",
         reply_markup=meeting_calendar_keyboard(datetime.now(MSK).date()),
     )
@@ -1075,7 +1097,8 @@ async def cb_request_reschedule(
 
     await state.update_data(reschedule_meeting_id=callback_data.meeting_id)
     await state.set_state(RescheduleMeetingFSM.waiting_date)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Выберите новую дату для переноса созвона:",
         reply_markup=meeting_calendar_keyboard(datetime.now(MSK).date()),
     )
@@ -1099,7 +1122,8 @@ async def cb_request_reschedule(
 async def cb_meeting_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Отменено.",
         reply_markup=await _menu_kb(callback.from_user.id),
     )
@@ -1138,7 +1162,8 @@ async def cb_meetings_page(callback: CallbackQuery, callback_data: PageNavCB):
     )
     page = callback_data.page
     text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=page)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         text,
         reply_markup=mentor_meetings_keyboard(
             visible, page=page, viewer_id=callback.from_user.id

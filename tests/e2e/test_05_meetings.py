@@ -79,6 +79,9 @@ async def test_create_meeting_fsm(
     # Step 5: Enter time as text
     link_msg = await account1.send_text_in_fsm("18:00")
 
+    # Snapshot BEFORE step 6 — proposal is sent synchronously during finalization
+    snapshot_id = await account2.snapshot_last_message_id()
+
     # Step 6: Skip link or enter one
     skip_link_btn = find_button(link_msg, "meeting_skip_link")
     if skip_link_btn:
@@ -97,7 +100,6 @@ async def test_create_meeting_fsm(
     _module_state["meeting_id"] = meeting_id
 
     # Student confirms the proposal
-    snapshot_id = await account2.snapshot_last_message_id()
     proposal_msg = await account2.wait_for_message_after(snapshot_id)
     confirm_btn = find_button(proposal_msg, "mtg_confirm:")
     assert confirm_btn is not None, (

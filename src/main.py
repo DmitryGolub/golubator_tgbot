@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import BotCommand
@@ -71,6 +71,10 @@ async def main():
         feedback_report_router,
     )
 
+    @dp.callback_query(F.data == "noop")
+    async def _cb_noop(callback):
+        await callback.answer()
+
     health_runner = await start_health_server()
 
     dp.startup.register(_set_bot_commands)
@@ -84,11 +88,18 @@ async def main():
 async def _initial_sync(**kwargs) -> None:
     from src.celery_app import celery_app
 
-    await asyncio.gather(
-        asyncio.to_thread(celery_app.send_task, "notion.backup_pull_users"),
-        asyncio.to_thread(celery_app.send_task, "notion.backup_pull_events"),
-        asyncio.to_thread(celery_app.send_task, "notion.backup_pull_cohorts"),
+    task_names = [
+        "notion.backup_pull_users",
+        "notion.backup_pull_events",
+        "notion.backup_pull_cohorts",
+    ]
+    results = await asyncio.gather(
+        *(asyncio.to_thread(celery_app.send_task, name) for name in task_names),
+        return_exceptions=True,
     )
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            logger.warning("Initial sync task %s failed: %s", task_names[i], result)
 
     logger.info("Initial sync tasks dispatched to Celery")
 

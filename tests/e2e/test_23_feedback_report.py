@@ -6,6 +6,7 @@ from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_2_TG_ID = int(os.environ.get("TEST_ACCOUNT_2_TG_ID", "0"))
+ACCOUNT_3_TG_ID = int(os.environ.get("TEST_ACCOUNT_3_TG_ID", "0"))
 
 
 async def test_problem_report_to_admin(
@@ -18,6 +19,9 @@ async def test_problem_report_to_admin(
     """account2 sends a problem report to coordinator → account3 (admin) receives it."""
     await account2.send_command_multi("/start", count=2)
     await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
+
+    await account3.send_command_multi("/start", count=2)
+    await bot_setup.set_user_role(ACCOUNT_3_TG_ID, "admin")
 
     # Snapshot account3's inbox before sending
     marker = await account3.snapshot_last_message_id()
@@ -55,6 +59,9 @@ async def test_bug_report_without_photo(
     """account2 sends a bug report without photo → admin (account3) receives plain text."""
     await account2.send_command_multi("/start", count=2)
     await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
+
+    await account3.send_command_multi("/start", count=2)
+    await bot_setup.set_user_role(ACCOUNT_3_TG_ID, "admin")
 
     marker = await account3.snapshot_last_message_id()
 

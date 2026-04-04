@@ -43,6 +43,7 @@ from src.bot.keyboards.trigger_rules import (
     trigger_type_keyboard,
 )
 from src.bot.states.trigger_rules import TriggerRuleBuilderFSM
+from src.bot.utils import safe_edit_text
 from src.dao.trigger_rule import TriggerRuleDAO
 from src.services.events.dispatcher import EventDispatcher
 from src.services.survey_template import SurveyTemplateService
@@ -63,7 +64,8 @@ router.callback_query.filter(PermissionFilter("manage_triggers"))
 async def cb_triggers_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         await UiTextService.get("trigger.menu.title"),
         reply_markup=trigger_menu_keyboard(),
     )
@@ -80,7 +82,8 @@ async def cb_list_rules(callback: CallbackQuery, state: FSMContext):
         await callback.answer(await UiTextService.get("trigger.no_rules"))
         return
     await callback.answer()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         await UiTextService.get("trigger.list.header"),
         reply_markup=rules_list_keyboard(rules),
     )
@@ -132,7 +135,7 @@ async def cb_rule_detail(callback: CallbackQuery, callback_data: TriggerRuleDeta
         )
 
     await callback.answer()
-    await callback.message.edit_text(text, reply_markup=rule_detail_keyboard(rule))
+    await safe_edit_text(callback, text, reply_markup=rule_detail_keyboard(rule))
 
 
 @router.callback_query(TriggerRuleToggleCB.filter())
@@ -144,7 +147,8 @@ async def cb_toggle_rule(callback: CallbackQuery, callback_data: TriggerRuleTogg
     rule = await TriggerRuleDAO.set_active(rule.id, not rule.is_active)
     status = "включено" if rule.is_active else "выключено"
     await callback.answer(f"Правило {status}")
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"Правило <b>{e(rule.name)}</b> — {status}.",
         reply_markup=rule_detail_keyboard(rule),
     )
@@ -157,12 +161,14 @@ async def cb_delete_rule_confirm(
     await callback.answer()
     rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
     if not rule:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             await UiTextService.get("trigger.rule_not_found"),
             reply_markup=trigger_menu_keyboard(),
         )
         return
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"Удалить правило <b>{e(rule.name)}</b>?",
         reply_markup=confirm_delete_rule_keyboard(rule.id),
     )
@@ -179,12 +185,14 @@ async def cb_delete_rule(
     await callback.answer(await UiTextService.get("trigger.deleted"))
     rules = await TriggerRuleDAO.get_all()
     if rules:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             await UiTextService.get("trigger.list.header"),
             reply_markup=rules_list_keyboard(rules),
         )
     else:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             await UiTextService.get("trigger.menu.title"),
             reply_markup=trigger_menu_keyboard(),
         )
@@ -201,7 +209,8 @@ async def cb_manual_send_menu(callback: CallbackQuery, state: FSMContext):
         await callback.answer(await UiTextService.get("trigger.no_rules"))
         return
     await callback.answer()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Выберите правило для ручной отправки:",
         reply_markup=manual_send_rules_keyboard(rules),
     )
@@ -222,7 +231,8 @@ async def cb_send_now(callback: CallbackQuery, callback_data: TriggerRuleSendCB)
         bot=callback.bot,
     )
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"Правило <b>{e(rule.name)}</b> выполнено.\nОтправлено: {count} получателям.",
         reply_markup=trigger_menu_keyboard(),
     )
@@ -236,8 +246,8 @@ async def cb_start_create(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.set_state(TriggerRuleBuilderFSM.entering_name)
     await callback.answer()
-    await callback.message.edit_text(
-        "Введите название правила:", reply_markup=cancel_keyboard()
+    await safe_edit_text(
+        callback, "Введите название правила:", reply_markup=cancel_keyboard()
     )
 
 
@@ -263,7 +273,8 @@ async def cb_trigger_type(
 
     if callback_data.value == "periodic_cron":
         await state.set_state(TriggerRuleBuilderFSM.choosing_schedule_mode)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Выберите способ задания расписания:",
             reply_markup=schedule_mode_keyboard(),
         )
@@ -272,14 +283,15 @@ async def cb_trigger_type(
 
         types = await CohortDAO.get_distinct_types()
         await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_type)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Выберите тип когорты для отслеживания:",
             reply_markup=cohort_type_keyboard(types),
         )
     else:
         await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
-        await callback.message.edit_text(
-            "Выберите действие:", reply_markup=action_type_keyboard()
+        await safe_edit_text(
+            callback, "Выберите действие:", reply_markup=action_type_keyboard()
         )
 
 
@@ -292,7 +304,8 @@ async def cb_schedule_mode(
     await callback.answer()
     if callback_data.value == "cron":
         await state.set_state(TriggerRuleBuilderFSM.entering_cron_expression)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Введите cron-выражение (5 полей):\n"
             "<code>минуты часы день_месяца месяц день_недели</code>\n\n"
             "Примеры:\n"
@@ -303,8 +316,8 @@ async def cb_schedule_mode(
         )
     else:
         await state.set_state(TriggerRuleBuilderFSM.choosing_regularity)
-        await callback.message.edit_text(
-            "Выберите регулярность:", reply_markup=regularity_keyboard()
+        await safe_edit_text(
+            callback, "Выберите регулярность:", reply_markup=regularity_keyboard()
         )
 
 
@@ -320,15 +333,18 @@ async def cb_cohort_type(
 
     if cohort_type == "*":
         await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_from)
-        await callback.message.edit_text(
-            "Начальное значение (from):", reply_markup=cohort_wildcard_keyboard()
+        await safe_edit_text(
+            callback,
+            "Начальное значение (from):",
+            reply_markup=cohort_wildcard_keyboard(),
         )
     else:
         from src.dao.cohort import CohortDAO
 
         values = await CohortDAO.get_distinct_values(cohort_type)
         await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_from)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Выберите начальное значение (from):",
             reply_markup=cohort_value_keyboard(values),
         )
@@ -349,15 +365,16 @@ async def cb_cohort_from(
 
     if cohort_type == "*":
         await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_to)
-        await callback.message.edit_text(
-            "Конечное значение (to):", reply_markup=cohort_wildcard_keyboard()
+        await safe_edit_text(
+            callback, "Конечное значение (to):", reply_markup=cohort_wildcard_keyboard()
         )
     else:
         from src.dao.cohort import CohortDAO
 
         values = await CohortDAO.get_distinct_values(cohort_type)
         await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_to)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Выберите конечное значение (to):",
             reply_markup=cohort_value_keyboard(values),
         )
@@ -380,8 +397,8 @@ async def cb_cohort_to(
     await callback.answer()
 
     await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
-    await callback.message.edit_text(
-        "Выберите действие:", reply_markup=action_type_keyboard()
+    await safe_edit_text(
+        callback, "Выберите действие:", reply_markup=action_type_keyboard()
     )
 
 
@@ -452,8 +469,8 @@ async def cb_regularity(
     await state.update_data(regularity=callback_data.value)
     await state.set_state(TriggerRuleBuilderFSM.entering_time_of_day)
     await callback.answer()
-    await callback.message.edit_text(
-        "Введите время отправки (HH:MM, UTC):", reply_markup=cancel_keyboard()
+    await safe_edit_text(
+        callback, "Введите время отправки (HH:MM, UTC):", reply_markup=cancel_keyboard()
     )
 
 
@@ -488,7 +505,8 @@ async def cb_action_type(
 
     if callback_data.value == "send_notification":
         await state.set_state(TriggerRuleBuilderFSM.configuring_action_text)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Введите текст уведомления (поддерживается HTML):",
             reply_markup=cancel_keyboard(),
         )
@@ -496,13 +514,14 @@ async def cb_action_type(
         service = SurveyTemplateService()
         templates = await service.list_active()
         if not templates:
-            await callback.message.edit_text(
-                "Нет активных шаблонов опросов. Сначала создайте опрос."
+            await safe_edit_text(
+                callback, "Нет активных шаблонов опросов. Сначала создайте опрос."
             )
             await state.clear()
             return
         await state.set_state(TriggerRuleBuilderFSM.choosing_survey_template)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Выберите шаблон опроса:",
             reply_markup=survey_templates_keyboard(templates),
         )
@@ -537,8 +556,8 @@ async def cb_choose_template(
     )
     await state.set_state(TriggerRuleBuilderFSM.choosing_recipient_type)
     await callback.answer()
-    await callback.message.edit_text(
-        "Выберите тип получателей:", reply_markup=recipient_type_keyboard()
+    await safe_edit_text(
+        callback, "Выберите тип получателей:", reply_markup=recipient_type_keyboard()
     )
 
 
@@ -561,10 +580,11 @@ async def cb_recipient_type(
             "by_cohort": "Введите значение когорты:",
             "specific_users": "Введите Telegram ID пользователей через запятую:",
         }
-        await callback.message.edit_text(hints[rt], reply_markup=cancel_keyboard())
+        await safe_edit_text(callback, hints[rt], reply_markup=cancel_keyboard())
     else:
         await state.set_state(TriggerRuleBuilderFSM.setting_delay)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Задержка отправки в секундах (0 = немедленно):",
             reply_markup=cancel_keyboard(),
         )
@@ -663,7 +683,8 @@ async def msg_delay(message: Message, state: FSMContext):
 async def cb_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("Отменено")
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         await UiTextService.get("trigger.menu.title"),
         reply_markup=trigger_menu_keyboard(),
     )

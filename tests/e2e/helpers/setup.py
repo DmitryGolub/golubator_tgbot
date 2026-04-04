@@ -70,6 +70,18 @@ class E2ESetup:
                 telegram_id,
                 mentor_id,
             )
+        else:
+            if mentor_telegram_id:
+                row = await self._pool.fetchrow(
+                    "SELECT id FROM iam.mentors WHERE telegram_id = $1",
+                    mentor_telegram_id,
+                )
+                if row:
+                    await self._pool.execute(
+                        "UPDATE iam.mentees SET mentor_id = $1 WHERE telegram_id = $2",
+                        row["id"],
+                        telegram_id,
+                    )
 
     # Tables preserved between test modules (seed data from migrations)
     _PRESERVE_TABLES = {

@@ -79,22 +79,6 @@ class TriggerExecutionDAO:
                 await session.commit()
 
     @classmethod
-    async def get_pending_due(cls) -> list[TriggerExecution]:
-        """Get pending executions where scheduled_at <= now."""
-        async with async_session_maker() as session:
-            now = datetime.now(timezone.utc)
-            query = (
-                select(TriggerExecution)
-                .where(
-                    TriggerExecution.status == ExecutionStatus.pending,
-                    TriggerExecution.scheduled_at <= now,
-                )
-                .order_by(TriggerExecution.scheduled_at)
-            )
-            result = await session.execute(query)
-            return list(result.scalars().all())
-
-    @classmethod
     async def claim_pending(cls, execution_id: int) -> TriggerExecution | None:
         """Atomically claim pending -> processing. Returns None if already claimed."""
         async with async_session_maker() as session:

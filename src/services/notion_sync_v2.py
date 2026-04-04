@@ -134,11 +134,30 @@ async def _ensure_user_exists(
                 except IntegrityError:
                     # Savepoint rolled back automatically; outer transaction intact
                     logger.warning(
-                        "IntegrityError during placeholder merge %s -> %s, skipping",
+                        "IntegrityError during placeholder merge %s -> %s",
                         current_placeholder_id,
                         telegram_id,
                     )
-                    return telegram_id
+                    # Check if a real user now exists (concurrent /start)
+                    real_result = await session.execute(
+                        select(User).where(User.telegram_id == telegram_id)
+                    )
+                    real_user = real_result.scalar_one_or_none()
+                    if real_user:
+                        ph = await session.execute(
+                            select(User).where(
+                                User.telegram_id == current_placeholder_id
+                            )
+                        )
+                        ph_user = ph.scalar_one_or_none()
+                        if ph_user:
+                            await session.delete(ph_user)
+                            await session.flush()
+                        return telegram_id
+                    raise RuntimeError(
+                        f"Inconsistent state: merge {current_placeholder_id} -> "
+                        f"{telegram_id} failed but no real user found"
+                    )
             else:
                 # Real user already exists — delete placeholder
                 placeholder = await session.execute(
@@ -774,19 +793,20 @@ class NotionSyncServiceV2:
             async with factory() as session:
                 for m in mentees_data:
                     try:
-                        result = await session.execute(
-                            select(Mentee).where(Mentee.notion_page_id == m.page_id)
-                        )
-                        mentee = result.scalar_one_or_none()
-                        if not mentee or mentee.telegram_id is None:
-                            continue
+                        async with session.begin_nested():
+                            result = await session.execute(
+                                select(Mentee).where(Mentee.notion_page_id == m.page_id)
+                            )
+                            mentee = result.scalar_one_or_none()
+                            if not mentee or mentee.telegram_id is None:
+                                continue
 
-                        now = datetime.now(timezone.utc)
-                        diffs = await self._sync_cohorts(
-                            session, mentee.telegram_id, m, now
-                        )
-                        all_diffs.extend(diffs)
-                        count += 1
+                            now = datetime.now(timezone.utc)
+                            diffs = await self._sync_cohorts(
+                                session, mentee.telegram_id, m, now
+                            )
+                            all_diffs.extend(diffs)
+                            count += 1
                     except Exception:
                         logger.exception("Error syncing cohort for %s", m.page_id)
 

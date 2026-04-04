@@ -5,7 +5,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import aliased
 
 from src.core.database import async_session_maker
-from src.dao.meeting import MeetingDAO
 from src.models.meeting import Meeting, MeetingUser
 from src.models.user import User
 
@@ -51,27 +50,28 @@ async def _ensure_onboarding_meeting(
     MU1 = aliased(MeetingUser)
     MU2 = aliased(MeetingUser)
     async with async_session_maker() as session:
-        existing = await session.execute(
-            select(Meeting)
-            .join(MU1, MU1.meeting_id == Meeting.id)
-            .join(MU2, MU2.meeting_id == Meeting.id)
-            .where(
-                MU1.user_id == student_id,
-                MU2.user_id == mentor_id,
-                Meeting.scheduled_at == scheduled_at,
+        async with session.begin():
+            existing = await session.execute(
+                select(Meeting.id)
+                .join(MU1, MU1.meeting_id == Meeting.id)
+                .join(MU2, MU2.meeting_id == Meeting.id)
+                .where(
+                    MU1.user_id == student_id,
+                    MU2.user_id == mentor_id,
+                    Meeting.scheduled_at == scheduled_at,
+                )
             )
-        )
-        meeting = existing.scalar_one_or_none()
-    if meeting:
-        return
+            if existing.scalar_one_or_none():
+                return
 
-    await MeetingDAO.create_with_participants(
-        description="Первый созвон с ментором (онбординг)",
-        meeting_link=None,
-        scheduled_at=scheduled_at,
-        mentor_id=mentor_id,
-        student_id=student_id,
-    )
+            meeting = Meeting(
+                description="Первый созвон с ментором (онбординг)",
+                scheduled_at=scheduled_at,
+            )
+            session.add(meeting)
+            await session.flush()
+            session.add(MeetingUser(meeting_id=meeting.id, user_id=mentor_id))
+            session.add(MeetingUser(meeting_id=meeting.id, user_id=student_id))
 
 
 async def notify_student_new_mentor(student: User, mentor: User) -> None:

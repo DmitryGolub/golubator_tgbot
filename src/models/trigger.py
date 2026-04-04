@@ -186,7 +186,10 @@ class TriggerExecution(Base):
         nullable=False,
     )
     status: Mapped[ExecutionStatus] = mapped_column(
-        execution_status_enum, nullable=False, default=ExecutionStatus.pending
+        execution_status_enum,
+        nullable=False,
+        default=ExecutionStatus.pending,
+        server_default=text("'pending'"),
     )
     scheduled_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

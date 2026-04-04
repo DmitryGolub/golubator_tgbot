@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.job_search_report import job_search_period_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.bot.utils import safe_edit_text
 from src.services.job_search_report import JobSearchReportService
 from src.services.ui_text import UiTextService
 
@@ -17,7 +18,7 @@ router.callback_query.filter(PermissionFilter("view_job_search_reports"))
 async def cb_job_search_menu(callback: CallbackQuery):
     await callback.answer()
     text = await UiTextService.get("job_search.choose_period")
-    await callback.message.edit_text(text, reply_markup=job_search_period_keyboard())
+    await safe_edit_text(callback, text, reply_markup=job_search_period_keyboard())
 
 
 @router.callback_query(F.data.startswith("job_search_period:"))
@@ -36,4 +37,4 @@ async def cb_job_search_period(callback: CallbackQuery):
     if not text:
         text = await UiTextService.get("job_search.no_data")
 
-    await callback.message.edit_text(text, reply_markup=await back_to_menu_keyboard())
+    await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())

@@ -28,6 +28,7 @@ from src.bot.keyboards.survey_builder import (
     templates_list_keyboard,
 )
 from src.bot.states.survey_builder import SurveyBuilderFSM
+from src.bot.utils import safe_edit_text
 from src.dao.survey_session import SurveySessionDAO
 from src.dao.user import UserDAO
 from src.services.survey_session import SessionNotFoundError, SurveySessionService
@@ -53,7 +54,8 @@ router.callback_query.filter(PermissionFilter("manage_surveys"))
 async def cb_surveys_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         await UiTextService.get("survey.menu.title"),
         reply_markup=survey_builder_menu_keyboard(),
     )
@@ -70,10 +72,11 @@ async def cb_list_templates(callback: CallbackQuery, state: FSMContext):
     templates = await service.list_active()
 
     if not templates:
-        await callback.message.edit_text("Нет созданных опросов")
+        await safe_edit_text(callback, "Нет созданных опросов")
         return
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Список опросов:",
         reply_markup=templates_list_keyboard(templates),
     )
@@ -88,11 +91,11 @@ async def cb_template_detail(
     try:
         template = await service.get(callback_data.template_id)
     except TemplateNotFoundError:
-        await callback.message.edit_text("Опрос не найден")
+        await safe_edit_text(callback, "Опрос не найден")
         return
     except Exception:
         logger.exception("Unexpected error in cb_template_detail")
-        await callback.message.edit_text("Произошла ошибка")
+        await safe_edit_text(callback, "Произошла ошибка")
         return
 
     questions_text = ""
@@ -114,8 +117,8 @@ async def cb_template_detail(
         f"{questions_text}"
     )
 
-    await callback.message.edit_text(
-        text, reply_markup=template_detail_keyboard(template)
+    await safe_edit_text(
+        callback, text, reply_markup=template_detail_keyboard(template)
     )
 
 
@@ -129,15 +132,16 @@ async def cb_toggle_template(
         template = await service.get(callback_data.template_id)
         template = await service.toggle_active(template.id, not template.is_active)
     except TemplateNotFoundError:
-        await callback.message.edit_text("Опрос не найден")
+        await safe_edit_text(callback, "Опрос не найден")
         return
     except Exception:
         logger.exception("Unexpected error in cb_toggle_template")
-        await callback.message.edit_text("Произошла ошибка")
+        await safe_edit_text(callback, "Произошла ошибка")
         return
 
     status = "включен" if template.is_active else "выключен"
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"Опрос <b>{template.title}</b> — {status}.",
         reply_markup=template_detail_keyboard(template),
     )
@@ -152,21 +156,23 @@ async def cb_delete_template(
     try:
         await service.delete(callback_data.template_id)
     except TemplateNotFoundError:
-        await callback.message.edit_text("Опрос не найден")
+        await safe_edit_text(callback, "Опрос не найден")
         return
     except Exception:
         logger.exception("Unexpected error in cb_delete_template")
-        await callback.message.edit_text("Произошла ошибка")
+        await safe_edit_text(callback, "Произошла ошибка")
         return
 
     templates = await service.list_active()
     if templates:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Список опросов:",
             reply_markup=templates_list_keyboard(templates),
         )
     else:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             await UiTextService.get("survey.menu.title"),
             reply_markup=survey_builder_menu_keyboard(),
         )
@@ -180,7 +186,8 @@ async def cb_start_create(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await state.set_state(SurveyBuilderFSM.entering_title)
     await callback.answer()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Введите название опроса:",
         reply_markup=cancel_keyboard(),
     )
@@ -259,14 +266,16 @@ async def cb_question_type(
 
     if qtype == "rating":
         await state.set_state(SurveyBuilderFSM.configuring_rating_min)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Введите минимальное значение рейтинга (обычно 1):",
             reply_markup=cancel_keyboard(),
         )
     elif qtype in ("single_choice", "multiple_choice"):
         await state.update_data(current_options=[])
         await state.set_state(SurveyBuilderFSM.adding_option_value)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Добавьте варианты ответа.\n\n"
             "Введите машинное значение (slug) первого варианта:",
             reply_markup=cancel_keyboard(),
@@ -423,7 +432,8 @@ async def cb_add_more_question(callback: CallbackQuery, state: FSMContext):
         return
     await state.set_state(SurveyBuilderFSM.adding_question_title)
     await callback.answer()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Введите текст следующего вопроса:",
         reply_markup=cancel_keyboard(),
     )
@@ -456,7 +466,7 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
             questions=questions,
         )
     except SlugAlreadyExistsError:
-        await callback.message.edit_text("Опрос с таким slug уже существует")
+        await safe_edit_text(callback, "Опрос с таким slug уже существует")
         return
 
     await state.clear()
@@ -468,7 +478,8 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
         )
         questions_text += f"\n  {q.sort_order}. {q.title} [{type_label}]"
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"Опрос <b>{template.title}</b> создан.\n"
         f"Slug: <code>{template.slug}</code>\n"
         f"Вопросов: {len(template.questions)}{questions_text}",
@@ -486,10 +497,11 @@ async def cb_results_templates(callback: CallbackQuery, state: FSMContext):
     service = SurveyTemplateService()
     templates = await service.list_active()
     if not templates:
-        await callback.message.edit_text("Нет опросов")
+        await safe_edit_text(callback, "Нет опросов")
         return
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Выберите опрос для просмотра результатов:",
         reply_markup=results_templates_keyboard(templates),
     )
@@ -504,13 +516,15 @@ async def cb_results_sessions(
         callback_data.template_id
     )
     if not sessions:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Завершённых сессий нет.",
             reply_markup=survey_builder_menu_keyboard(),
         )
         return
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"Завершённых сессий: {len(sessions)}",
         reply_markup=results_sessions_keyboard(sessions),
     )
@@ -525,7 +539,8 @@ async def cb_results_session_detail(
     try:
         session = await service.get_session(callback_data.session_id)
     except SessionNotFoundError:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Сессия не найдена.",
             reply_markup=survey_builder_menu_keyboard(),
         )
@@ -555,7 +570,8 @@ async def cb_results_session_detail(
             val = "—"
         lines.append(f"<b>{q_title}</b>\n  {val}")
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "\n".join(lines),
         reply_markup=survey_builder_menu_keyboard(),
     )
@@ -568,7 +584,8 @@ async def cb_results_session_detail(
 async def cb_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("Отменено")
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         await UiTextService.get("survey.menu.title"),
         reply_markup=survey_builder_menu_keyboard(),
     )

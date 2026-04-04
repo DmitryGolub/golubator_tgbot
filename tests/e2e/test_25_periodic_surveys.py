@@ -43,7 +43,7 @@ async def test_weekly_survey_sent_to_mentor(
     await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
-    await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "Study")
+    await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "Study")
 
     template_id = await setup.create_survey_template(
         title="Еженедельный опрос по ученику",
@@ -123,7 +123,7 @@ async def test_probation_mentee_survey_sent(
     await account2.send_command_multi("/start", count=2)
     await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
-    await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "Probationary period")
+    await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "Probationary period")
 
     template_id = await setup.create_survey_template(
         title="Опрос по испытательному сроку",
@@ -171,7 +171,7 @@ async def test_no_survey_for_study_mentee(
     await account2.send_command_multi("/start", count=2)
     await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
-    await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "Study")
+    await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "Study")
 
     template_id = await setup.create_survey_template(
         title="Опрос по испытательному сроку",

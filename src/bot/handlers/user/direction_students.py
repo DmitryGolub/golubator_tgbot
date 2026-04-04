@@ -3,6 +3,7 @@ from aiogram.types import CallbackQuery
 
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.bot.utils import safe_edit_text
 from src.dao.cohort import CohortDAO
 from src.services.ui_text import UiTextService
 
@@ -19,7 +20,7 @@ async def cb_direction_students(callback: CallbackQuery):
     if not grouped:
         text = await UiTextService.get("direction.no_directions")
         kb = await back_to_menu_keyboard()
-        await callback.message.edit_text(text, reply_markup=kb)
+        await safe_edit_text(callback, text, reply_markup=kb)
         return
 
     lines: list[str] = []
@@ -36,4 +37,4 @@ async def cb_direction_students(callback: CallbackQuery):
         lines.append("")
 
     kb = await back_to_menu_keyboard()
-    await callback.message.edit_text("\n".join(lines).strip(), reply_markup=kb)
+    await safe_edit_text(callback, "\n".join(lines).strip(), reply_markup=kb)

@@ -69,6 +69,9 @@ async def _check_survey_escalations_async() -> None:
                             parse_mode="HTML",
                         )
                         reminders += 1
+                        await SurveySessionDAO.update_escalation_field(
+                            survey_session.id, "reminder_sent_at", now
+                        )
                     except TelegramForbiddenError:
                         logger.warning(
                             "User %s blocked the bot (reminder), "
@@ -85,10 +88,10 @@ async def _check_survey_escalations_async() -> None:
                         await SurveySessionDAO.update_escalation_field(
                             survey_session.id, "mentor_notified_at", now
                         )
+                        await SurveySessionDAO.update_escalation_field(
+                            survey_session.id, "reminder_sent_at", now
+                        )
                         mentor_notifs += 1
-                    await SurveySessionDAO.update_escalation_field(
-                        survey_session.id, "reminder_sent_at", now
-                    )
 
                 # Step 2: Notify mentor after 72h
                 if (
@@ -124,7 +127,7 @@ async def _check_survey_escalations_async() -> None:
                             await bot.send_message(
                                 user.telegram_id,
                                 f"<b>Эскалация: неотвеченный опрос</b>\n\n"
-                                f"Пользователь {respondent_name} не ответил "
+                                f"Пользователь {e(respondent_name)} не ответил "
                                 f"на опрос «{e(template_title)}» "
                                 f"более {ESCALATE_AFTER_HOURS} часов.",
                                 parse_mode="HTML",
@@ -180,7 +183,7 @@ async def _notify_mentor(
         await bot.send_message(
             mentor.telegram_id,
             f"<b>Ученик не ответил на опрос</b>\n\n"
-            f"Ваш ученик {respondent_name} не заполнил опрос "
+            f"Ваш ученик {e(respondent_name)} не заполнил опрос "
             f"«{e(template_title)}»{reason}.\n"
             f"Пожалуйста, напомните ему.",
             parse_mode="HTML",

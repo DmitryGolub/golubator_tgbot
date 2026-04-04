@@ -13,6 +13,7 @@ from src.core.config import settings
 from src.models.meeting import Meeting
 from src.models.user import User
 from src.tasks._db import celery_db, run_async
+from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ async def _notify_created_inner(meeting_id: int) -> None:
         mentor, student = _split_participants(meeting)
         when = _format_dt(meeting.scheduled_at)
         mentor_line = (
-            f"Ментор: <b>{mentor.name}</b> @{mentor.username}"
+            f"Ментор: <b>{e(mentor.name)}</b> @{e(mentor.username)}"
             if mentor
             else "Ментор не указан"
         )
@@ -123,8 +124,8 @@ async def _notify_created_inner(meeting_id: int) -> None:
             "<b>Вам назначен созвон.</b>\n"
             f"{mentor_line}\n"
             f"Когда: {when}\n"
-            f"Описание: {meeting.description or '—'}\n"
-            f"Ссылка: {meeting.meeting_link or '—'}"
+            f"Описание: {e(meeting.description) or '—'}\n"
+            f"Ссылка: {e(meeting.meeting_link) or '—'}"
         )
         await _send_to_student(bot, student, text)
         if student:
@@ -150,7 +151,7 @@ async def _notify_reminder_async(meeting_id: int) -> None:
             text = (
                 "<b>Напоминание о созвоне через ~5 минут.</b>\n"
                 f"Когда: {when}\n"
-                f"Ссылка: {meeting.meeting_link or '—'}"
+                f"Ссылка: {e(meeting.meeting_link) or '—'}"
             )
             await _send_to_student(bot, student, text)
         finally:

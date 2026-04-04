@@ -10,6 +10,7 @@ from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.cohort import cohort_cancel_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.states.cohort import CohortTypeFSM
+from src.bot.utils import safe_edit_text
 from src.services.notion_client import get_notion_service
 from src.utils.escape import e
 
@@ -33,7 +34,8 @@ async def start_rename_type(
     types_map = data.get("cohort_types_map", {})
     type_name = types_map.get(str(callback_data.idx))
     if not type_name:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Тип когорты не найден. Попробуйте снова.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -41,7 +43,8 @@ async def start_rename_type(
 
     await state.set_state(CohortTypeFSM.waiting_rename_type)
     await state.update_data(old_type_name=type_name)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f'Введите новое название для типа когорты "<b>{e(type_name)}</b>":',
         reply_markup=cohort_cancel_keyboard(),
     )
@@ -106,7 +109,8 @@ async def start_rename_option(
     option_name = options_map.get(str(callback_data.idx))
 
     if not type_name or not option_name:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Данные устарели. Попробуйте снова.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -117,7 +121,8 @@ async def start_rename_option(
         rename_type_name=type_name,
         rename_old_option=option_name,
     )
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f'Введите новое название для опции "<b>{e(option_name)}</b>" '
         f"в <b>{e(type_name)}</b>:",
         reply_markup=cohort_cancel_keyboard(),

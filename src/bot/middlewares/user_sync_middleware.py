@@ -1,5 +1,6 @@
 import logging
 import time
+from collections import OrderedDict
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
@@ -10,7 +11,8 @@ from src.services.auth import AuthService
 logger = logging.getLogger(__name__)
 
 _SYNC_INTERVAL = 60
-_last_sync: dict[int, float] = {}
+_MAX_CACHE = 10_000
+_last_sync: OrderedDict[int, float] = OrderedDict()
 
 
 class UserSyncMiddleware(BaseMiddleware):
@@ -29,6 +31,9 @@ class UserSyncMiddleware(BaseMiddleware):
                     try:
                         await AuthService.ensure_user(tg_user)
                         _last_sync[tg_user.id] = now
+                        _last_sync.move_to_end(tg_user.id)
+                        while len(_last_sync) > _MAX_CACHE:
+                            _last_sync.popitem(last=False)
                     except Exception:
                         logger.warning(
                             "UserSync failed for %s", tg_user.id, exc_info=True

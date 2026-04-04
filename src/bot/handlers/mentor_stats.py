@@ -9,6 +9,7 @@ from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.mentor_stats import mentor_select_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.bot.utils import safe_edit_text
 from src.dao.mentor import MentorDAO
 from src.dao.mentor_stats import MentorStatsDAO
 from src.services.ui_text import UiTextService
@@ -55,7 +56,8 @@ async def cb_mentor_my_stats(callback: CallbackQuery):
     mentor_id = callback.from_user.id
     mentor = await MentorDAO.find_by_telegram_id(mentor_id)
     if not mentor:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             await UiTextService.get("menu.not_found"),
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -65,9 +67,7 @@ async def cb_mentor_my_stats(callback: CallbackQuery):
     text = await _format_stats(stats, mentor.name)
 
     try:
-        await callback.message.edit_text(
-            text, reply_markup=await back_to_menu_keyboard()
-        )
+        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
@@ -82,14 +82,16 @@ async def cb_admin_mentor_stats(callback: CallbackQuery):
     mentors = [m for m in all_mentors if m.telegram_id is not None]
 
     if not mentors:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             await UiTextService.get("mentor_stats.no_mentors"),
             reply_markup=await back_to_menu_keyboard(),
         )
         return
 
     try:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             await UiTextService.get("mentor_stats.select"),
             reply_markup=mentor_select_keyboard(mentors),
         )
@@ -108,7 +110,8 @@ async def cb_admin_view_mentor_stats(
     mentor_id = callback_data.mentor_id
     mentor = await MentorDAO.find_by_telegram_id(mentor_id)
     if not mentor:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             await UiTextService.get("mentor_stats.not_found"),
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -118,9 +121,7 @@ async def cb_admin_view_mentor_stats(
     text = await _format_stats(stats, mentor.name)
 
     try:
-        await callback.message.edit_text(
-            text, reply_markup=await back_to_menu_keyboard()
-        )
+        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise

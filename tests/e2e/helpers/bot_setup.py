@@ -316,15 +316,15 @@ class BotSetup:
         # Step 5: Enter time
         link_msg = await mentor_client.send_text_in_fsm(time_str)
 
+        # Snapshot BEFORE step 6 — proposal is sent synchronously during finalization
+        snapshot_id = await student_client.snapshot_last_message_id()
+
         # Step 6: Skip link
         skip_link_btn = find_button(link_msg, "meeting_skip_link")
         if skip_link_btn:
             await mentor_client.click_button(link_msg, text=skip_link_btn.text)
         else:
             await mentor_client.send_text_in_fsm("https://meet.example.com/e2e")
-
-        # Student confirms proposal
-        snapshot_id = await student_client.snapshot_last_message_id()
         proposal_msg = await student_client.wait_for_message_after(snapshot_id)
         confirm_btn = find_button(proposal_msg, "mtg_confirm:")
         assert confirm_btn is not None, (

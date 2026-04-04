@@ -21,6 +21,7 @@ from src.bot.keyboards.rbac import (
     roles_list_keyboard,
 )
 from src.bot.states.rbac import CreateRoleFSM
+from src.bot.utils import safe_edit_text
 from src.dao.role import PermissionDAO, RoleDAO
 from src.services.auth import AuthService
 from src.utils.escape import e
@@ -38,7 +39,8 @@ NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,48}$")
 async def cb_roles_list(callback: CallbackQuery):
     await callback.answer()
     roles = await RoleDAO.get_all()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "<b>Управление ролями</b>",
         reply_markup=roles_list_keyboard(roles),
     )
@@ -49,7 +51,7 @@ async def cb_role_detail(callback: CallbackQuery, callback_data: RoleDetailCB):
     await callback.answer()
     role = await RoleDAO.get_with_permissions(callback_data.role_id)
     if not role:
-        await callback.message.edit_text("Роль не найдена.")
+        await safe_edit_text(callback, "Роль не найдена.")
         return
 
     user_count = await RoleDAO.count_users(role.id)
@@ -60,8 +62,8 @@ async def cb_role_detail(callback: CallbackQuery, callback_data: RoleDetailCB):
         f"Пользователей: {user_count}\n"
         f"Пермишены: {perm_names}"
     )
-    await callback.message.edit_text(
-        text, reply_markup=role_detail_keyboard(role, user_count)
+    await safe_edit_text(
+        callback, text, reply_markup=role_detail_keyboard(role, user_count)
     )
 
 
@@ -73,11 +75,12 @@ async def cb_edit_perms(callback: CallbackQuery, callback_data: EditPermsCB):
     await callback.answer()
     role = await RoleDAO.get_with_permissions(callback_data.role_id)
     if not role:
-        await callback.message.edit_text("Роль не найдена.")
+        await safe_edit_text(callback, "Роль не найдена.")
         return
 
     all_perms = await PermissionDAO.get_all()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"<b>Пермишены роли {e(role.display_name)}</b>",
         reply_markup=permissions_keyboard(role, all_perms),
     )
@@ -88,7 +91,7 @@ async def cb_toggle_perm(callback: CallbackQuery, callback_data: TogglePermCB):
     await callback.answer()
     role = await RoleDAO.get_with_permissions(callback_data.role_id)
     if not role:
-        await callback.message.edit_text("Роль не найдена.")
+        await safe_edit_text(callback, "Роль не найдена.")
         return
 
     has_perm = any(p.id == callback_data.perm_id for p in role.permissions)
@@ -107,7 +110,8 @@ async def cb_toggle_perm(callback: CallbackQuery, callback_data: TogglePermCB):
 
     role = await RoleDAO.get_with_permissions(callback_data.role_id)
     all_perms = await PermissionDAO.get_all()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"<b>Пермишены роли {e(role.display_name)}</b>",
         reply_markup=permissions_keyboard(role, all_perms),
     )
@@ -121,10 +125,11 @@ async def cb_delete_role(callback: CallbackQuery, callback_data: DeleteRoleCB):
     await callback.answer()
     role = await RoleDAO.find_one_or_none(id=callback_data.role_id)
     if not role:
-        await callback.message.edit_text("Роль не найдена.")
+        await safe_edit_text(callback, "Роль не найдена.")
         return
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"Удалить роль <b>{e(role.display_name)}</b>?",
         reply_markup=confirm_delete_keyboard(role),
     )
@@ -137,15 +142,16 @@ async def cb_confirm_delete(
     await callback.answer()
     user_count = await RoleDAO.count_users(callback_data.role_id)
     if user_count > 0:
-        await callback.message.edit_text(
-            "Нельзя удалить роль, к которой привязаны пользователи."
+        await safe_edit_text(
+            callback, "Нельзя удалить роль, к которой привязаны пользователи."
         )
         return
 
     await RoleDAO.delete(id=callback_data.role_id)
     logger.info("Role deleted: role_id=%s", callback_data.role_id)
     roles = await RoleDAO.get_all()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Роль удалена.",
         reply_markup=roles_list_keyboard(roles),
     )
@@ -159,9 +165,10 @@ async def cb_create_role_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
     await state.set_state(CreateRoleFSM.waiting_name)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Введите системное имя роли (латиница, snake_case, например: <code>senior_mentor</code>):\n\n"
-        "Отправьте /cancel для отмены."
+        "Отправьте /cancel для отмены.",
     )
 
 

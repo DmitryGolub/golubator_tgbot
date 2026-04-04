@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from telethon import TelegramClient
-from telethon.errors import FloodWaitError
+from telethon.errors import FloodWaitError, MessageIdInvalidError
 from telethon.tl.custom import Message
 
 
@@ -71,15 +71,55 @@ class TelegramTestClient:
         }
         max_old_id = max(m.id for m in old_messages) if old_messages else 0
 
-        # Perform click
-        if data is not None:
-            await message.click(data=data.encode() if isinstance(data, str) else data)
-        elif text is not None:
-            await message.click(text=text)
-        elif index is not None:
-            await message.click(index)
-        else:
-            raise ValueError("Specify text, index, or data")
+        # Perform click with retry on stale message
+        for attempt in range(3):
+            try:
+                if data is not None:
+                    await message.click(
+                        data=data.encode() if isinstance(data, str) else data
+                    )
+                elif text is not None:
+                    await message.click(text=text)
+                elif index is not None:
+                    await message.click(index)
+                else:
+                    raise ValueError("Specify text, index, or data")
+                break
+            except MessageIdInvalidError:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(0.5)
+                fresh_messages = await self._client.get_messages(self._bot, limit=5)
+                matched = None
+                for m in fresh_messages:
+                    if not m.reply_markup or not hasattr(m.reply_markup, "rows"):
+                        continue
+                    for row in m.reply_markup.rows:
+                        for btn in row.buttons:
+                            if data is not None:
+                                btn_data = btn.data.decode() if btn.data else None
+                                if btn_data == (
+                                    data if isinstance(data, str) else data.decode()
+                                ):
+                                    matched = m
+                            elif (
+                                text is not None
+                                and hasattr(btn, "text")
+                                and btn.text == text
+                            ):
+                                matched = m
+                        if matched:
+                            break
+                    if matched:
+                        break
+                if matched is None:
+                    raise
+                message = matched
+                old_messages = fresh_messages
+                old_snapshots = {
+                    m.id: (m.text, m.edit_date, m.reply_markup) for m in old_messages
+                }
+                max_old_id = max(m.id for m in old_messages) if old_messages else 0
 
         # Poll for changes
         deadline = asyncio.get_event_loop().time() + timeout

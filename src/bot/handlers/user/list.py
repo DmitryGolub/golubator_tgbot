@@ -4,6 +4,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup
 from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.user import user_list_paginated_keyboard
+from src.bot.utils import safe_edit_text
 from src.dao.cohort import CohortDAO
 from src.dao.mentee import MenteeDAO
 from src.dao.user import UserDAO
@@ -21,14 +22,14 @@ async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarku
             1, 0
         )
 
-    all_mentees = await MenteeDAO.get_all_with_details()
+    page_tids = [u.telegram_id for u in page_users]
+    page_mentees = await MenteeDAO.get_by_telegram_ids(page_tids)
     mentee_by_tid: dict[int, object] = {}
-    for mentee in all_mentees:
+    for mentee in page_mentees:
         if mentee.telegram_id:
             mentee_by_tid[mentee.telegram_id] = mentee
 
-    mentee_tids = [m.telegram_id for m in all_mentees if m.telegram_id is not None]
-    cohorts_map = await CohortDAO.get_cohorts_batch(mentee_tids)
+    cohorts_map = await CohortDAO.get_cohorts_batch(page_tids)
 
     answer = "<b>Список пользователей:</b>\n\n"
 
@@ -78,7 +79,7 @@ async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarku
 async def cb_user_list(callback: CallbackQuery):
     await callback.answer()
     text, markup = await _build_user_list_page(page=0)
-    await callback.message.edit_text(text, reply_markup=markup)
+    await safe_edit_text(callback, text, reply_markup=markup)
 
 
 @router.callback_query(
@@ -88,4 +89,4 @@ async def cb_user_list(callback: CallbackQuery):
 async def cb_user_list_page(callback: CallbackQuery, callback_data: PageNavCB):
     await callback.answer()
     text, markup = await _build_user_list_page(page=callback_data.page)
-    await callback.message.edit_text(text, reply_markup=markup)
+    await safe_edit_text(callback, text, reply_markup=markup)

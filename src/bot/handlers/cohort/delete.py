@@ -12,6 +12,7 @@ from src.bot.callbacks.cohort import (
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.cohort import cohort_confirm_delete_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.bot.utils import safe_edit_text
 from src.services.notion_client import get_notion_service
 from src.utils.escape import e
 
@@ -34,13 +35,15 @@ async def confirm_delete_type(
     types_map = data.get("cohort_types_map", {})
     type_name = types_map.get(str(callback_data.idx))
     if not type_name:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Тип когорты не найден. Попробуйте снова.",
             reply_markup=await back_to_menu_keyboard(),
         )
         return
 
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f'Вы уверены, что хотите удалить тип когорты "<b>{e(type_name)}</b>"?\n'
         f"Это удалит свойство и данные у всех страниц в Notion!",
         reply_markup=cohort_confirm_delete_keyboard(callback_data.idx),
@@ -57,7 +60,8 @@ async def do_delete_type(
     types_map = data.get("cohort_types_map", {})
     type_name = types_map.get(str(callback_data.idx))
     if not type_name:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Тип когорты не найден. Попробуйте снова.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -65,8 +69,8 @@ async def do_delete_type(
 
     notion = get_notion_service()
     if not notion:
-        await callback.message.edit_text(
-            "Notion не настроен.", reply_markup=await back_to_menu_keyboard()
+        await safe_edit_text(
+            callback, "Notion не настроен.", reply_markup=await back_to_menu_keyboard()
         )
         return
 
@@ -74,7 +78,8 @@ async def do_delete_type(
         success = await notion.delete_cohort_type(type_name)
     except Exception:
         logger.exception("Failed to delete cohort type %s", type_name)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Произошла ошибка при удалении типа. Попробуйте позже.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -84,13 +89,15 @@ async def do_delete_type(
 
     if success:
         logger.info("Cohort type deleted: %s", type_name)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             f'Тип когорты "<b>{e(type_name)}</b>" удалён из Notion.',
             reply_markup=await back_to_menu_keyboard(),
         )
     else:
         logger.warning("Failed to delete cohort type: %s", type_name)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             f'Не удалось удалить тип "{e(type_name)}". Возможно, он защищён.',
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -111,7 +118,8 @@ async def delete_option(
     option_name = options_map.get(str(callback_data.idx))
 
     if not type_name or not option_name:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Данные устарели. Попробуйте снова.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -119,8 +127,8 @@ async def delete_option(
 
     notion = get_notion_service()
     if not notion:
-        await callback.message.edit_text(
-            "Notion не настроен.", reply_markup=await back_to_menu_keyboard()
+        await safe_edit_text(
+            callback, "Notion не настроен.", reply_markup=await back_to_menu_keyboard()
         )
         return
 
@@ -128,7 +136,8 @@ async def delete_option(
         success = await notion.remove_option(type_name, option_name)
     except Exception:
         logger.exception("Failed to delete option %s from %s", option_name, type_name)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Произошла ошибка при удалении опции. Попробуйте позже.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -137,12 +146,14 @@ async def delete_option(
         await notion.close()
 
     if success:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             f'Опция "<b>{e(option_name)}</b>" удалена из <b>{e(type_name)}</b>.',
             reply_markup=await back_to_menu_keyboard(),
         )
     else:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             f'Не удалось удалить опцию "{e(option_name)}".',
             reply_markup=await back_to_menu_keyboard(),
         )

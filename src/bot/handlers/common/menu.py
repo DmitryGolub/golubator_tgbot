@@ -9,6 +9,7 @@ from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import menu_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.keyboards.cohort import cohort_types_keyboard
+from src.bot.utils import safe_edit_text
 from src.services.auth import AuthService
 from src.services.ui_text import UiTextService
 from src.dao.user import UserDAO
@@ -39,7 +40,7 @@ async def _render_menu(message_or_callback, permissions: set[str]):
         await message_or_callback.answer(text=text, reply_markup=markup)
     else:
         try:
-            await message_or_callback.message.edit_text(text=text, reply_markup=markup)
+            await safe_edit_text(message_or_callback, text, reply_markup=markup)
         except TelegramBadRequest as exc:
             if "message is not modified" not in str(exc).lower():
                 raise
@@ -73,7 +74,7 @@ async def cb_menu(callback: CallbackQuery, state: FSMContext):
         permissions = await AuthService.get_user_permissions(callback.from_user.id)
     if not permissions:
         text = await UiTextService.get("menu.access_denied")
-        await callback.message.edit_text(text)
+        await safe_edit_text(callback, text)
         return
 
     await _render_menu(callback, permissions)
@@ -92,7 +93,7 @@ async def cb_menu_cohorts(callback: CallbackQuery, state: FSMContext):
         kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
         kb.adjust(1)
         try:
-            await callback.message.edit_text(text, reply_markup=kb.as_markup())
+            await safe_edit_text(callback, text, reply_markup=kb.as_markup())
         except TelegramBadRequest as exc:
             if "message is not modified" not in str(exc).lower():
                 raise
@@ -102,7 +103,7 @@ async def cb_menu_cohorts(callback: CallbackQuery, state: FSMContext):
     markup, types_map = cohort_types_keyboard(types_with_counts)
     await state.update_data(cohort_types_map=types_map)
     try:
-        await callback.message.edit_text(header, reply_markup=markup)
+        await safe_edit_text(callback, header, reply_markup=markup)
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
@@ -113,9 +114,7 @@ async def cb_menu_mailings(callback: CallbackQuery):
     await callback.answer()
     text = "Рассылки перенесены в систему триггеров. Используйте меню триггеров."
     try:
-        await callback.message.edit_text(
-            text, reply_markup=await back_to_menu_keyboard()
-        )
+        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
@@ -170,7 +169,8 @@ async def cb_mentor_students_menu(callback: CallbackQuery):
     if not mentees:
         text = await UiTextService.get("menu.students.empty")
         try:
-            await callback.message.edit_text(
+            await safe_edit_text(
+                callback,
                 text,
                 reply_markup=await _mentor_students_menu_kb(),
             )
@@ -199,7 +199,8 @@ async def cb_mentor_students_menu(callback: CallbackQuery):
         )
 
     try:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "\n".join(lines),
             reply_markup=await _mentor_students_menu_kb(),
         )
@@ -214,7 +215,8 @@ async def cb_mentor_students_menu(callback: CallbackQuery):
 async def cb_mentor_students_add(callback: CallbackQuery):
     await callback.answer()
     permissions = await AuthService.get_user_permissions(callback.from_user.id)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Выберите ученика для изменения статуса.",
         reply_markup=await menu_keyboard(permissions),
     )
@@ -234,8 +236,8 @@ async def cb_mentor_end_call(callback: CallbackQuery):
         viewer_is_mentor=True,
         mentor_tg_ids=mentor_tg_ids,
     )
-    await callback.message.edit_text(
-        text, reply_markup=mentor_meetings_keyboard(visible, page=0)
+    await safe_edit_text(
+        callback, text, reply_markup=mentor_meetings_keyboard(visible, page=0)
     )
 
 
@@ -263,9 +265,7 @@ async def cb_mentor_me_info(callback: CallbackQuery):
     mentor = await MentorDAO.find_by_telegram_id(mentor_id)
     if not mentor:
         text = await UiTextService.get("menu.not_found")
-        await callback.message.edit_text(
-            text, reply_markup=await back_to_menu_keyboard()
-        )
+        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
         return
 
     stats = await MentorStatsDAO.get_stats(mentor_id=mentor_id)
@@ -294,9 +294,7 @@ async def cb_mentor_me_info(callback: CallbackQuery):
     text = "\n".join(lines)
 
     try:
-        await callback.message.edit_text(
-            text, reply_markup=await back_to_menu_keyboard()
-        )
+        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
@@ -311,9 +309,7 @@ async def cb_student_me_info(callback: CallbackQuery):
     student = students[0] if students else None
     if not student:
         text = await UiTextService.get("menu.not_found")
-        await callback.message.edit_text(
-            text, reply_markup=await back_to_menu_keyboard()
-        )
+        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
         return
 
     mentee = await MenteeDAO.find_by_telegram_id(callback.from_user.id)
@@ -346,9 +342,7 @@ async def cb_student_me_info(callback: CallbackQuery):
     )
 
     try:
-        await callback.message.edit_text(
-            text, reply_markup=await back_to_menu_keyboard()
-        )
+        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise

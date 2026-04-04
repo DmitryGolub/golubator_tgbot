@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
@@ -12,6 +13,18 @@ from src.models.user import User
 
 class MeetingDAO(BaseDAO):
     model = Meeting
+
+    @staticmethod
+    async def _reload_with_participants(
+        session: AsyncSession, meeting_id: int
+    ) -> Meeting | None:
+        query = (
+            select(Meeting)
+            .where(Meeting.id == meeting_id)
+            .options(joinedload(Meeting.participants).selectinload(User.role_rel))
+        )
+        res = await session.execute(query)
+        return res.unique().scalar_one_or_none()
 
     @classmethod
     async def create_with_participants(
@@ -55,15 +68,7 @@ class MeetingDAO(BaseDAO):
             await session.execute(participants_stmt)
             await session.commit()
 
-            # reload with participants
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting.id)
-                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
-            )
-            result = await session.execute(query)
-            result = result.unique()
-            return result.scalar_one()
+            return await cls._reload_with_participants(session, meeting.id)
 
     @classmethod
     async def get_for_user(
@@ -86,14 +91,7 @@ class MeetingDAO(BaseDAO):
     @classmethod
     async def get_with_participants(cls, meeting_id: int) -> Optional[Meeting]:
         async with async_session_maker() as session:
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
-            )
-            res = await session.execute(query)
-            res = res.unique()
-            return res.scalar_one_or_none()
+            return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
     async def delete_for_mentor(
@@ -155,14 +153,7 @@ class MeetingDAO(BaseDAO):
             if updated_id is None:
                 return None
 
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
-            )
-            res = await session.execute(query)
-            res = res.unique()
-            return res.scalar_one_or_none()
+            return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
     async def finish_call(cls, meeting_id: int, mentor_id: int) -> Optional[Meeting]:
@@ -188,14 +179,7 @@ class MeetingDAO(BaseDAO):
             if updated_id is None:
                 return None
 
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
-            )
-            res = await session.execute(query)
-            res = res.unique()
-            return res.scalar_one_or_none()
+            return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
     async def count_completed_for_pair(cls, mentor_id: int, student_id: int) -> int:
@@ -234,14 +218,7 @@ class MeetingDAO(BaseDAO):
             if updated_id is None:
                 return None
 
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
-            )
-            res = await session.execute(query)
-            res = res.unique()
-            return res.scalar_one_or_none()
+            return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
     async def decline_meeting(
@@ -249,22 +226,25 @@ class MeetingDAO(BaseDAO):
     ) -> Optional[int]:
         """Delete a pending meeting. Returns proposed_by for notification, or None."""
         async with async_session_maker() as session:
-            query = (
-                select(Meeting)
-                .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
+            subq = select(MeetingUser.meeting_id).where(
+                MeetingUser.meeting_id == meeting_id,
+                MeetingUser.user_id == declining_user_id,
+            )
+            stmt = (
+                select(Meeting.proposed_by)
                 .where(
                     Meeting.id == meeting_id,
-                    MeetingUser.user_id == declining_user_id,
+                    Meeting.id.in_(subq),
                     Meeting.proposal_status == ProposalStatus.pending_confirmation,
                     Meeting.original_scheduled_at.is_(None),
                 )
+                .with_for_update()
             )
-            result = await session.execute(query)
-            meeting = result.scalar_one_or_none()
-            if not meeting:
+            result = await session.execute(stmt)
+            proposed_by = result.scalar_one_or_none()
+            if not proposed_by:
                 return None
 
-            proposed_by = meeting.proposed_by
             await session.execute(delete(Meeting).where(Meeting.id == meeting_id))
             await session.commit()
             return proposed_by
@@ -279,24 +259,26 @@ class MeetingDAO(BaseDAO):
     ) -> Optional[Meeting]:
         """Save old scheduled_at → original_scheduled_at, update time and status."""
         async with async_session_maker() as session:
-            # Fetch current scheduled_at
-            query = (
-                select(Meeting)
-                .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
+            subq = select(MeetingUser.meeting_id).where(
+                MeetingUser.meeting_id == meeting_id,
+                MeetingUser.user_id == proposer_id,
+            )
+            sel = (
+                select(Meeting.scheduled_at)
                 .where(
                     Meeting.id == meeting_id,
-                    MeetingUser.user_id == proposer_id,
+                    Meeting.id.in_(subq),
                     Meeting.proposal_status == ProposalStatus.confirmed,
                     Meeting.completed_at.is_(None),
                 )
+                .with_for_update()
             )
-            result = await session.execute(query)
-            meeting = result.scalar_one_or_none()
-            if not meeting:
+            old_scheduled = (await session.execute(sel)).scalar_one_or_none()
+            if old_scheduled is None:
                 return None
 
             values: dict = {
-                "original_scheduled_at": meeting.scheduled_at,
+                "original_scheduled_at": old_scheduled,
                 "scheduled_at": new_scheduled_at,
                 "proposed_by": proposer_id,
                 "proposal_status": ProposalStatus.pending_confirmation,
@@ -313,14 +295,7 @@ class MeetingDAO(BaseDAO):
             await session.execute(stmt)
             await session.commit()
 
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
-            )
-            res = await session.execute(query)
-            res = res.unique()
-            return res.scalar_one_or_none()
+            return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
     async def confirm_reschedule(
@@ -345,14 +320,7 @@ class MeetingDAO(BaseDAO):
             if updated_id is None:
                 return None
 
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
-            )
-            res = await session.execute(query)
-            res = res.unique()
-            return res.scalar_one_or_none()
+            return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
     async def decline_reschedule(
@@ -360,26 +328,29 @@ class MeetingDAO(BaseDAO):
     ) -> Optional[Meeting]:
         """Revert scheduled_at ← original_scheduled_at and restore confirmed status."""
         async with async_session_maker() as session:
-            query = (
-                select(Meeting)
-                .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
+            subq = select(MeetingUser.meeting_id).where(
+                MeetingUser.meeting_id == meeting_id,
+                MeetingUser.user_id == declining_user_id,
+            )
+            sel = (
+                select(Meeting.original_scheduled_at)
                 .where(
                     Meeting.id == meeting_id,
-                    MeetingUser.user_id == declining_user_id,
+                    Meeting.id.in_(subq),
                     Meeting.original_scheduled_at.isnot(None),
                     Meeting.proposal_status == ProposalStatus.pending_confirmation,
                 )
+                .with_for_update()
             )
-            result = await session.execute(query)
-            meeting = result.scalar_one_or_none()
-            if not meeting:
+            original = (await session.execute(sel)).scalar_one_or_none()
+            if original is None:
                 return None
 
             stmt = (
                 update(Meeting)
                 .where(Meeting.id == meeting_id)
                 .values(
-                    scheduled_at=meeting.original_scheduled_at,
+                    scheduled_at=original,
                     original_scheduled_at=None,
                     proposal_status=ProposalStatus.confirmed,
                 )
@@ -388,14 +359,7 @@ class MeetingDAO(BaseDAO):
             await session.execute(stmt)
             await session.commit()
 
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
-            )
-            res = await session.execute(query)
-            res = res.unique()
-            return res.scalar_one_or_none()
+            return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
     async def get_pending_for_user(cls, user_id: int) -> list[Meeting]:

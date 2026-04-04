@@ -10,6 +10,7 @@ from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.cohort import cohort_cancel_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.states.cohort import CohortTypeFSM
+from src.bot.utils import safe_edit_text
 from src.services.notion_client import get_notion_service
 from src.utils.escape import e
 
@@ -27,7 +28,8 @@ router.callback_query.filter(PermissionFilter("manage_cohorts"))
 async def start_create_type(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(CohortTypeFSM.waiting_type_name)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Введите название нового типа когорты (будет создано multi_select свойство в Notion):",
         reply_markup=cohort_cancel_keyboard(),
     )
@@ -87,7 +89,8 @@ async def start_create_option(
     types_map = data.get("cohort_types_map", {})
     type_name = types_map.get(str(callback_data.idx))
     if not type_name:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Тип когорты не найден. Попробуйте снова.",
             reply_markup=await back_to_menu_keyboard(),
         )
@@ -95,7 +98,8 @@ async def start_create_option(
 
     await state.set_state(CohortTypeFSM.waiting_option_name)
     await state.update_data(type_name=type_name)
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         f"Введите название новой опции для <b>{e(type_name)}</b>:",
         reply_markup=cohort_cancel_keyboard(),
     )
@@ -150,7 +154,8 @@ async def process_option_name(message: Message, state: FSMContext):
 async def cancel_fsm(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Действие отменено.",
         reply_markup=await back_to_menu_keyboard(),
     )

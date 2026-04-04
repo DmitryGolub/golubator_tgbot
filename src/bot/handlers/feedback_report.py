@@ -12,6 +12,7 @@ from src.bot.callbacks.feedback_report import (
 )
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.states.feedback_report import FeedbackReportFSM
+from src.bot.utils import safe_edit_text
 from src.core.config import settings
 from src.dao.user import UserDAO
 from src.services.ui_text import UiTextService
@@ -31,7 +32,7 @@ async def cb_feedback_menu(callback: CallbackQuery, state: FSMContext):
     )
     kb.button(text="Баг-репорт", callback_data=FeedbackTypeCB(value="bug"))
     kb.adjust(1)
-    await callback.message.edit_text(text, reply_markup=kb.as_markup())
+    await safe_edit_text(callback, text, reply_markup=kb.as_markup())
     await state.set_state(FeedbackReportFSM.choosing_type)
 
 
@@ -42,7 +43,7 @@ async def cb_choose_type(
     await callback.answer()
     await state.update_data(feedback_type=callback_data.value)
     text = await UiTextService.get("feedback.enter_text")
-    await callback.message.edit_text(text, reply_markup=await back_to_menu_keyboard())
+    await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
     await state.set_state(FeedbackReportFSM.entering_text)
 
 
@@ -112,8 +113,8 @@ async def cb_choose_recipient(
             )
 
     confirmation = await UiTextService.get("feedback.sent")
-    await callback.message.edit_text(
-        confirmation, reply_markup=await back_to_menu_keyboard()
+    await safe_edit_text(
+        callback, confirmation, reply_markup=await back_to_menu_keyboard()
     )
     await state.clear()
 

@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from src.bot.callbacks.dynamic_survey import DynamicSurveyAnswerCB, StartDynamicSurveyCB
 from src.bot.keyboards.dynamic_survey import my_surveys_keyboard
 from src.bot.states.dynamic_survey import DynamicSurveyFSM
+from src.bot.utils import safe_edit_text
 from src.services.survey_session import (
     SessionAlreadyCompletedError,
     SessionNotFoundError,
@@ -28,14 +29,16 @@ async def cb_my_surveys(callback: CallbackQuery):
 
     if not sessions:
         await callback.answer()
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "Нет доступных опросов.",
             reply_markup=my_surveys_keyboard([]),
         )
         return
 
     await callback.answer()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback,
         "Доступные опросы:",
         reply_markup=my_surveys_keyboard(sessions),
     )
@@ -109,7 +112,7 @@ async def cb_answer(
     if value == "__cancel__":
         await state.clear()
         await callback.answer("Опрос отменён")
-        await callback.message.edit_text("Опрос отменён.")
+        await safe_edit_text(callback, "Опрос отменён.")
         return
 
     data = await state.get_data()
@@ -144,11 +147,8 @@ async def cb_answer(
                 selected.append(value)
             await state.update_data(multi_selected=selected)
 
-            selected_labels = []
-            for opt in question["options"]:
-                mark = "✓" if opt["value"] in selected else ""
-                selected_labels.append(f"{mark} {opt['label']}")
-
+            keyboard = _build_keyboard_from_dict(question, selected=selected)
+            await callback.message.edit_reply_markup(reply_markup=keyboard)
             await callback.answer(f"Выбрано: {len(selected)}")
             return
 
@@ -190,7 +190,7 @@ async def msg_text_answer(message: Message, state: FSMContext):
 # --- Helpers ---
 
 
-def _build_keyboard_from_dict(question: dict):
+def _build_keyboard_from_dict(question: dict, selected: list[str] | None = None):
     """Build inline keyboard from question dict stored in FSM data."""
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     from src.bot.callbacks.dynamic_survey import DynamicSurveyAnswerCB
@@ -208,9 +208,13 @@ def _build_keyboard_from_dict(question: dict):
             )
         builder.adjust(5)
     elif qtype in ("single_choice", "multiple_choice"):
+        selected_set = set(selected) if selected else set()
         for opt in question.get("options", []):
+            label = (
+                f"✓ {opt['label']}" if opt["value"] in selected_set else opt["label"]
+            )
             builder.button(
-                text=opt["label"],
+                text=label,
                 callback_data=DynamicSurveyAnswerCB(value=opt["value"]),
             )
         if qtype == "multiple_choice":

@@ -54,6 +54,12 @@ class NotionService:
         self._database_id = database_id
         self._data_source_id: str | None = None
 
+    async def __aenter__(self) -> "NotionService":
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.close()
+
     async def _resolve_data_source_id(self) -> str:
         ds_id = self._data_source_id
         if ds_id is None:
