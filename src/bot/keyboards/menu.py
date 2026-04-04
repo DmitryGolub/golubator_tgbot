@@ -42,6 +42,10 @@ _EDUCATION_BUTTONS = [
     ),
 ]
 
+_STUDENT_BUTTONS = [
+    ("propose_meetings", "menu.btn.propose_meeting", "student_propose_meeting"),
+]
+
 
 async def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
     needed_keys: list[str] = []
@@ -68,6 +72,11 @@ async def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
             buttons_spec.append((key, cb))
 
     for perm, key, cb in _EDUCATION_BUTTONS:
+        if perm in permissions:
+            needed_keys.append(key)
+            buttons_spec.append((key, cb))
+
+    for perm, key, cb in _STUDENT_BUTTONS:
         if perm in permissions:
             needed_keys.append(key)
             buttons_spec.append((key, cb))

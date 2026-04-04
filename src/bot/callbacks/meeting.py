@@ -31,3 +31,19 @@ class ChooseMeetingTimeCB(CallbackData, prefix="meeting_time"):
 
 class ChooseMeetingTypeCB(CallbackData, prefix="meeting_type"):
     type_idx: int
+
+
+class ConfirmMeetingCB(CallbackData, prefix="mtg_confirm"):
+    meeting_id: int
+
+
+class DeclineMeetingCB(CallbackData, prefix="mtg_decline"):
+    meeting_id: int
+
+
+class ProposeNewTimeCB(CallbackData, prefix="mtg_newtime"):
+    meeting_id: int  # исходная встреча
+
+
+class RequestRescheduleCB(CallbackData, prefix="mtg_reschedule"):
+    meeting_id: int  # подтверждённая встреча для переноса

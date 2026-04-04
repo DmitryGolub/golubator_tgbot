@@ -6,7 +6,7 @@ from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
 from src.core.database import async_session_maker
-from src.models.meeting import CallStatus, Meeting, MeetingUser
+from src.models.meeting import CallStatus, Meeting, MeetingUser, ProposalStatus
 from src.models.user import User
 
 
@@ -25,6 +25,8 @@ class MeetingDAO(BaseDAO):
         topic: str | None = None,
         event_type: str | None = None,
         mentee_telegram_tag: str | None = None,
+        proposal_status: ProposalStatus = ProposalStatus.confirmed,
+        proposed_by: int | None = None,
     ) -> Meeting:
         async with async_session_maker() as session:
             meeting_stmt = (
@@ -36,7 +38,10 @@ class MeetingDAO(BaseDAO):
                     topic=topic or description,
                     event_type=event_type,
                     mentor_telegram_id=mentor_id,
+                    student_telegram_id=student_id,
                     mentee_telegram_tag=mentee_telegram_tag,
+                    proposal_status=proposal_status,
+                    proposed_by=proposed_by,
                 )
                 .returning(Meeting)
             )
@@ -205,3 +210,207 @@ class MeetingDAO(BaseDAO):
                 )
             )
             return result.scalar_one()
+
+    @classmethod
+    async def confirm_meeting(
+        cls, meeting_id: int, confirming_user_id: int
+    ) -> Optional[Meeting]:
+        """Confirm a pending proposal. The confirming user must not be the proposer."""
+        async with async_session_maker() as session:
+            stmt = (
+                update(Meeting)
+                .where(
+                    Meeting.id == meeting_id,
+                    Meeting.proposed_by != confirming_user_id,
+                    Meeting.proposal_status == ProposalStatus.pending_confirmation,
+                )
+                .values(proposal_status=ProposalStatus.confirmed)
+                .returning(Meeting.id)
+            )
+            result = await session.execute(stmt)
+            updated_id = result.scalar_one_or_none()
+            await session.commit()
+
+            if updated_id is None:
+                return None
+
+            query = (
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
+            )
+            res = await session.execute(query)
+            res = res.unique()
+            return res.scalar_one_or_none()
+
+    @classmethod
+    async def decline_meeting(
+        cls, meeting_id: int, declining_user_id: int
+    ) -> Optional[int]:
+        """Delete a pending meeting. Returns proposed_by for notification, or None."""
+        async with async_session_maker() as session:
+            query = (
+                select(Meeting)
+                .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
+                .where(
+                    Meeting.id == meeting_id,
+                    MeetingUser.user_id == declining_user_id,
+                    Meeting.proposal_status == ProposalStatus.pending_confirmation,
+                    Meeting.original_scheduled_at.is_(None),
+                )
+            )
+            result = await session.execute(query)
+            meeting = result.scalar_one_or_none()
+            if not meeting:
+                return None
+
+            proposed_by = meeting.proposed_by
+            await session.execute(delete(Meeting).where(Meeting.id == meeting_id))
+            await session.commit()
+            return proposed_by
+
+    @classmethod
+    async def propose_reschedule(
+        cls,
+        meeting_id: int,
+        new_scheduled_at: datetime,
+        new_link: str | None,
+        proposer_id: int,
+    ) -> Optional[Meeting]:
+        """Save old scheduled_at → original_scheduled_at, update time and status."""
+        async with async_session_maker() as session:
+            # Fetch current scheduled_at
+            query = (
+                select(Meeting)
+                .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
+                .where(
+                    Meeting.id == meeting_id,
+                    MeetingUser.user_id == proposer_id,
+                    Meeting.proposal_status == ProposalStatus.confirmed,
+                    Meeting.completed_at.is_(None),
+                )
+            )
+            result = await session.execute(query)
+            meeting = result.scalar_one_or_none()
+            if not meeting:
+                return None
+
+            values: dict = {
+                "original_scheduled_at": meeting.scheduled_at,
+                "scheduled_at": new_scheduled_at,
+                "proposed_by": proposer_id,
+                "proposal_status": ProposalStatus.pending_confirmation,
+            }
+            if new_link is not None:
+                values["meeting_link"] = new_link
+
+            stmt = (
+                update(Meeting)
+                .where(Meeting.id == meeting_id)
+                .values(**values)
+                .returning(Meeting.id)
+            )
+            await session.execute(stmt)
+            await session.commit()
+
+            query = (
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
+            )
+            res = await session.execute(query)
+            res = res.unique()
+            return res.scalar_one_or_none()
+
+    @classmethod
+    async def confirm_reschedule(
+        cls, meeting_id: int, confirming_user_id: int
+    ) -> Optional[Meeting]:
+        """Clear original_scheduled_at after reschedule is confirmed."""
+        async with async_session_maker() as session:
+            stmt = (
+                update(Meeting)
+                .where(
+                    Meeting.id == meeting_id,
+                    Meeting.proposed_by != confirming_user_id,
+                    Meeting.original_scheduled_at.isnot(None),
+                )
+                .values(original_scheduled_at=None)
+                .returning(Meeting.id)
+            )
+            result = await session.execute(stmt)
+            updated_id = result.scalar_one_or_none()
+            await session.commit()
+
+            if updated_id is None:
+                return None
+
+            query = (
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
+            )
+            res = await session.execute(query)
+            res = res.unique()
+            return res.scalar_one_or_none()
+
+    @classmethod
+    async def decline_reschedule(
+        cls, meeting_id: int, declining_user_id: int
+    ) -> Optional[Meeting]:
+        """Revert scheduled_at ← original_scheduled_at and restore confirmed status."""
+        async with async_session_maker() as session:
+            query = (
+                select(Meeting)
+                .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
+                .where(
+                    Meeting.id == meeting_id,
+                    MeetingUser.user_id == declining_user_id,
+                    Meeting.original_scheduled_at.isnot(None),
+                    Meeting.proposal_status == ProposalStatus.pending_confirmation,
+                )
+            )
+            result = await session.execute(query)
+            meeting = result.scalar_one_or_none()
+            if not meeting:
+                return None
+
+            stmt = (
+                update(Meeting)
+                .where(Meeting.id == meeting_id)
+                .values(
+                    scheduled_at=meeting.original_scheduled_at,
+                    original_scheduled_at=None,
+                    proposal_status=ProposalStatus.confirmed,
+                )
+                .returning(Meeting.id)
+            )
+            await session.execute(stmt)
+            await session.commit()
+
+            query = (
+                select(Meeting)
+                .where(Meeting.id == meeting_id)
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
+            )
+            res = await session.execute(query)
+            res = res.unique()
+            return res.scalar_one_or_none()
+
+    @classmethod
+    async def get_pending_for_user(cls, user_id: int) -> list[Meeting]:
+        """Return pending meetings where the user is a participant."""
+        async with async_session_maker() as session:
+            query = (
+                select(Meeting)
+                .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
+                .where(
+                    MeetingUser.user_id == user_id,
+                    Meeting.proposal_status == ProposalStatus.pending_confirmation,
+                )
+                .options(joinedload(Meeting.participants).selectinload(User.role_rel))
+                .order_by(Meeting.created_at.desc())
+            )
+            res = await session.execute(query)
+            res = res.unique()
+            return res.scalars().all()

@@ -27,6 +27,11 @@ class CallStatus(enum.Enum):
     finished = "завершён"
 
 
+class ProposalStatus(enum.Enum):
+    pending_confirmation = "ожидает_подтверждения"
+    confirmed = "подтверждён"
+
+
 class Meeting(Base):
     __tablename__ = "meetings"
     __table_args__ = (
@@ -93,6 +98,24 @@ class Meeting(Base):
         onupdate=func.now(),
         nullable=True,
     )
+    proposal_status: Mapped[Optional[ProposalStatus]] = mapped_column(
+        Enum(
+            ProposalStatus,
+            name="proposal_status_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+            create_type=False,
+            schema="meetings",
+        ),
+        nullable=True,
+    )
+    proposed_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    original_scheduled_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     participants: Mapped[list["User"]] = relationship(
         "User",
@@ -104,6 +127,13 @@ class Meeting(Base):
         "User",
         foreign_keys=[student_telegram_id],
         lazy="selectin",
+        overlaps="proposer",
+    )
+    proposer: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[proposed_by],
+        lazy="selectin",
+        overlaps="student",
     )
 
 

@@ -6,22 +6,73 @@ from datetime import date
 from src.bot.callbacks.meeting import (
     ChooseMeetingStudentCB,
     ChooseMeetingTypeCB,
+    ConfirmMeetingCB,
+    DeclineMeetingCB,
     DeleteMeetingCB,
+    ProposeNewTimeCB,
+    RequestRescheduleCB,
     StartMeetingCallCB,
     ChooseMeetingDateCB,
     NavigateMeetingMonthCB,
     ChooseMeetingTimeCB,
 )
 from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
-from src.models.meeting import Meeting
+from src.models.meeting import Meeting, ProposalStatus
 
 
 MEETINGS_PAGE_SIZE = 5
 
 
+def pending_meeting_keyboard(meeting_id: int) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.row(
+        InlineKeyboardButton(
+            text="✅ Подтвердить",
+            callback_data=ConfirmMeetingCB(meeting_id=meeting_id).pack(),
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text="🔄 Предложить другое время",
+            callback_data=ProposeNewTimeCB(meeting_id=meeting_id).pack(),
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text="❌ Отклонить",
+            callback_data=DeclineMeetingCB(meeting_id=meeting_id).pack(),
+        )
+    )
+    return kb.as_markup()
+
+
+def reschedule_pending_keyboard(meeting_id: int) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.row(
+        InlineKeyboardButton(
+            text="✅ Подтвердить перенос",
+            callback_data=ConfirmMeetingCB(meeting_id=meeting_id).pack(),
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text="🔄 Предложить другое время",
+            callback_data=ProposeNewTimeCB(meeting_id=meeting_id).pack(),
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text="❌ Отклонить перенос",
+            callback_data=DeclineMeetingCB(meeting_id=meeting_id).pack(),
+        )
+    )
+    return kb.as_markup()
+
+
 def mentor_meetings_keyboard(
     meetings: list[Meeting] | None = None,
     page: int = 0,
+    viewer_id: int | None = None,
 ) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
@@ -39,11 +90,53 @@ def mentor_meetings_keyboard(
     for local_idx, meeting in enumerate(page_meetings):
         global_idx = start + local_idx + 1
         row: list[InlineKeyboardButton] = []
-        if meeting.completed_at is None:
+
+        is_pending = meeting.proposal_status == ProposalStatus.pending_confirmation
+        viewer_is_not_proposer = (
+            viewer_id is not None and meeting.proposed_by != viewer_id
+        )
+
+        if is_pending and viewer_is_not_proposer:
+            # Show proposal action buttons instead of start/delete
+            if meeting.original_scheduled_at:
+                kb.row(
+                    InlineKeyboardButton(
+                        text=f"📋 Перенос #{global_idx}",
+                        callback_data=ConfirmMeetingCB(meeting_id=meeting.id).pack(),
+                    ),
+                    InlineKeyboardButton(
+                        text="❌",
+                        callback_data=DeclineMeetingCB(meeting_id=meeting.id).pack(),
+                    ),
+                )
+            else:
+                kb.row(
+                    InlineKeyboardButton(
+                        text=f"✅ #{global_idx}",
+                        callback_data=ConfirmMeetingCB(meeting_id=meeting.id).pack(),
+                    ),
+                    InlineKeyboardButton(
+                        text="🔄",
+                        callback_data=ProposeNewTimeCB(meeting_id=meeting.id).pack(),
+                    ),
+                    InlineKeyboardButton(
+                        text="❌",
+                        callback_data=DeclineMeetingCB(meeting_id=meeting.id).pack(),
+                    ),
+                )
+            continue
+
+        if meeting.completed_at is None and not is_pending:
             row.append(
                 InlineKeyboardButton(
                     text=f"Начать #{global_idx}",
                     callback_data=StartMeetingCallCB(meeting_id=meeting.id).pack(),
+                )
+            )
+            row.append(
+                InlineKeyboardButton(
+                    text="Перенести",
+                    callback_data=RequestRescheduleCB(meeting_id=meeting.id).pack(),
                 )
             )
         row.append(

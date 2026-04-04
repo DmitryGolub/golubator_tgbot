@@ -10,7 +10,11 @@ from aiogram.exceptions import TelegramBadRequest
 from src.bot.callbacks.meeting import (
     ChooseMeetingStudentCB,
     ChooseMeetingTypeCB,
+    ConfirmMeetingCB,
+    DeclineMeetingCB,
     DeleteMeetingCB,
+    ProposeNewTimeCB,
+    RequestRescheduleCB,
     StartMeetingCallCB,
     ChooseMeetingDateCB,
     NavigateMeetingMonthCB,
@@ -26,14 +30,16 @@ from src.bot.keyboards.meeting import (
     meeting_type_keyboard,
     meeting_calendar_keyboard,
     meeting_time_keyboard,
+    pending_meeting_keyboard,
+    reschedule_pending_keyboard,
 )
 from src.bot.keyboards.menu import menu_keyboard
-from src.bot.states.meeting import CreateMeetingFSM
+from src.bot.states.meeting import CreateMeetingFSM, RescheduleMeetingFSM
 from src.dao.meeting import MeetingDAO
 from src.dao.mentor import MentorDAO
 from src.dao.user import UserDAO
 from src.dao.mentee import MenteeDAO
-from src.models.meeting import CallStatus
+from src.models.meeting import CallStatus, ProposalStatus
 from src.services.auth import AuthService
 from src.utils.escape import e
 import logging
@@ -54,8 +60,12 @@ from src.services.call_flow import (
 logger = logging.getLogger(__name__)
 MOSCOW_TZ = MSK
 router = Router(name="meetings")
-router.message.filter(PermissionFilter(["manage_meetings", "view_own_meetings"]))
-router.callback_query.filter(PermissionFilter(["manage_meetings", "view_own_meetings"]))
+router.message.filter(
+    PermissionFilter(["manage_meetings", "view_own_meetings", "propose_meetings"])
+)
+router.callback_query.filter(
+    PermissionFilter(["manage_meetings", "view_own_meetings", "propose_meetings"])
+)
 
 
 async def _menu_kb(user_id: int):
@@ -150,8 +160,12 @@ def _format_meetings(
         else:
             date_str = "—"
 
+        status_tag = ""
+        if meeting.proposal_status == ProposalStatus.pending_confirmation:
+            status_tag = " ⏳ожидает подтверждения"
+
         lines.append(
-            f"🗓 Созвон #{display_idx}\n"
+            f"🗓 Созвон #{display_idx}{status_tag}\n"
             f"{mentor_text}\n"
             f"{student_text}\n"
             f"Когда: {date_str}\n"
@@ -159,6 +173,52 @@ def _format_meetings(
             f"Ссылка: {link}\n"
         )
     return "\n".join(lines)
+
+
+def _format_proposal_text(meeting, proposer_name: str) -> str:
+    date_str = "—"
+    if meeting.scheduled_at:
+        try:
+            date_str = meeting.scheduled_at.astimezone(MOSCOW_TZ).strftime(
+                "%d.%m.%Y %H:%M MSK"
+            )
+        except Exception:
+            date_str = meeting.scheduled_at.isoformat()
+    link_str = e(meeting.meeting_link) if meeting.meeting_link else "—"
+    desc_str = e(meeting.description) if meeting.description else "—"
+    return (
+        f"📅 <b>Предложение о созвоне</b>\n\n"
+        f"От: <b>{e(proposer_name)}</b>\n"
+        f"Когда: {date_str}\n"
+        f"Ссылка: {link_str}\n"
+        f"Описание: {desc_str}"
+    )
+
+
+def _format_reschedule_text(meeting, proposer_name: str) -> str:
+    new_date = "—"
+    old_date = "—"
+    if meeting.scheduled_at:
+        try:
+            new_date = meeting.scheduled_at.astimezone(MOSCOW_TZ).strftime(
+                "%d.%m.%Y %H:%M MSK"
+            )
+        except Exception:
+            new_date = meeting.scheduled_at.isoformat()
+    if meeting.original_scheduled_at:
+        try:
+            old_date = meeting.original_scheduled_at.astimezone(MOSCOW_TZ).strftime(
+                "%d.%m.%Y %H:%M MSK"
+            )
+        except Exception:
+            old_date = meeting.original_scheduled_at.isoformat()
+    return (
+        f"🔄 <b>Предложение о переносе созвона</b>\n\n"
+        f"От: <b>{e(proposer_name)}</b>\n"
+        f"Было: {old_date}\n"
+        f"Новое время: {new_date}\n"
+        f"Ссылка: {e(meeting.meeting_link) if meeting.meeting_link else '—'}"
+    )
 
 
 @router.callback_query(
@@ -177,7 +237,10 @@ async def cb_mentor_meetings(callback: CallbackQuery):
     )
     text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=0)
     await callback.message.edit_text(
-        text, reply_markup=mentor_meetings_keyboard(visible, page=0)
+        text,
+        reply_markup=mentor_meetings_keyboard(
+            visible, page=0, viewer_id=callback.from_user.id
+        ),
     )
 
 
@@ -256,7 +319,9 @@ async def cb_start_meeting_call(
     )
     await callback.message.edit_text(
         text,
-        reply_markup=mentor_meetings_keyboard(visible, page=0),
+        reply_markup=mentor_meetings_keyboard(
+            visible, page=0, viewer_id=callback.from_user.id
+        ),
     )
 
 
@@ -276,6 +341,34 @@ async def cb_meeting_create(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "Выберите ученика для созвона:",
         reply_markup=meeting_students_keyboard(mentees),
+    )
+
+
+@router.callback_query(
+    PermissionFilter("propose_meetings"),
+    F.data == "student_propose_meeting",
+)
+async def cb_student_propose_meeting(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    user_id = callback.from_user.id
+
+    mentee = await MenteeDAO.find_by_telegram_id(user_id)
+    if not mentee or not mentee.mentor or not mentee.mentor.telegram_id:
+        await callback.message.edit_text(
+            "У вас нет ментора. Обратитесь к куратору.",
+            reply_markup=await _menu_kb(user_id),
+        )
+        return
+
+    mentor_tg_id = mentee.mentor.telegram_id
+    await state.update_data(
+        mentor_id=mentor_tg_id,
+        student_id=user_id,
+    )
+    await state.set_state(CreateMeetingFSM.waiting_date)
+    await callback.message.edit_text(
+        "Выберите дату для созвона с ментором:",
+        reply_markup=meeting_calendar_keyboard(datetime.now(MSK).date()),
     )
 
 
@@ -395,8 +488,8 @@ async def msg_meeting_description(message: Message, state: FSMContext):
 
 
 @router.callback_query(
-    PermissionFilter("manage_meetings"),
-    StateFilter(CreateMeetingFSM.waiting_date),
+    PermissionFilter(["manage_meetings", "propose_meetings"]),
+    StateFilter(CreateMeetingFSM.waiting_date, RescheduleMeetingFSM.waiting_date),
     NavigateMeetingMonthCB.filter(),
 )
 async def cb_meeting_nav_month(
@@ -419,8 +512,8 @@ async def cb_meeting_nav_month(
 
 
 @router.callback_query(
-    PermissionFilter("manage_meetings"),
-    StateFilter(CreateMeetingFSM.waiting_date),
+    PermissionFilter(["manage_meetings", "propose_meetings"]),
+    StateFilter(CreateMeetingFSM.waiting_date, RescheduleMeetingFSM.waiting_date),
     ChooseMeetingDateCB.filter(),
 )
 async def cb_meeting_choose_date(
@@ -431,7 +524,12 @@ async def cb_meeting_choose_date(
     await callback.answer()
     chosen_date = date(callback_data.year, callback_data.month, callback_data.day)
     await state.update_data(chosen_date=chosen_date.isoformat())
-    await state.set_state(CreateMeetingFSM.waiting_time)
+
+    current_state = await state.get_state()
+    if current_state == RescheduleMeetingFSM.waiting_date.state:
+        await state.set_state(RescheduleMeetingFSM.waiting_time)
+    else:
+        await state.set_state(CreateMeetingFSM.waiting_time)
 
     await callback.message.edit_text(
         f"Дата выбрана: {chosen_date:%d.%m.%Y}\nТеперь выберите время или введите его в формате HH:MM.",
@@ -455,7 +553,8 @@ def _parse_time(value: str) -> str | None:
 
 
 @router.message(
-    PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_time)
+    PermissionFilter(["manage_meetings", "propose_meetings"]),
+    StateFilter(CreateMeetingFSM.waiting_time, RescheduleMeetingFSM.waiting_time),
 )
 async def msg_meeting_time(message: Message, state: FSMContext):
     parsed = _parse_time(message.text)
@@ -478,7 +577,12 @@ async def msg_meeting_time(message: Message, state: FSMContext):
 
     scheduled_iso = f"{chosen_date} {parsed}"
     await state.update_data(scheduled_at=scheduled_iso)
-    await state.set_state(CreateMeetingFSM.waiting_link)
+
+    current_state = await state.get_state()
+    if current_state == RescheduleMeetingFSM.waiting_time.state:
+        await state.set_state(RescheduleMeetingFSM.waiting_link)
+    else:
+        await state.set_state(CreateMeetingFSM.waiting_link)
 
     await message.answer(
         "Введите ссылку на встречу (Telemost, Zoom, Google Meet и т.д.):",
@@ -487,8 +591,8 @@ async def msg_meeting_time(message: Message, state: FSMContext):
 
 
 @router.callback_query(
-    PermissionFilter("manage_meetings"),
-    StateFilter(CreateMeetingFSM.waiting_time),
+    PermissionFilter(["manage_meetings", "propose_meetings"]),
+    StateFilter(CreateMeetingFSM.waiting_time, RescheduleMeetingFSM.waiting_time),
     ChooseMeetingTimeCB.filter(),
 )
 async def cb_meeting_choose_time(
@@ -511,7 +615,12 @@ async def cb_meeting_choose_time(
     hh, mm = hhmm[:2], hhmm[2:]
     scheduled_iso = f"{chosen_date} {hh}:{mm}"
     await state.update_data(scheduled_at=scheduled_iso)
-    await state.set_state(CreateMeetingFSM.waiting_link)
+
+    current_state = await state.get_state()
+    if current_state == RescheduleMeetingFSM.waiting_time.state:
+        await state.set_state(RescheduleMeetingFSM.waiting_link)
+    else:
+        await state.set_state(CreateMeetingFSM.waiting_link)
 
     await callback.message.edit_text(
         "Введите ссылку на встречу (Telemost, Zoom, Google Meet и т.д.):",
@@ -587,11 +696,18 @@ async def _schedule_meeting_tasks(meeting, mentor_id: int, student_id: int) -> N
 
 
 async def _finalize_meeting(
-    user_id: int, state: FSMContext, link: str | None, reply_func
+    user_id: int, state: FSMContext, link: str | None, reply_func, bot
 ):
     data = await state.get_data()
 
-    student_id = data.get("student_id")
+    mentor_id_from_state = data.get("mentor_id")
+    if mentor_id_from_state:
+        mentor_id = mentor_id_from_state
+        student_id = data.get("student_id")
+    else:
+        mentor_id = user_id
+        student_id = data.get("student_id")
+
     description = data.get("description")
     event_type = data.get("event_type")
     scheduled_at_raw = data.get("scheduled_at")
@@ -620,27 +736,127 @@ async def _finalize_meeting(
             if mentee and mentee.doc_name:
                 mentee_tag = mentee.doc_name
 
+    # If counter-proposing, decline the original pending meeting first
+    original_meeting_id = data.get("original_meeting_id")
+    if original_meeting_id:
+        await MeetingDAO.decline_meeting(original_meeting_id, user_id)
+
     meeting = await MeetingDAO.create_with_participants(
         description=description,
         meeting_link=link,
         scheduled_at=scheduled_at,
-        mentor_id=user_id,
+        mentor_id=mentor_id,
         student_id=student_id,
         topic=description,
         event_type=event_type,
         mentee_telegram_tag=mentee_tag,
+        proposal_status=ProposalStatus.pending_confirmation,
+        proposed_by=user_id,
     )
-    await _schedule_meeting_tasks(meeting, mentor_id=user_id, student_id=student_id)
     await state.clear()
 
+    # Get proposer name for notification
+    proposer = await UserDAO.find_one_or_none(telegram_id=user_id)
+    proposer_name = proposer.name if proposer else f"id={user_id}"
+
+    # Send proposal to the other participant
+    other_id = student_id if user_id == mentor_id else mentor_id
+    if other_id:
+        try:
+            await bot.send_message(
+                other_id,
+                _format_proposal_text(meeting, proposer_name),
+                reply_markup=pending_meeting_keyboard(meeting.id),
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to send meeting proposal to %s for meeting %s: %s",
+                other_id,
+                meeting.id,
+                exc,
+            )
+
     await reply_func(
-        "Созвон успешно создан.",
+        "Предложение о созвоне отправлено, ожидаем подтверждения.",
+        reply_markup=await _menu_kb(user_id),
+    )
+
+
+async def _finalize_reschedule(
+    user_id: int, state: FSMContext, link: str | None, reply_func, bot
+):
+    data = await state.get_data()
+    reschedule_meeting_id = data.get("reschedule_meeting_id")
+    if not reschedule_meeting_id:
+        await reply_func(
+            "Ошибка: не найдена встреча для переноса.",
+            reply_markup=await _menu_kb(user_id),
+        )
+        await state.clear()
+        return
+
+    scheduled_at_raw = data.get("scheduled_at")
+    scheduled_at = None
+    if scheduled_at_raw:
+        scheduled_at = _to_utc_assuming_msk(_parse_datetime(scheduled_at_raw))
+
+    if not scheduled_at:
+        await reply_func(
+            "Не удалось сохранить дату/время. Попробуйте ещё раз.",
+            reply_markup=await _menu_kb(user_id),
+        )
+        await state.clear()
+        return
+
+    meeting = await MeetingDAO.propose_reschedule(
+        meeting_id=reschedule_meeting_id,
+        new_scheduled_at=scheduled_at,
+        new_link=link,
+        proposer_id=user_id,
+    )
+    await state.clear()
+
+    if not meeting:
+        await reply_func(
+            "Не удалось предложить перенос. Встреча не найдена или уже завершена.",
+            reply_markup=await _menu_kb(user_id),
+        )
+        return
+
+    # Get proposer name for notification
+    proposer = await UserDAO.find_one_or_none(telegram_id=user_id)
+    proposer_name = proposer.name if proposer else f"id={user_id}"
+
+    # Send reschedule proposal to other participant
+    other_id = (
+        meeting.student_telegram_id
+        if user_id == meeting.mentor_telegram_id
+        else meeting.mentor_telegram_id
+    )
+    if other_id:
+        try:
+            await bot.send_message(
+                other_id,
+                _format_reschedule_text(meeting, proposer_name),
+                reply_markup=reschedule_pending_keyboard(meeting.id),
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to send reschedule proposal to %s for meeting %s: %s",
+                other_id,
+                meeting.id,
+                exc,
+            )
+
+    await reply_func(
+        "Предложение о переносе отправлено, ожидаем подтверждения.",
         reply_markup=await _menu_kb(user_id),
     )
 
 
 @router.message(
-    PermissionFilter("manage_meetings"), StateFilter(CreateMeetingFSM.waiting_link)
+    PermissionFilter(["manage_meetings", "propose_meetings"]),
+    StateFilter(CreateMeetingFSM.waiting_link),
 )
 async def msg_meeting_link(message: Message, state: FSMContext):
     link = message.text.strip() if message.text else ""
@@ -649,11 +865,12 @@ async def msg_meeting_link(message: Message, state: FSMContext):
         state=state,
         link=link or None,
         reply_func=message.answer,
+        bot=message.bot,
     )
 
 
 @router.callback_query(
-    PermissionFilter("manage_meetings"),
+    PermissionFilter(["manage_meetings", "propose_meetings"]),
     StateFilter(CreateMeetingFSM.waiting_link),
     F.data == "meeting_skip_link",
 )
@@ -664,6 +881,38 @@ async def cb_meeting_skip_link(callback: CallbackQuery, state: FSMContext):
         state=state,
         link=None,
         reply_func=callback.message.edit_text,
+        bot=callback.bot,
+    )
+
+
+@router.message(
+    PermissionFilter(["manage_meetings", "propose_meetings"]),
+    StateFilter(RescheduleMeetingFSM.waiting_link),
+)
+async def msg_reschedule_link(message: Message, state: FSMContext):
+    link = message.text.strip() if message.text else ""
+    await _finalize_reschedule(
+        user_id=message.from_user.id,
+        state=state,
+        link=link or None,
+        reply_func=message.answer,
+        bot=message.bot,
+    )
+
+
+@router.callback_query(
+    PermissionFilter(["manage_meetings", "propose_meetings"]),
+    StateFilter(RescheduleMeetingFSM.waiting_link),
+    F.data == "meeting_skip_link",
+)
+async def cb_reschedule_skip_link(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await _finalize_reschedule(
+        user_id=callback.from_user.id,
+        state=state,
+        link=None,
+        reply_func=callback.message.edit_text,
+        bot=callback.bot,
     )
 
 
@@ -699,12 +948,136 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
     text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=0)
     await callback.message.edit_text(
         f"Созвон #{callback_data.meeting_id} удалён.\n\n{text}",
-        reply_markup=mentor_meetings_keyboard(visible, page=0),
+        reply_markup=mentor_meetings_keyboard(
+            visible, page=0, viewer_id=callback.from_user.id
+        ),
+    )
+
+
+@router.callback_query(ConfirmMeetingCB.filter())
+async def cb_confirm_meeting(callback: CallbackQuery, callback_data: ConfirmMeetingCB):
+    await callback.answer()
+    user_id = callback.from_user.id
+
+    meeting = await MeetingDAO.confirm_meeting(callback_data.meeting_id, user_id)
+    if not meeting:
+        await callback.answer("Уже обработано или нет прав.", show_alert=True)
+        return
+
+    proposed_by = meeting.proposed_by
+
+    if meeting.original_scheduled_at:
+        # This was a reschedule proposal — clear original_scheduled_at
+        meeting = await MeetingDAO.confirm_reschedule(meeting.id, user_id)
+
+    if meeting:
+        await _schedule_meeting_tasks(
+            meeting,
+            mentor_id=meeting.mentor_telegram_id,
+            student_id=meeting.student_telegram_id,
+        )
+
+    if proposed_by:
+        try:
+            await callback.bot.send_message(proposed_by, "✅ Ваш созвон подтверждён!")
+        except Exception as exc:
+            logger.error("Failed to notify proposer %s: %s", proposed_by, exc)
+
+    await callback.message.edit_text(
+        "✅ Созвон подтверждён.",
+        reply_markup=await _menu_kb(user_id),
+    )
+
+
+@router.callback_query(DeclineMeetingCB.filter())
+async def cb_decline_meeting(callback: CallbackQuery, callback_data: DeclineMeetingCB):
+    await callback.answer()
+    user_id = callback.from_user.id
+
+    meeting = await MeetingDAO.get_with_participants(callback_data.meeting_id)
+    if not meeting:
+        await callback.answer("Встреча не найдена.", show_alert=True)
+        return
+
+    if meeting.original_scheduled_at:
+        # Decline reschedule — revert to original time
+        reverted = await MeetingDAO.decline_reschedule(
+            callback_data.meeting_id, user_id
+        )
+        if reverted and reverted.proposed_by:
+            try:
+                await callback.bot.send_message(
+                    reverted.proposed_by,
+                    "❌ Перенос отклонён. Созвон остаётся на прежнем времени.",
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to notify proposer %s: %s", reverted.proposed_by, exc
+                )
+        await callback.message.edit_text(
+            "Перенос отклонён.",
+            reply_markup=await _menu_kb(user_id),
+        )
+    else:
+        # Decline new meeting proposal — delete it
+        proposed_by = await MeetingDAO.decline_meeting(
+            callback_data.meeting_id, user_id
+        )
+        if proposed_by:
+            try:
+                await callback.bot.send_message(
+                    proposed_by, "❌ Ваше предложение о созвоне отклонено."
+                )
+            except Exception as exc:
+                logger.error("Failed to notify proposer %s: %s", proposed_by, exc)
+        await callback.message.edit_text(
+            "Предложение отклонено.",
+            reply_markup=await _menu_kb(user_id),
+        )
+
+
+@router.callback_query(ProposeNewTimeCB.filter())
+async def cb_propose_new_time(
+    callback: CallbackQuery, callback_data: ProposeNewTimeCB, state: FSMContext
+):
+    await callback.answer()
+
+    meeting = await MeetingDAO.get_with_participants(callback_data.meeting_id)
+    if not meeting:
+        await callback.answer("Встреча не найдена.", show_alert=True)
+        return
+
+    await state.update_data(
+        mentor_id=meeting.mentor_telegram_id,
+        student_id=meeting.student_telegram_id,
+        original_meeting_id=meeting.id,
+    )
+    await state.set_state(CreateMeetingFSM.waiting_date)
+    await callback.message.edit_text(
+        "Выберите новую дату:",
+        reply_markup=meeting_calendar_keyboard(datetime.now(MSK).date()),
     )
 
 
 @router.callback_query(
-    PermissionFilter("manage_meetings"),
+    PermissionFilter(["manage_meetings", "propose_meetings"]),
+    RequestRescheduleCB.filter(),
+)
+async def cb_request_reschedule(
+    callback: CallbackQuery, callback_data: RequestRescheduleCB, state: FSMContext
+):
+    await callback.answer()
+
+    await state.update_data(reschedule_meeting_id=callback_data.meeting_id)
+    await state.set_state(RescheduleMeetingFSM.waiting_date)
+    await callback.message.edit_text(
+        "Выберите новую дату для переноса созвона:",
+        reply_markup=meeting_calendar_keyboard(datetime.now(MSK).date()),
+    )
+
+
+@router.callback_query(
+    PermissionFilter(["manage_meetings", "propose_meetings"]),
     StateFilter(
         CreateMeetingFSM.choosing_student,
         CreateMeetingFSM.choosing_type,
@@ -712,6 +1085,9 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
         CreateMeetingFSM.waiting_date,
         CreateMeetingFSM.waiting_time,
         CreateMeetingFSM.waiting_link,
+        RescheduleMeetingFSM.waiting_date,
+        RescheduleMeetingFSM.waiting_time,
+        RescheduleMeetingFSM.waiting_link,
     ),
     F.data == "meeting_create_cancel",
 )
@@ -719,7 +1095,7 @@ async def cb_meeting_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     await callback.message.edit_text(
-        "Создание созвона отменено.",
+        "Отменено.",
         reply_markup=await _menu_kb(callback.from_user.id),
     )
 
@@ -758,5 +1134,8 @@ async def cb_meetings_page(callback: CallbackQuery, callback_data: PageNavCB):
     page = callback_data.page
     text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=page)
     await callback.message.edit_text(
-        text, reply_markup=mentor_meetings_keyboard(visible, page=page)
+        text,
+        reply_markup=mentor_meetings_keyboard(
+            visible, page=page, viewer_id=callback.from_user.id
+        ),
     )
