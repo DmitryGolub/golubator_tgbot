@@ -17,7 +17,7 @@ async def test_user_list_pagination(
     bot_setup: BotSetup,
 ):
     """Create enough users to trigger pagination, then navigate pages."""
-    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
+    await account1.send_command_multi("/start", count=2)
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Create 10 fake users to exceed default page size (6)

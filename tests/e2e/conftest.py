@@ -187,6 +187,19 @@ async def wait_for_all_celery():
     return _wait
 
 
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def trigger_task():
+    """Trigger a Celery task via the TEST_MODE HTTP endpoint."""
+    base_url = os.environ.get("APP_BASE_URL", "http://localhost:8080")
+
+    async def _trigger(task_name: str) -> None:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"{base_url}/test/trigger/{task_name}")
+            resp.raise_for_status()
+
+    return _trigger
+
+
 @pytest_asyncio.fixture(autouse=True, scope="module", loop_scope="session")
 async def cleanup_between_modules(setup):
     """Clean up DB and Redis between test modules."""

@@ -6,6 +6,7 @@ from typing import Any
 
 import asyncpg
 
+from tests.e2e.helpers.buttons import find_button
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 
@@ -256,6 +257,90 @@ class BotSetup:
         )
         assert template_id is not None, f"Survey template {slug!r} was not created"
         return template_id
+
+    # ── Meeting setup ────────────────────────────────────────────────────────
+
+    async def create_meeting(
+        self,
+        mentor_client: TelegramTestClient,
+        mentor_telegram_id: int,
+        student_client: TelegramTestClient,
+        student_telegram_id: int,
+        description: str,
+        time_str: str = "18:00",
+    ) -> int:
+        """Create a meeting via FSM and have student confirm the proposal. Returns meeting_id."""
+        menu_msg = await mentor_client.send_command("/menu")
+        meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
+        assert meetings_btn is not None, "Mentor menu should have meetings button"
+        meetings_msg = await mentor_client.click_button(
+            menu_msg, text=meetings_btn.text
+        )
+
+        create_btn = find_button(meetings_msg, "meeting_create")
+        assert create_btn is not None, "Meetings list should have 'Create' button"
+        create_msg = await mentor_client.click_button(
+            meetings_msg, text=create_btn.text
+        )
+
+        # Step 1: Choose student — prefer exact match, fall back to first available
+        student_data = f"meeting_student:{student_telegram_id}"
+        if self._has_button_data(create_msg, student_data):
+            type_msg = await mentor_client.click_button(create_msg, data=student_data)
+        else:
+            student_btn = find_button(create_msg, "meeting_student:")
+            assert student_btn is not None, (
+                f"Should find student button for {student_telegram_id}"
+            )
+            type_msg = await mentor_client.click_button(
+                create_msg, data=student_btn.data.decode()
+            )
+
+        # Step 2: Skip meeting type (or pick first available)
+        skip_type_btn = find_button(type_msg, "meeting_skip_type")
+        if skip_type_btn:
+            await mentor_client.click_button(type_msg, text=skip_type_btn.text)
+        else:
+            type_btn = find_button(type_msg, "meeting_type:")
+            assert type_btn is not None, "Should have type buttons"
+            await mentor_client.click_button(type_msg, text=type_btn.text)
+
+        # Step 3: Enter description
+        date_msg = await mentor_client.send_text_in_fsm(description)
+
+        # Step 4: Choose first available date from calendar
+        date_btn = find_button(date_msg, "meeting_date:")
+        assert date_btn is not None, "Should find date button in calendar"
+        await mentor_client.click_button(date_msg, text=date_btn.text)
+
+        # Step 5: Enter time
+        link_msg = await mentor_client.send_text_in_fsm(time_str)
+
+        # Step 6: Skip link
+        skip_link_btn = find_button(link_msg, "meeting_skip_link")
+        if skip_link_btn:
+            await mentor_client.click_button(link_msg, text=skip_link_btn.text)
+        else:
+            await mentor_client.send_text_in_fsm("https://meet.example.com/e2e")
+
+        # Student confirms proposal
+        snapshot_id = await student_client.snapshot_last_message_id()
+        proposal_msg = await student_client.wait_for_message_after(snapshot_id)
+        confirm_btn = find_button(proposal_msg, "mtg_confirm:")
+        assert confirm_btn is not None, (
+            "Student should receive a proposal with confirm button"
+        )
+        await student_client.click_button(proposal_msg, text=confirm_btn.text)
+
+        meeting_id = await self._pool.fetchval(
+            """SELECT id FROM meetings.meetings
+               WHERE mentor_telegram_id = $1 AND student_telegram_id = $2
+               ORDER BY created_at DESC LIMIT 1""",
+            mentor_telegram_id,
+            student_telegram_id,
+        )
+        assert meeting_id is not None, "Meeting should be created in DB"
+        return meeting_id
 
     # ── Trigger rule setup ───────────────────────────────────────────────────
 

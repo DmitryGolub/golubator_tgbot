@@ -14,6 +14,7 @@ _module_state = {}
 
 async def test_delete_meeting(
     account1: TelegramTestClient,
+    account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
     bot_setup: BotSetup,
@@ -21,16 +22,21 @@ async def test_delete_meeting(
 ):
     """Delete a meeting through the bot UI."""
     # Setup
-    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
-    await setup.ensure_user_record(ACCOUNT_2_TG_ID)
-    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
+    await account1.send_command_multi("/start", count=2)
+    await account2.send_command_multi("/start", count=2)
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
-    meeting_id = await setup.create_meeting(
-        ACCOUNT_1_TG_ID, ACCOUNT_2_TG_ID, "delete test", run_id=test_run_id
+    meeting_id = await bot_setup.create_meeting(
+        mentor_client=account1,
+        mentor_telegram_id=ACCOUNT_1_TG_ID,
+        student_client=account2,
+        student_telegram_id=ACCOUNT_2_TG_ID,
+        description=f"[E2E-{test_run_id}] delete test",
     )
     _module_state["deleted_meeting_id"] = meeting_id
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Navigate: /menu -> meetings
     menu_msg = await account1.send_command("/menu")
@@ -65,15 +71,21 @@ async def test_student_views_meetings(
 ):
     """Student views their meetings list."""
     # Setup
-    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
-    await setup.ensure_user_record(ACCOUNT_2_TG_ID)
+    await account1.send_command_multi("/start", count=2)
+    await account2.send_command_multi("/start", count=2)
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
     await bot_setup.ensure_role_permission("student", "view_own_meetings")
+    await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
     # Create a meeting so student has something to see
-    await setup.create_meeting(
-        ACCOUNT_1_TG_ID, ACCOUNT_2_TG_ID, "student view test", run_id=test_run_id
+    await bot_setup.create_meeting(
+        mentor_client=account1,
+        mentor_telegram_id=ACCOUNT_1_TG_ID,
+        student_client=account2,
+        student_telegram_id=ACCOUNT_2_TG_ID,
+        description=f"[E2E-{test_run_id}] student view test",
     )
 
     # Student navigates: /menu -> student_meetings
@@ -92,3 +104,67 @@ async def test_student_views_meetings(
     assert "созвон" in text_lower or "встреч" in text_lower or "нет" in text_lower, (
         f"Expected meetings-related text, got: {meetings_msg.text[:200]}"
     )
+
+
+async def test_start_second_call_blocked(
+    account1: TelegramTestClient,
+    account2: TelegramTestClient,
+    db: DBAssertions,
+    setup: E2ESetup,
+    bot_setup: BotSetup,
+):
+    """Starting a second call while one is active returns an error."""
+    await account1.send_command_multi("/start", count=2)
+    await account2.send_command_multi("/start", count=2)
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
+    await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
+    await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
+
+    m1 = await setup.create_meeting(
+        ACCOUNT_1_TG_ID, ACCOUNT_2_TG_ID, description="call-block-1"
+    )
+    m2 = await setup.create_meeting(
+        ACCOUNT_1_TG_ID, ACCOUNT_2_TG_ID, description="call-block-2"
+    )
+    _module_state["call_block_m1"] = m1
+    _module_state["call_block_m2"] = m2
+
+    # Start first call
+    msg = await account1.press_callback(f"meeting_start_call:{m1}")
+    assert "✅" in msg.text or "начат" in msg.text.lower(), (
+        f"Expected successful start, got: {msg.text[:200]}"
+    )
+    await db.assert_meeting_call_status(m1, "идёт")
+
+    # Try to start second call — must fail with active call error
+    msg2 = await account1.press_callback(f"meeting_start_call:{m2}")
+    assert "активный созвон" in msg2.text.lower(), (
+        f"Expected active call error, got: {msg2.text[:200]}"
+    )
+    row = await db._pool.fetchrow(
+        "SELECT call_status FROM meetings.meetings WHERE id = $1", m2
+    )
+    assert row["call_status"] is None, (
+        f"m2 should not be active, got: {row['call_status']}"
+    )
+
+
+async def test_end_call_then_start_new(
+    account1: TelegramTestClient,
+    db: DBAssertions,
+):
+    """After ending the active call, a new one can be started successfully."""
+    m1 = _module_state["call_block_m1"]
+    m2 = _module_state["call_block_m2"]
+
+    # End the first call
+    end_msg = await account1.send_command("/end_call")
+    assert end_msg.text is not None, "Expected response from /end_call"
+    await db.assert_meeting_call_status(m1, "завершён")
+
+    # Start second call — should succeed now
+    msg3 = await account1.press_callback(f"meeting_start_call:{m2}")
+    assert "✅" in msg3.text or "начат" in msg3.text.lower(), (
+        f"Expected successful start, got: {msg3.text[:200]}"
+    )
+    await db.assert_meeting_call_status(m2, "идёт")

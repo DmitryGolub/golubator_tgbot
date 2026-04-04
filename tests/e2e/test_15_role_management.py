@@ -28,7 +28,7 @@ async def test_edit_permissions_via_bot(
     bot_setup: BotSetup,
 ):
     """Toggle a permission on a role via bot UI."""
-    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
+    await account1.send_command_multi("/start", count=2)
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Create a dedicated test role to avoid mutating admin permissions

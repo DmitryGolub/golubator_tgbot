@@ -329,6 +329,14 @@ class DBAssertions:
             meeting_id,
         )
 
+    async def get_survey_question_id(self, template_id: int, position: int = 0) -> int:
+        """Get the question id at the given position (0-based) for a template."""
+        return await self._pool.fetchval(
+            "SELECT id FROM surveys.survey_questions WHERE template_id = $1 ORDER BY sort_order LIMIT 1 OFFSET $2",
+            template_id,
+            position,
+        )
+
     async def get_latest_pending_session(self, respondent_id: int) -> dict | None:
         """Get most recent non-completed session for a user."""
         row = await self._pool.fetchrow(

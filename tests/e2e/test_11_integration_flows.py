@@ -54,15 +54,12 @@ async def test_full_flow_call_to_survey_to_results(
         delay_seconds=0,
     )
 
-    # Create meeting via setup helper
-    from datetime import datetime, timezone
-
-    meeting_id = await setup.create_meeting(
-        ACCOUNT_1_TG_ID,
-        ACCOUNT_2_TG_ID,
-        description="integration flow meeting",
-        scheduled_at=datetime.now(timezone.utc),
-        run_id=test_run_id,
+    meeting_id = await bot_setup.create_meeting(
+        mentor_client=account1,
+        mentor_telegram_id=ACCOUNT_1_TG_ID,
+        student_client=account2,
+        student_telegram_id=ACCOUNT_2_TG_ID,
+        description=f"[E2E-{test_run_id}] integration flow meeting",
     )
 
     # Start call via bot

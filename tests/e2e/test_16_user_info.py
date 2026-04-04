@@ -17,7 +17,7 @@ async def test_mentor_me_info(
     bot_setup: BotSetup,
 ):
     """Mentor views their own info via mentor_me_info."""
-    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
+    await account1.send_command_multi("/start", count=2)
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await bot_setup.ensure_role_permission("mentor", "view_own_info")
@@ -40,8 +40,7 @@ async def test_student_me_info(
     bot_setup: BotSetup,
 ):
     """Student views their own info via student_me_info."""
-    await setup.ensure_user_record(ACCOUNT_2_TG_ID)
-    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
+    await account2.send_command_multi("/start", count=2)
     await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
     await bot_setup.ensure_role_permission("student", "view_own_info")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)

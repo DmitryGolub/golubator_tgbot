@@ -35,7 +35,7 @@ async def test_view_cohort_types(
     bot_setup: BotSetup,
 ):
     """Admin views list of cohort types."""
-    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
+    await account1.send_command_multi("/start", count=2)
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # Seed cohort data so the list is never empty after truncate_all

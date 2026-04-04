@@ -36,12 +36,25 @@ async def _health_handler(_request: web.Request) -> web.Response:
     return web.json_response({"status": "healthy"})
 
 
+async def _trigger_task_handler(request: web.Request) -> web.Response:
+    task_name = request.match_info["task_name"]
+    from src.celery_app import celery_app
+
+    celery_app.send_task(task_name)
+    logger.info("Test trigger: queued task %s", task_name)
+    return web.json_response({"status": "queued", "task": task_name})
+
+
 async def start_health_server() -> web.AppRunner:
     from src.api.notion_webhook import setup_webhook_routes
+    from src.core.config import settings
 
     app = web.Application(client_max_size=1024 * 1024)  # 1 MB limit
     app.router.add_get("/health", _health_handler)
     setup_webhook_routes(app)
+    if settings.TEST_MODE:
+        app.router.add_post("/test/trigger/{task_name}", _trigger_task_handler)
+        logger.info("TEST_MODE: /test/trigger/{task_name} endpoint enabled")
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", HEALTH_PORT)

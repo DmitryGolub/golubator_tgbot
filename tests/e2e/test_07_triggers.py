@@ -433,15 +433,12 @@ async def test_trigger_call_ended_fires(
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
-    # Create meeting via setup
-    from datetime import datetime, timezone
-
-    meeting_id = await setup.create_meeting(
-        ACCOUNT_1_TG_ID,
-        ACCOUNT_2_TG_ID,
-        description="trigger test meeting",
-        scheduled_at=datetime.now(timezone.utc),
-        run_id=test_run_id,
+    meeting_id = await bot_setup.create_meeting(
+        mentor_client=account1,
+        mentor_telegram_id=ACCOUNT_1_TG_ID,
+        student_client=account2,
+        student_telegram_id=ACCOUNT_2_TG_ID,
+        description=f"[E2E-{test_run_id}] trigger test meeting",
     )
 
     # Start and end call via bot
@@ -757,14 +754,12 @@ async def test_event_mentor_receives_notification(
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
-    from datetime import datetime, timezone
-
-    meeting_id = await setup.create_meeting(
-        ACCOUNT_1_TG_ID,
-        ACCOUNT_2_TG_ID,
-        description="event_mentor test meeting",
-        scheduled_at=datetime.now(timezone.utc),
-        run_id=test_run_id,
+    meeting_id = await bot_setup.create_meeting(
+        mentor_client=account1,
+        mentor_telegram_id=ACCOUNT_1_TG_ID,
+        student_client=account2,
+        student_telegram_id=ACCOUNT_2_TG_ID,
+        description=f"[E2E-{test_run_id}] event_mentor test meeting",
     )
 
     # Navigate to meetings and start/end call

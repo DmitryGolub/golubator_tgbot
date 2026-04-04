@@ -19,7 +19,7 @@ async def test_admin_view_mentor_detail_stats(
     bot_setup: BotSetup,
 ):
     """Admin selects a mentor and views their detailed stats."""
-    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
+    await account1.send_command_multi("/start", count=2)
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
 

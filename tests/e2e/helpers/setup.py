@@ -377,6 +377,30 @@ class E2ESetup:
 
     # --- Survey escalation ---
 
+    async def complete_session_with_answers(
+        self, session_id: int, answers: list[tuple[int, int]]
+    ) -> None:
+        """Mark session as completed and insert answers directly in DB.
+
+        args:
+            answers: list of (question_id, value_int) pairs
+        """
+        for question_id, value_int in answers:
+            await self._pool.execute(
+                """
+                INSERT INTO surveys.survey_answers (session_id, question_id, value_int)
+                VALUES ($1, $2, $3)
+                ON CONFLICT DO NOTHING
+                """,
+                session_id,
+                question_id,
+                value_int,
+            )
+        await self._pool.execute(
+            "UPDATE surveys.survey_sessions SET status = 'completed', completed_at = NOW() WHERE id = $1",
+            session_id,
+        )
+
     async def backdate_session(self, session_id: int, hours_ago: int) -> None:
         """Backdate session created_at for escalation testing."""
         await self._pool.execute(

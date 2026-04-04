@@ -2,7 +2,6 @@ import os
 
 from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, get_buttons, button_labels
-from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
@@ -10,11 +9,10 @@ ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
 
 async def test_help_command(
     account1: TelegramTestClient,
-    setup: E2ESetup,
     bot_setup: BotSetup,
 ):
     """/help shows menu with inline buttons."""
-    await setup.ensure_user_record(ACCOUNT_1_TG_ID)
+    await account1.send_command_multi("/start", count=2)
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     help_msg = await account1.send_command("/help")
