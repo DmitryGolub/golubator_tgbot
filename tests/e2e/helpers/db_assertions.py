@@ -308,6 +308,27 @@ class DBAssertions:
         )
         return dict(row) if row else None
 
+    # --- Meeting proposals ---
+
+    async def get_meeting_proposal_status(self, meeting_id: int) -> str | None:
+        return await self._pool.fetchval(
+            "SELECT proposal_status FROM meetings.meetings WHERE id = $1", meeting_id
+        )
+
+    async def assert_meeting_proposal_pending(self, meeting_id: int):
+        status = await self.get_meeting_proposal_status(meeting_id)
+        assert status == "ожидает_подтверждения", f"Expected pending, got: {status}"
+
+    async def assert_meeting_proposal_confirmed(self, meeting_id: int):
+        status = await self.get_meeting_proposal_status(meeting_id)
+        assert status == "подтверждён", f"Expected confirmed, got: {status}"
+
+    async def get_meeting_original_scheduled_at(self, meeting_id: int):
+        return await self._pool.fetchval(
+            "SELECT original_scheduled_at FROM meetings.meetings WHERE id = $1",
+            meeting_id,
+        )
+
     async def get_latest_pending_session(self, respondent_id: int) -> dict | None:
         """Get most recent non-completed session for a user."""
         row = await self._pool.fetchrow(

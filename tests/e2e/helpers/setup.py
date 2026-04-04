@@ -301,8 +301,9 @@ class E2ESetup:
         meeting_id = await self._pool.fetchval(
             """
             INSERT INTO meetings.meetings
-                (mentor_telegram_id, student_telegram_id, description, scheduled_at)
-            VALUES ($1, $2, $3, $4)
+                (mentor_telegram_id, student_telegram_id, description, scheduled_at,
+                 proposal_status)
+            VALUES ($1, $2, $3, $4, 'подтверждён')
             RETURNING id
             """,
             mentor_telegram_id,

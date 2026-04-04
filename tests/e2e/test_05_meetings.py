@@ -83,14 +83,28 @@ async def test_create_meeting_fsm(
     else:
         result_msg = await account1.send_text_in_fsm("https://meet.example.com/e2e")
 
-    assert "создан" in result_msg.text.lower(), (
-        f"Expected 'создан' in response, got: {result_msg.text[:200]}"
-    )
+    assert (
+        "предложени" in result_msg.text.lower() or "ожидаем" in result_msg.text.lower()
+    ), f"Expected 'предложени' or 'ожидаем' in response, got: {result_msg.text[:200]}"
 
     # DB check
     meetings = await db.get_meetings_for_mentor(ACCOUNT_1_TG_ID)
     assert len(meetings) > 0, "Should have at least one meeting"
-    _module_state["meeting_id"] = meetings[0]["id"]
+    meeting_id = meetings[0]["id"]
+    _module_state["meeting_id"] = meeting_id
+
+    # Student confirms the proposal
+    snapshot_id = await account2.snapshot_last_message_id()
+    proposal_msg = await account2.wait_for_message_after(snapshot_id)
+    confirm_btn = find_button(proposal_msg, "mtg_confirm:")
+    assert confirm_btn is not None, (
+        f"Student should receive a proposal with confirm button. "
+        f"Buttons: {[(b.text, b.data.decode() if b.data else '') for b in get_buttons(proposal_msg)]}"
+    )
+    confirm_result = await account2.click_button(proposal_msg, text=confirm_btn.text)
+    assert "подтверждён" in confirm_result.text.lower(), (
+        f"Expected 'подтверждён' in response, got: {confirm_result.text[:200]}"
+    )
 
 
 async def test_start_call(
