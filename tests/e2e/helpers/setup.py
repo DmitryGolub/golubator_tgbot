@@ -284,23 +284,18 @@ class E2ESetup:
             telegram_id,
         )
 
-    async def get_meeting_notion_page_ids(self) -> list[str]:
-        """Collect all non-null notion_page_id from meetings.meetings."""
-        rows = await self._pool.fetch(
-            "SELECT notion_page_id FROM meetings.meetings WHERE notion_page_id IS NOT NULL"
-        )
-        return [row["notion_page_id"] for row in rows]
-
     # --- Meetings ---
 
     async def create_meeting(
         self,
         mentor_telegram_id: int,
         student_telegram_id: int,
-        description: str = "E2E test meeting",
+        description: str = "test meeting",
         scheduled_at: "datetime | None" = None,
+        run_id: str | None = None,
     ) -> int:
         """Create a meeting directly in DB. Returns meeting_id."""
+        topic = f"[E2E-{run_id}] {description}" if run_id else f"E2E {description}"
         await self.ensure_user_record(mentor_telegram_id)
         await self.ensure_user_record(student_telegram_id)
         meeting_id = await self._pool.fetchval(
@@ -312,7 +307,7 @@ class E2ESetup:
             """,
             mentor_telegram_id,
             student_telegram_id,
-            description,
+            topic,
             scheduled_at,
         )
         # Add participants via association table

@@ -17,6 +17,7 @@ async def test_create_meeting_fsm(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    test_run_id: str,
 ):
     """Create a meeting through the full FSM dialog."""
     # Setup: mentor + mentee
@@ -60,7 +61,7 @@ async def test_create_meeting_fsm(
         await account1.click_button(type_msg, text=type_btn.text)
 
     # Step 3: Enter description
-    date_msg = await account1.send_text_in_fsm("E2E test meeting")
+    date_msg = await account1.send_text_in_fsm(f"[E2E-{test_run_id}] test meeting")
 
     # Step 4: Choose date — find first available date button
     date_btn = find_button(date_msg, "meeting_date:")

@@ -418,6 +418,7 @@ async def test_trigger_call_ended_fires(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    test_run_id: str,
 ):
     """Call ended event fires trigger automatically."""
     # Create a meeting and complete a call
@@ -431,8 +432,9 @@ async def test_trigger_call_ended_fires(
     meeting_id = await setup.create_meeting(
         ACCOUNT_1_TG_ID,
         ACCOUNT_2_TG_ID,
-        description="E2E trigger test meeting",
+        description="trigger test meeting",
         scheduled_at=datetime.now(timezone.utc),
+        run_id=test_run_id,
     )
 
     # Start and end call via bot
@@ -735,6 +737,7 @@ async def test_event_mentor_receives_notification(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    test_run_id: str,
 ):
     """After call_ended, event_mentor recipient should receive notification."""
     # account1 = mentor, account2 = mentee
@@ -747,8 +750,9 @@ async def test_event_mentor_receives_notification(
     meeting_id = await setup.create_meeting(
         ACCOUNT_1_TG_ID,
         ACCOUNT_2_TG_ID,
-        description="E2E event_mentor test meeting",
+        description="event_mentor test meeting",
         scheduled_at=datetime.now(timezone.utc),
+        run_id=test_run_id,
     )
 
     # Navigate to meetings and start/end call

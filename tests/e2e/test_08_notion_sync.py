@@ -89,6 +89,7 @@ async def test_push_events_creates_page(
     db: DBAssertions,
     setup: E2ESetup,
     wait_for_sync: Callable,
+    test_run_id: str,
 ):
     """Push should create a Notion page for a new meeting."""
     # Create meeting via DB
@@ -102,7 +103,7 @@ async def test_push_events_creates_page(
         VALUES ($1, $2, $3, $4)
         RETURNING id
         """,
-        "E2E Notion sync test meeting",
+        f"[E2E-{test_run_id}] Notion sync test meeting",
         ACCOUNT_1_TG_ID,
         ACCOUNT_2_TG_ID,
         datetime.now(timezone.utc),
@@ -129,6 +130,7 @@ async def test_push_events_updates_page(
     setup: E2ESetup,
     notion: NotionAssertions,
     wait_for_sync: Callable,
+    test_run_id: str,
 ):
     """Push should update an existing Notion page for a meeting."""
     meeting_id = _module_state.get("sync_meeting_id")
@@ -141,7 +143,7 @@ async def test_push_events_updates_page(
     pool = db._pool
     await pool.execute(
         "UPDATE meetings.meetings SET description = $1, updated_at = NOW() WHERE id = $2",
-        "E2E Updated description",
+        f"[E2E-{test_run_id}] Updated description",
         meeting_id,
     )
 

@@ -15,6 +15,7 @@ async def test_delete_meeting(
     account1: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    test_run_id: str,
 ):
     """Delete a meeting through the bot UI."""
     # Setup
@@ -25,7 +26,7 @@ async def test_delete_meeting(
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
     meeting_id = await setup.create_meeting(
-        ACCOUNT_1_TG_ID, ACCOUNT_2_TG_ID, "E2E delete test"
+        ACCOUNT_1_TG_ID, ACCOUNT_2_TG_ID, "delete test", run_id=test_run_id
     )
     _module_state["deleted_meeting_id"] = meeting_id
 
@@ -57,6 +58,7 @@ async def test_student_views_meetings(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    test_run_id: str,
 ):
     """Student views their meetings list."""
     # Setup
@@ -68,7 +70,7 @@ async def test_student_views_meetings(
 
     # Create a meeting so student has something to see
     await setup.create_meeting(
-        ACCOUNT_1_TG_ID, ACCOUNT_2_TG_ID, "E2E student view test"
+        ACCOUNT_1_TG_ID, ACCOUNT_2_TG_ID, "student view test", run_id=test_run_id
     )
 
     # Student navigates: /menu -> student_meetings

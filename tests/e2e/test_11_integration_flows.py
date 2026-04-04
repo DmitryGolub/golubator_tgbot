@@ -15,6 +15,7 @@ async def test_full_flow_call_to_survey_to_results(
     account2: TelegramTestClient,
     db: DBAssertions,
     setup: E2ESetup,
+    test_run_id: str,
 ):
     """Full flow: create meeting -> start/end call -> trigger sends survey -> student completes -> admin views results."""
     # Setup
@@ -57,8 +58,9 @@ async def test_full_flow_call_to_survey_to_results(
     meeting_id = await setup.create_meeting(
         ACCOUNT_1_TG_ID,
         ACCOUNT_2_TG_ID,
-        description="Integration flow meeting",
+        description="integration flow meeting",
         scheduled_at=datetime.now(timezone.utc),
+        run_id=test_run_id,
     )
 
     # Start call via bot

@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import datetime, timezone
 
 import asyncpg
 import httpx
@@ -40,6 +41,12 @@ async def _resolve_bot_username() -> str:
         resp = await client.get(f"https://api.telegram.org/bot{token}/getMe")
         resp.raise_for_status()
         return resp.json()["result"]["username"]
+
+
+@pytest.fixture(scope="session")
+def test_run_id() -> str:
+    """Unique identifier embedded in all Notion-visible test data (e.g. meeting topics)."""
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -122,23 +129,8 @@ async def wait_for_celery():
 
 
 @pytest_asyncio.fixture(autouse=True, scope="module", loop_scope="session")
-async def cleanup_between_modules(setup, notion):
-    """Clean up DB, Redis, and Notion test data between test modules."""
+async def cleanup_between_modules(setup):
+    """Clean up DB and Redis between test modules."""
     yield
-    # 1. Collect Notion page IDs BEFORE truncating DB
-    event_db_id = os.environ.get("NOTION_EVENT_DB_ID")
-    meeting_page_ids = await setup.get_meeting_notion_page_ids()
-
-    # 2. Archive by ID (covers all names, not just "E2E")
-    if meeting_page_ids:
-        await notion.archive_pages_by_ids(meeting_page_ids)
-
-    # 3. Fallback: archive remaining by title pattern
-    if event_db_id:
-        await notion.archive_test_pages(event_db_id, title_contains="E2E")
-        await notion.archive_test_pages(event_db_id, title_contains="Integration flow")
-        await notion.archive_test_pages(event_db_id, title_contains="Первый созвон")
-
-    # 4. Clean DB and Redis AFTER Notion archiving
     await setup.truncate_all()
     await setup.flush_redis(REDIS_URL)

@@ -35,13 +35,6 @@ class NotionAssertions:
         assert page is not None, f"Notion page not found for telegram_id={telegram_id}"
         return page
 
-    async def cleanup_test_pages(self, database_id: str, telegram_ids: list[int]):
-        """Archive test pages by telegram_id."""
-        for tid in telegram_ids:
-            page = await self.find_page_by_telegram_id(database_id, tid)
-            if page:
-                await self._client.pages.update(page_id=page["id"], archived=True)
-
     async def assert_page_property_status(
         self, page_id: str, property_name: str, expected: str
     ):
@@ -75,28 +68,13 @@ class NotionAssertions:
             f"Property {property_name}: expected >= {min_count} entries, got {count}"
         )
 
-    async def archive_test_pages(self, database_id: str, title_contains: str = "E2E"):
-        """Archive pages whose title contains the given substring (e.g. test data)."""
-        try:
-            results = await self._client.databases.query(
-                database_id=database_id,
-                filter={
-                    "property": "Name",
-                    "title": {"contains": title_contains},
-                },
-            )
-            for page in results.get("results", []):
-                await self._client.pages.update(page_id=page["id"], archived=True)
-        except Exception as e:
-            print(f"[cleanup] archive_test_pages failed: {e}")
-
-    async def archive_pages_by_ids(self, page_ids: list[str]) -> None:
-        """Archive Notion pages by their IDs. Logs errors instead of silencing them."""
-        for page_id in page_ids:
-            try:
-                await self._client.pages.update(page_id=page_id, archived=True)
-            except Exception as e:
-                print(f"[cleanup] Failed to archive Notion page {page_id}: {e}")
+    async def find_pages_by_run_id(self, database_id: str, run_id: str) -> list[dict]:
+        """Find event pages created during a specific test run."""
+        results = await self._client.databases.query(
+            database_id=database_id,
+            filter={"property": "Name", "title": {"contains": f"[E2E-{run_id}]"}},
+        )
+        return results.get("results", [])
 
     @staticmethod
     def _extract_value(prop: dict) -> str:
