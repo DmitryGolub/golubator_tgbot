@@ -21,8 +21,10 @@ async def test_full_flow_call_to_survey_to_results(
 ):
     """Full flow: create meeting -> start/end call -> trigger sends survey -> student completes -> admin views results."""
     # Setup
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)

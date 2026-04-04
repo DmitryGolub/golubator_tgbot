@@ -57,6 +57,7 @@ class RecipientType(str, enum.Enum):
 
 class ExecutionStatus(str, enum.Enum):
     pending = "pending"
+    processing = "processing"
     sent = "sent"
     failed = "failed"
 

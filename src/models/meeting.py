@@ -4,6 +4,7 @@ import enum
 from typing import TYPE_CHECKING, Optional
 from datetime import datetime
 from sqlalchemy import (
+    Boolean,
     Enum,
     Index,
     Integer,
@@ -55,6 +56,9 @@ class Meeting(Base):
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    is_cancelled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
     )
 
     # Notion sync fields

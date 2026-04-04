@@ -1047,6 +1047,11 @@ async def cb_propose_new_time(
         await callback.answer("Встреча не найдена.", show_alert=True)
         return
 
+    user_id = callback.from_user.id
+    if user_id not in (meeting.mentor_telegram_id, meeting.student_telegram_id):
+        await callback.answer("Нет доступа к этой встрече.", show_alert=True)
+        return
+
     await state.update_data(
         mentor_id=meeting.mentor_telegram_id,
         student_id=meeting.student_telegram_id,

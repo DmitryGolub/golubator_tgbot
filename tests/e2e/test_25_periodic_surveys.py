@@ -8,6 +8,7 @@ Setup: mentor + mentee pair with the right cohort status.
 Deduplication: triggering the same task twice produces only one session.
 """
 
+import asyncio
 import datetime
 import os
 
@@ -34,8 +35,10 @@ async def test_weekly_survey_sent_to_mentor(
     wait_for_celery,
 ):
     """Triggering send_weekly_mentor_per_student creates a session and notifies the mentor."""
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)

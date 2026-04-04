@@ -125,8 +125,10 @@ async def test_create_manual_notification_trigger(
     bot_setup: BotSetup,
 ):
     """Create a manual + send_notification + specific_users trigger rule."""
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)

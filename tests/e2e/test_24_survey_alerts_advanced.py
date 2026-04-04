@@ -4,6 +4,7 @@ Both tests require historical completed sessions (direct DB inserts) to set up
 the required pattern, plus one UI-driven session to trigger the alert logic.
 """
 
+import asyncio
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -32,8 +33,10 @@ async def test_delta_decline_alert(
     Historical sessions: scores 8 (W10), 6 (W11).
     UI session: score 4 (W12) → series [4, 6, 8] → strictly declining.
     """
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
@@ -115,8 +118,10 @@ async def test_cross_mismatch_alert(
     CROSS_PAIRS: "search_mentee_biweekly" → "search_mentor_biweekly".
     Both sessions share context_id "2026-W14:{ACCOUNT_2_TG_ID}".
     """
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)

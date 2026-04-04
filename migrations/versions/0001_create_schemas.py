@@ -66,7 +66,12 @@ trigger_regularity_enum = pgEnum(
     create_type=False,
 )
 execution_status_enum = pgEnum(
-    "pending", "sent", "failed", name="execution_status_enum", create_type=False
+    "pending",
+    "processing",
+    "sent",
+    "failed",
+    name="execution_status_enum",
+    create_type=False,
 )
 
 

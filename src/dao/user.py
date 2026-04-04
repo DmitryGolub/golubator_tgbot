@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
@@ -43,6 +43,43 @@ class UserDAO(BaseDAO):
             result = await session.execute(query)
             result = result.unique()
             return result.scalars().all()
+
+    @classmethod
+    async def get_paginated(
+        cls,
+        *,
+        page: int = 0,
+        page_size: int = 6,
+        role_name: str | None = None,
+        **filter_by,
+    ) -> tuple[list[User], int]:
+        async with async_session_maker() as session:
+            base = (
+                select(cls.model)
+                .options(joinedload(cls.model.role_rel))
+                .where(cls.model.is_placeholder.is_(False))
+            )
+            if filter_by:
+                base = base.filter_by(**filter_by)
+            if role_name is not None:
+                base = base.join(RoleModel, cls.model.role_id == RoleModel.id).where(
+                    RoleModel.name == role_name
+                )
+
+            count_result = await session.execute(
+                select(func.count()).select_from(base.subquery())
+            )
+            total = count_result.scalar_one()
+
+            query = (
+                base.order_by(cls.model.telegram_id)
+                .offset(page * page_size)
+                .limit(page_size)
+            )
+            result = await session.execute(query)
+            users = list(result.unique().scalars().all())
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            return users, total_pages
 
     @classmethod
     async def get_all_with_permission(cls, permission: str):

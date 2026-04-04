@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import Callable
 
@@ -21,8 +22,10 @@ async def test_change_mentee_mentor(
     """Admin changes mentee's mentor via bot update flow."""
     # Setup: account1 = admin (navigates UI) + mentor record + manage_meetings permission
     # account2 = student (default after /start) — appears in user selection list
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     # Add manage_meetings to admin role so account1 appears in get_all_with_permission

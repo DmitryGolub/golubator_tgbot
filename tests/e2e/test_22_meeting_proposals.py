@@ -6,6 +6,7 @@ All tests interact with the bot via real Telegram UI using 3 accounts:
   account3 = admin (via bot_setup fixture)
 """
 
+import asyncio
 import os
 from typing import Any
 
@@ -34,8 +35,10 @@ async def _setup_mentor_student(
     setup: E2ESetup,
 ):
     """Common setup: account1=mentor, account2=student with mentee relation."""
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)

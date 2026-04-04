@@ -1,51 +1,8 @@
 from datetime import datetime, time, timezone
 
-import pytest
-
 from src.models.enums import Regularity
-from src.tasks.trigger import _match_cron, _match_cron_field, _match_regularity, _should_fire_now
+from src.tasks.trigger import _match_cron, _match_regularity, _should_fire_now
 from tests.conftest import make_trigger_rule
-
-
-class TestMatchCronField:
-    def test_wildcard(self):
-        assert _match_cron_field("*", 0) is True
-        assert _match_cron_field("*", 59) is True
-
-    @pytest.mark.parametrize(
-        "pattern, value, expected",
-        [
-            ("*/5", 0, True),
-            ("*/5", 5, True),
-            ("*/5", 10, True),
-            ("*/5", 3, False),
-            ("*/5", 7, False),
-            ("*/15", 0, True),
-            ("*/15", 15, True),
-            ("*/15", 30, True),
-            ("*/15", 45, True),
-            ("*/15", 10, False),
-        ],
-    )
-    def test_step(self, pattern, value, expected):
-        assert _match_cron_field(pattern, value) is expected
-
-    def test_step_invalid(self):
-        assert _match_cron_field("*/abc", 5) is False
-
-    @pytest.mark.parametrize(
-        "pattern, value, expected",
-        [
-            ("1,5,10", 1, True),
-            ("1,5,10", 5, True),
-            ("1,5,10", 10, True),
-            ("1,5,10", 7, False),
-            ("0", 0, True),
-            ("0", 1, False),
-        ],
-    )
-    def test_list(self, pattern, value, expected):
-        assert _match_cron_field(pattern, value) is expected
 
 
 class TestMatchCron:

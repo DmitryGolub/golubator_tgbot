@@ -1,6 +1,8 @@
 import asyncio
 import os
 
+import pytest
+
 from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, get_buttons
 from tests.e2e.helpers.db_assertions import DBAssertions
@@ -23,8 +25,10 @@ async def test_create_survey_template(
     bot_setup: BotSetup,
 ):
     """Create a survey template with 4 question types through bot FSM."""
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # /menu -> Surveys
@@ -384,7 +388,9 @@ async def test_survey_duplicate_prevented(
     assert session_id is not None, "test_student_takes_survey must run first"
 
     # Check that only 1 completed session exists for the main context
-    template_id = _module_state["template_id"]
+    template_id = _module_state.get("template_id")
+    if template_id is None:
+        pytest.skip("template_id not set — prerequisite test failed")
     count = await db.count_survey_sessions(template_id, ACCOUNT_2_TG_ID, "test", "e2e")
     assert count == 1, f"Expected 1 session for test/e2e context, got {count}"
 

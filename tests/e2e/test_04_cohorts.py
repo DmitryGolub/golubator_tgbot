@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import Callable
 
@@ -19,8 +20,10 @@ async def test_create_cohort_type(
 ):
     """Admin creates a cohort type through bot FSM."""
     # Register both accounts
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
 
     # /menu -> Cohorts

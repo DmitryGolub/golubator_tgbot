@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import Callable
 
@@ -23,8 +24,10 @@ async def test_create_meeting_fsm(
 ):
     """Create a meeting through the full FSM dialog."""
     # Setup: mentor + mentee
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)

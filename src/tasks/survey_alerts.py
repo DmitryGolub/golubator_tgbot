@@ -7,6 +7,7 @@ from aiogram.exceptions import TelegramForbiddenError
 from src.celery_app import celery_app
 from src.core.config import settings
 from src.tasks._db import celery_db, run_async
+from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
 
@@ -22,21 +23,21 @@ STAGE_ROLE_MAP: dict[str, str] = {
 
 def _format_alert_message(alert) -> str:
     details = alert.details or {}
-    slug = details.get("slug", "")
+    slug = e(details.get("slug", ""))
     alert_type = alert.alert_type.value
 
     student_name = "Неизвестен"
     if alert.student:
-        student_name = alert.student.name or str(alert.student.telegram_id)
+        student_name = e(alert.student.name or str(alert.student.telegram_id))
 
     respondent_name = "Неизвестен"
     if alert.session and alert.session.respondent:
         r = alert.session.respondent
-        respondent_name = r.name or str(r.telegram_id)
+        respondent_name = e(r.name or str(r.telegram_id))
 
     template_title = ""
     if alert.session and alert.session.template:
-        template_title = alert.session.template.title
+        template_title = e(alert.session.template.title)
 
     if alert_type == "low_score":
         return (
@@ -44,9 +45,9 @@ def _format_alert_message(alert) -> str:
             f"Опрос: {template_title}\n"
             f"Респондент: {respondent_name}\n"
             f"Ученик: {student_name}\n"
-            f"Вопрос: {details.get('question', '?')}\n"
-            f"Оценка: <b>{details.get('score')}</b> "
-            f"(порог: {details.get('threshold')})"
+            f"Вопрос: {e(details.get('question', '?'))}\n"
+            f"Оценка: <b>{e(details.get('score'))}</b> "
+            f"(порог: {e(details.get('threshold'))})"
         )
     elif alert_type == "delta_decline":
         scores = details.get("scores", [])
@@ -55,16 +56,16 @@ def _format_alert_message(alert) -> str:
             f"Опрос: {template_title}\n"
             f"Респондент: {respondent_name}\n"
             f"Ученик: {student_name}\n"
-            f"Оценки (новые→старые): {' → '.join(str(s) for s in scores)}"
+            f"Оценки (новые→старые): {' → '.join(e(str(s)) for s in scores)}"
         )
     elif alert_type == "cross_mismatch":
         return (
             f"<b>Алёрт: расхождение оценок</b>\n\n"
             f"Ученик: {student_name}\n"
-            f"Средняя оценка ({slug}): {details.get('avg_current')}\n"
-            f"Средняя оценка ({details.get('paired_slug')}): "
-            f"{details.get('avg_paired')}\n"
-            f"Разница: <b>{details.get('diff')}</b>"
+            f"Средняя оценка ({slug}): {e(details.get('avg_current'))}\n"
+            f"Средняя оценка ({e(details.get('paired_slug'))}): "
+            f"{e(details.get('avg_paired'))}\n"
+            f"Разница: <b>{e(details.get('diff'))}</b>"
         )
     elif alert_type == "mentor_not_recommend":
         return (
@@ -74,7 +75,7 @@ def _format_alert_message(alert) -> str:
             f"Ученик: {student_name}"
         )
     else:
-        return f"<b>Алёрт ({alert_type})</b>\n\nОпрос: {template_title}"
+        return f"<b>Алёрт ({e(alert_type)})</b>\n\nОпрос: {template_title}"
 
 
 async def _process_survey_alerts_async() -> None:
@@ -112,6 +113,7 @@ async def _process_survey_alerts_async() -> None:
                     recipients = await UserDAO.get_all(role_name=role_name)
                     message = _format_alert_message(alert)
 
+                    send_errors = 0
                     for user in recipients:
                         if user.telegram_id < 0:
                             continue
@@ -133,8 +135,16 @@ async def _process_survey_alerts_async() -> None:
                                 alert.id,
                                 user.telegram_id,
                             )
+                            send_errors += 1
 
-                    await SurveyAlertDAO.mark_notified(alert.id)
+                    if send_errors == 0:
+                        await SurveyAlertDAO.mark_notified(alert.id)
+                    else:
+                        logger.warning(
+                            "Alert %d: %d send failures, NOT marking as notified",
+                            alert.id,
+                            send_errors,
+                        )
                 except Exception:
                     logger.exception("Failed to process alert %d, skipping", alert.id)
 

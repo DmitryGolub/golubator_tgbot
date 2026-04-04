@@ -3,7 +3,6 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup
 
 from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
-from src.bot.keyboards.pagination import get_page_slice
 from src.bot.keyboards.user import user_list_paginated_keyboard
 from src.dao.cohort import CohortDAO
 from src.dao.mentee import MenteeDAO
@@ -15,10 +14,9 @@ router.callback_query.filter(PermissionFilter("manage_users"))
 
 
 async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarkup]:
-    # TODO: SQL-level pagination (LIMIT/OFFSET) when user count exceeds ~500
-    all_users = await UserDAO.get_all()
+    page_users, total_pages = await UserDAO.get_paginated(page=page)
 
-    if not all_users:
+    if not page_users:
         return "<b>Список пользователей пуст.</b>", await user_list_paginated_keyboard(
             1, 0
         )
@@ -31,8 +29,6 @@ async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarku
 
     mentee_tids = [m.telegram_id for m in all_mentees if m.telegram_id is not None]
     cohorts_map = await CohortDAO.get_cohorts_batch(mentee_tids)
-
-    page_users, total_pages = get_page_slice(all_users, page)
 
     answer = "<b>Список пользователей:</b>\n\n"
 

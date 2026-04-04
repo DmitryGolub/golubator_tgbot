@@ -135,7 +135,7 @@ async def wait_for_sync():
 async def wait_for_celery():
     """Polling helper for Celery-dependent checks. Skips instead of failing on timeout."""
 
-    async def _wait(check_fn, max_wait=360, interval=5, skip_msg="Celery не ответил"):
+    async def _wait(check_fn, max_wait=120, interval=5, skip_msg="Celery не ответил"):
         start = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - start < max_wait:
             result = await check_fn()

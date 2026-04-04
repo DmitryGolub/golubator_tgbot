@@ -222,7 +222,7 @@ async def cb_choose_enum_value(
         )
         return
 
-    users = await UserDAO.get_all()
+    users, _ = await UserDAO.get_paginated(page=0)
     if not users:
         await _msg(callback).edit_text("Пользователи не найдены.")
         await state.clear()
@@ -261,7 +261,7 @@ async def cb_choose_mentor(
         chosen_value_type="mentor",
     )
 
-    students = await UserDAO.get_all(role_name="student")
+    students, _ = await UserDAO.get_paginated(page=0, role_name="student")
     if not students:
         await _msg(callback).edit_text("Пользователи не найдены.")
         await state.clear()
@@ -500,10 +500,12 @@ async def cb_choose_mentee_for_update(
     await state.clear()
 
 
-async def _load_users_by_filter(users_filter: str, caller_id: int) -> list:
+async def _load_users_by_filter(
+    users_filter: str, caller_id: int, page: int = 0
+) -> tuple[list, int]:
     if users_filter == "students":
-        return await UserDAO.get_all(role_name="student")
-    return await UserDAO.get_all()
+        return await UserDAO.get_paginated(page=page, role_name="student")
+    return await UserDAO.get_paginated(page=page)
 
 
 @router.callback_query(
@@ -516,7 +518,9 @@ async def cb_users_page(
     await callback.answer()
     data = await state.get_data()
     users_filter = data.get("users_filter", "all")
-    users = await _load_users_by_filter(users_filter, callback.from_user.id)
+    users, _ = await _load_users_by_filter(
+        users_filter, callback.from_user.id, page=callback_data.page
+    )
     await _msg(callback).edit_reply_markup(
         reply_markup=users_keyboard(users, page=callback_data.page)
     )

@@ -83,8 +83,10 @@ class TelegramTestClient:
 
         # Poll for changes
         deadline = asyncio.get_event_loop().time() + timeout
+        interval = 0.1
         while asyncio.get_event_loop().time() < deadline:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(interval)
+            interval = min(interval * 2, 0.5)
             new_messages = await self._client.get_messages(self._bot, limit=5)
             for m in new_messages:
                 # New message appeared
@@ -131,8 +133,10 @@ class TelegramTestClient:
         the expected message, to avoid race conditions.
         """
         deadline = asyncio.get_event_loop().time() + timeout
+        interval = 0.1
         while asyncio.get_event_loop().time() < deadline:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(interval)
+            interval = min(interval * 2, 0.5)
             new_messages = await self._client.get_messages(self._bot, limit=5)
             for m in new_messages:
                 if m.id > after_id:
@@ -149,8 +153,10 @@ class TelegramTestClient:
         old_messages = await self._client.get_messages(self._bot, limit=1)
         max_old_id = max((m.id for m in old_messages), default=0)
         deadline = asyncio.get_event_loop().time() + timeout
+        interval = 0.1
         while asyncio.get_event_loop().time() < deadline:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(interval)
+            interval = min(interval * 2, 0.5)
             new_messages = await self._client.get_messages(self._bot, limit=3)
             for m in new_messages:
                 if m.id > max_old_id:

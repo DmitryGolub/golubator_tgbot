@@ -1,6 +1,7 @@
 import logging
-import re
 from datetime import datetime, timezone
+
+from croniter import croniter
 
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
@@ -38,22 +39,11 @@ async def _execute_action_async(execution_id: int) -> None:
             from src.dao.trigger_rule import TriggerRuleDAO
             from src.services.events.dispatcher import EventDispatcher
 
-            from src.core.database import async_session_maker
+            exec_obj = await TriggerExecutionDAO.claim_pending(execution_id)
+            if not exec_obj:
+                return
 
-            async with async_session_maker() as session:
-                from src.models.trigger import TriggerExecution, ExecutionStatus
-
-                exec_obj = await session.get(TriggerExecution, execution_id)
-                if not exec_obj:
-                    logger.warning("TriggerExecution %s not found", execution_id)
-                    return
-                if exec_obj.status != ExecutionStatus.pending:
-                    return
-                rule_id = exec_obj.rule_id
-                recipient_id = exec_obj.recipient_id
-                exec_context = exec_obj.context or {}
-
-            rule = await TriggerRuleDAO.get_by_id(rule_id)
+            rule = await TriggerRuleDAO.get_by_id(exec_obj.rule_id)
             if not rule:
                 await TriggerExecutionDAO.mark_failed(execution_id, "Rule not found")
                 return
@@ -61,16 +51,16 @@ async def _execute_action_async(execution_id: int) -> None:
             try:
                 await EventDispatcher.execute_action(
                     rule=rule,
-                    recipient_id=recipient_id,
-                    context=exec_context,
+                    recipient_id=exec_obj.recipient_id,
+                    context=exec_obj.context or {},
                     bot=bot,
                 )
                 await TriggerExecutionDAO.mark_sent(execution_id)
                 logger.info(
                     "Trigger execution %s completed: rule=%s user=%s",
                     execution_id,
-                    rule_id,
-                    recipient_id,
+                    exec_obj.rule_id,
+                    exec_obj.recipient_id,
                 )
             except Exception as exc:
                 await TriggerExecutionDAO.mark_failed(execution_id, str(exc))
@@ -119,7 +109,7 @@ async def _process_pending_async() -> None:
             from src.dao.trigger_rule import TriggerRuleDAO
             from src.services.events.dispatcher import EventDispatcher
 
-            pending = await TriggerExecutionDAO.get_pending_due()
+            pending = await TriggerExecutionDAO.claim_pending_batch()
             if pending:
                 logger.info("Processing %d pending execution(s)", len(pending))
             for execution in pending:
@@ -157,55 +147,11 @@ def _should_fire_now(rule, now: datetime) -> bool:
 
 
 def _match_cron(expr: str, now: datetime) -> bool:
-    """Simple cron expression matching: 'minute hour day_of_month month day_of_week'."""
-    parts = expr.strip().split()
-    if len(parts) != 5:
+    try:
+        return croniter.match(expr, now)
+    except (ValueError, KeyError):
+        logger.warning("Invalid cron expression: %s", expr)
         return False
-
-    dow_expr = re.sub(r"\b7\b", "0", parts[4])  # 7 (Sun alt) → 0 (Sun canonical)
-    checks = [
-        (parts[0], now.minute),
-        (parts[1], now.hour),
-        (parts[2], now.day),
-        (parts[3], now.month),
-        (
-            dow_expr,
-            now.isoweekday() % 7,
-        ),  # isoweekday: Mon=1..Sun=7 → 0=Sun,1=Mon..6=Sat (cron convention)
-    ]
-
-    for pattern, value in checks:
-        if not _match_cron_field(pattern, value):
-            return False
-
-    return True
-
-
-def _match_cron_field(pattern: str, value: int) -> bool:
-    if pattern == "*":
-        return True
-
-    # Handle */N
-    if pattern.startswith("*/"):
-        try:
-            step = int(pattern[2:])
-            return value % step == 0
-        except ValueError:
-            return False
-
-    # Handle comma-separated values and ranges
-    for part in pattern.split(","):
-        try:
-            if "-" in part:
-                lo, hi = part.split("-", 1)
-                if int(lo) <= value <= int(hi):
-                    return True
-            elif int(part) == value:
-                return True
-        except ValueError:
-            pass
-
-    return False
 
 
 def _match_regularity(rule, now: datetime) -> bool:

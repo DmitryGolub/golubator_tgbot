@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
@@ -162,44 +163,30 @@ class SurveySessionDAO:
         value_choice: list | None = None,
     ) -> SurveyAnswer:
         async with async_session_maker() as session:
-            try:
-                existing = await session.execute(
-                    select(SurveyAnswer).where(
-                        SurveyAnswer.session_id == session_id,
-                        SurveyAnswer.question_id == question_id,
-                    )
+            stmt = (
+                pg_insert(SurveyAnswer)
+                .values(
+                    session_id=session_id,
+                    question_id=question_id,
+                    value_text=value_text,
+                    value_int=value_int,
+                    value_choice=value_choice,
                 )
-                answer = existing.scalar_one_or_none()
-
-                if answer:
-                    answer.value_text = value_text
-                    answer.value_int = value_int
-                    answer.value_choice = value_choice
-                else:
-                    answer = SurveyAnswer(
-                        session_id=session_id,
-                        question_id=question_id,
+                .on_conflict_do_update(
+                    constraint="uq_survey_answer_unique",
+                    set_=dict(
                         value_text=value_text,
                         value_int=value_int,
                         value_choice=value_choice,
-                    )
-                    session.add(answer)
-
-                await session.commit()
-                await session.refresh(answer)
-                return answer
-            except IntegrityError:
-                await session.rollback()
-                existing = await session.execute(
-                    select(SurveyAnswer).where(
-                        SurveyAnswer.session_id == session_id,
-                        SurveyAnswer.question_id == question_id,
-                    )
+                    ),
                 )
-                answer = existing.scalar_one_or_none()
-                if answer:
-                    return answer
-                raise
+                .returning(SurveyAnswer)
+            )
+            result = await session.execute(stmt)
+            answer = result.scalar_one()
+            await session.commit()
+            await session.refresh(answer)
+            return answer
 
     @classmethod
     async def complete(cls, session_id: int) -> Optional[SurveySession]:

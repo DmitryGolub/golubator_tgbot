@@ -138,7 +138,7 @@ async def _ensure_user_exists(
                         current_placeholder_id,
                         telegram_id,
                     )
-                    return
+                    return telegram_id
             else:
                 # Real user already exists — delete placeholder
                 placeholder = await session.execute(
@@ -406,10 +406,15 @@ class NotionSyncServiceV2:
                     if data.link:
                         meeting.meeting_link = data.link
 
-                    if data.status == "Проведён" and not meeting.completed_at:
+                    if (
+                        data.status in ("Проведён", "Отменён")
+                        and not meeting.completed_at
+                    ):
                         meeting.completed_at = now
-                    elif data.status == "Отменён" and not meeting.completed_at:
-                        meeting.completed_at = now
+                    if data.status == "Отменён":
+                        meeting.is_cancelled = True
+                    elif data.status == "Проведён":
+                        meeting.is_cancelled = False
 
                     meeting.synced_at = now
                     await _ensure_meeting_users(
@@ -440,8 +445,10 @@ class NotionSyncServiceV2:
                         synced_at=now,
                         mentor_telegram_id=mentor_tid,
                     )
-                    if data.status == "Проведён":
+                    if data.status in ("Проведён", "Отменён"):
                         new_meeting.completed_at = now
+                    if data.status == "Отменён":
+                        new_meeting.is_cancelled = True
                     session.add(new_meeting)
                     await session.flush()
                     await _ensure_meeting_users(
@@ -1044,7 +1051,9 @@ class NotionSyncServiceV2:
                                 ),
                                 event_type=meeting.event_type,
                                 status=(
-                                    "Проведён"
+                                    "Отменён"
+                                    if meeting.is_cancelled
+                                    else "Проведён"
                                     if meeting.completed_at
                                     else "Запланирован"
                                 ),
@@ -1062,7 +1071,10 @@ class NotionSyncServiceV2:
                                     "title": [{"text": {"content": meeting.topic}}]
                                 }
                             if meeting.completed_at:
-                                props["Статус"] = {"status": {"name": "Проведён"}}
+                                status_name = (
+                                    "Отменён" if meeting.is_cancelled else "Проведён"
+                                )
+                                props["Статус"] = {"status": {"name": status_name}}
                             if meeting.summary:
                                 props["Итоги"] = {
                                     "rich_text": [
@@ -1230,6 +1242,10 @@ class NotionSyncServiceV2:
                                 and not meeting.completed_at
                             ):
                                 meeting.completed_at = now
+                            if ev.status == "Отменён":
+                                meeting.is_cancelled = True
+                            elif ev.status == "Проведён":
+                                meeting.is_cancelled = False
                             meeting.synced_at = now
                             await _ensure_meeting_users(
                                 session, meeting.id, mentor_tid, mentee_tid
@@ -1261,6 +1277,8 @@ class NotionSyncServiceV2:
                             )
                             if ev.status in ("Проведён", "Отменён"):
                                 new_meeting.completed_at = now
+                            if ev.status == "Отменён":
+                                new_meeting.is_cancelled = True
                             session.add(new_meeting)
                             await session.flush()
                             await _ensure_meeting_users(

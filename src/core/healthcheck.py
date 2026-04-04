@@ -36,8 +36,36 @@ async def _health_handler(_request: web.Request) -> web.Response:
     return web.json_response({"status": "healthy"})
 
 
+_ALLOWED_TEST_TASKS: frozenset[str] = frozenset(
+    {
+        "triggers.execute_action",
+        "triggers.tick_periodic",
+        "triggers.process_pending",
+        "notion.push_changes",
+        "notion.backup_pull_users",
+        "notion.backup_pull_events",
+        "notion.backup_pull_cohorts",
+        "surveys.send_weekly_mentor_per_student",
+        "surveys.send_search_biweekly_mentor",
+        "surveys.send_probation_biweekly_mentee",
+        "surveys.send_probation_biweekly_mentor",
+        "surveys.process_alerts",
+        "surveys.check_escalations",
+        "meeting.notify_created",
+        "meeting.notify_reminder",
+        "meeting.archive_notion_page",
+    }
+)
+
+
 async def _trigger_task_handler(request: web.Request) -> web.Response:
     task_name = request.match_info["task_name"]
+
+    if task_name not in _ALLOWED_TEST_TASKS:
+        return web.json_response(
+            {"status": "rejected", "error": "unknown task"}, status=403
+        )
+
     from src.celery_app import celery_app
 
     celery_app.send_task(task_name)

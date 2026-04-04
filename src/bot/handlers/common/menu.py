@@ -46,7 +46,8 @@ async def _render_menu(message_or_callback, permissions: set[str]):
 
 
 @router.message(Command("menu"))
-async def cmd_menu(message: Message):
+async def cmd_menu(message: Message, state: FSMContext):
+    await state.clear()
     permissions = await AuthService.get_user_permissions(message.from_user.id)
     if not permissions:
         await _ensure_user(message.from_user)
@@ -61,7 +62,8 @@ async def cmd_menu(message: Message):
 
 
 @router.callback_query(F.data == "back_to_menu")
-async def cb_menu(callback: CallbackQuery):
+async def cb_menu(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
     await callback.answer()
 
     permissions = await AuthService.get_user_permissions(callback.from_user.id)

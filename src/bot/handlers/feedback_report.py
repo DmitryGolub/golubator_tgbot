@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -13,6 +15,8 @@ from src.bot.states.feedback_report import FeedbackReportFSM
 from src.core.config import settings
 from src.dao.user import UserDAO
 from src.services.ui_text import UiTextService
+
+logger = logging.getLogger(__name__)
 
 router = Router(name="feedback_report")
 
@@ -103,7 +107,9 @@ async def cb_choose_recipient(
         try:
             await bot.send_message(user.telegram_id, outgoing)
         except Exception:
-            pass
+            logger.warning(
+                "Failed to send feedback to %s", user.telegram_id, exc_info=True
+            )
 
     confirmation = await UiTextService.get("feedback.sent")
     await callback.message.edit_text(
@@ -150,7 +156,7 @@ async def _send_bug_report(
             else:
                 await bot.send_message(admin_id, outgoing)
         except Exception:
-            pass
+            logger.warning("Failed to send bug report to %s", admin_id, exc_info=True)
 
     confirmation = await UiTextService.get("feedback.bug_sent")
     if edit:

@@ -82,6 +82,7 @@ class E2ESetup:
     async def truncate_all(self):
         """Truncate all tables between test suites, preserving seed data."""
         schemas = ["triggers", "surveys", "meetings", "integrations", "iam", "public"]
+        to_truncate = []
         for schema in schemas:
             tables = await self._pool.fetch(
                 """
@@ -93,9 +94,9 @@ class E2ESetup:
             for table in tables:
                 if (schema, table["tablename"]) in self._PRESERVE_TABLES:
                     continue
-                await self._pool.execute(
-                    f'TRUNCATE TABLE {schema}."{table["tablename"]}" CASCADE'
-                )
+                to_truncate.append(f'{schema}."{table["tablename"]}"')
+        if to_truncate:
+            await self._pool.execute(f"TRUNCATE TABLE {', '.join(to_truncate)} CASCADE")
 
     async def flush_redis(self, redis_url: str):
         """Flush Redis (FSM state, permission cache)."""

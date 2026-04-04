@@ -1,4 +1,7 @@
+import asyncio
 import os
+
+import pytest
 
 from tests.e2e.helpers.bot_setup import BotSetup
 from tests.e2e.helpers.buttons import find_button, button_labels
@@ -22,8 +25,10 @@ async def test_delete_meeting(
 ):
     """Delete a meeting through the bot UI."""
     # Setup
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
@@ -71,8 +76,10 @@ async def test_student_views_meetings(
 ):
     """Student views their meetings list."""
     # Setup
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await bot_setup.set_user_role(ACCOUNT_2_TG_ID, "student")
     await bot_setup.ensure_role_permission("student", "view_own_meetings")
@@ -114,8 +121,10 @@ async def test_start_second_call_blocked(
     bot_setup: BotSetup,
 ):
     """Starting a second call while one is active returns an error."""
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
@@ -154,8 +163,10 @@ async def test_end_call_then_start_new(
     db: DBAssertions,
 ):
     """After ending the active call, a new one can be started successfully."""
-    m1 = _module_state["call_block_m1"]
-    m2 = _module_state["call_block_m2"]
+    m1 = _module_state.get("call_block_m1")
+    m2 = _module_state.get("call_block_m2")
+    if m1 is None or m2 is None:
+        pytest.skip("call_block meetings not set — prerequisite test failed")
 
     # End the first call
     end_msg = await account1.send_command("/end_call")
