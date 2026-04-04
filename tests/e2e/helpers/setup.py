@@ -89,6 +89,7 @@ class E2ESetup:
         ("iam", "permissions"),
         ("iam", "role_permissions"),
         ("public", "ui_texts"),
+        ("integrations", "cohorts"),
     }
 
     async def truncate_all(self):
@@ -109,6 +110,10 @@ class E2ESetup:
                 to_truncate.append(f'{schema}."{table["tablename"]}"')
         if to_truncate:
             await self._pool.execute(f"TRUNCATE TABLE {', '.join(to_truncate)} CASCADE")
+        # Clean up test-created cohorts while preserving seed data
+        await self._pool.execute(
+            "DELETE FROM integrations.cohorts WHERE type LIKE 'E2E_%'"
+        )
 
     async def flush_redis(self, redis_url: str):
         """Flush Redis (FSM state, permission cache)."""
