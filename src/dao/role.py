@@ -19,6 +19,7 @@ class RoleDAO(BaseDAO):
     @classmethod
     async def get_with_permissions(cls, role_id: int) -> RoleModel | None:
         async with async_session_maker() as session:
+            # permissions loaded via lazy="selectin" on RoleModel.permissions relationship
             query = select(cls.model).where(cls.model.id == role_id)
             result = await session.execute(query)
             return result.scalars().one_or_none()

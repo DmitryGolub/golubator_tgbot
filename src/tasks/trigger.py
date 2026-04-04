@@ -166,7 +166,10 @@ def _match_cron(expr: str, now: datetime) -> bool:
         (parts[1], now.hour),
         (parts[2], now.day),
         (parts[3], now.month),
-        (parts[4], now.isoweekday() % 7),  # 0=Sunday
+        (
+            parts[4],
+            now.isoweekday() % 7,
+        ),  # isoweekday: Mon=1..Sun=7 → 0=Sun,1=Mon..6=Sat (cron convention)
     ]
 
     for pattern, value in checks:

@@ -9,6 +9,16 @@ from src.core.database import async_session_maker
 from src.models.survey_session import SessionStatus, SurveyAnswer, SurveySession
 
 
+_ALLOWED_ESCALATION_FIELDS = frozenset(
+    {
+        "reminder_sent_at",
+        "mentor_notified_at",
+        "escalated_at",
+        "is_escalatable",
+    }
+)
+
+
 class SurveySessionDAO:
     @classmethod
     async def create(
@@ -211,6 +221,8 @@ class SurveySessionDAO:
 
     @classmethod
     async def update_escalation_field(cls, session_id: int, field: str, value) -> None:
+        if field not in _ALLOWED_ESCALATION_FIELDS:
+            raise ValueError(f"Invalid escalation field: {field!r}")
         async with async_session_maker() as db:
             await db.execute(
                 update(SurveySession)
@@ -218,3 +230,49 @@ class SurveySessionDAO:
                 .values(**{field: value})
             )
             await db.commit()
+
+    @classmethod
+    async def get_recent_completed(
+        cls, *, template_id: int, respondent_id: int, limit: int
+    ) -> list[SurveySession]:
+        """Return last N completed sessions for the given respondent + template."""
+        async with async_session_maker() as db:
+            query = (
+                select(SurveySession)
+                .where(
+                    SurveySession.template_id == template_id,
+                    SurveySession.respondent_id == respondent_id,
+                    SurveySession.status == SessionStatus.completed,
+                )
+                .options(
+                    joinedload(SurveySession.answers).joinedload(SurveyAnswer.question)
+                )
+                .order_by(SurveySession.completed_at.desc())
+                .limit(limit)
+            )
+            result = await db.execute(query)
+            return list(result.unique().scalars().all())
+
+    @classmethod
+    async def find_paired(
+        cls, *, paired_slug: str, context_id: str
+    ) -> SurveySession | None:
+        """Find a completed session by the slug of a paired template and context_id."""
+        async with async_session_maker() as db:
+            from src.models.survey_template import SurveyTemplate
+
+            query = (
+                select(SurveySession)
+                .join(SurveyTemplate, SurveySession.template_id == SurveyTemplate.id)
+                .where(
+                    SurveyTemplate.slug == paired_slug,
+                    SurveySession.context_id == context_id,
+                    SurveySession.status == SessionStatus.completed,
+                )
+                .options(
+                    joinedload(SurveySession.answers).joinedload(SurveyAnswer.question)
+                )
+                .limit(1)
+            )
+            result = await db.execute(query)
+            return result.unique().scalar_one_or_none()

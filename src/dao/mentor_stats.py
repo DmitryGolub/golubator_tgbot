@@ -115,16 +115,22 @@ class MentorStatsDAO:
                 "avg_understanding": avgs.get(4),
                 "avg_satisfaction": (
                     round(
-                        sum(v for v in [avgs.get(2), avgs.get(3), avgs.get(4)] if v)
+                        sum(
+                            v
+                            for v in [avgs.get(2), avgs.get(3), avgs.get(4)]
+                            if v is not None
+                        )
                         / max(
                             sum(
-                                1 for v in [avgs.get(2), avgs.get(3), avgs.get(4)] if v
+                                1
+                                for v in [avgs.get(2), avgs.get(3), avgs.get(4)]
+                                if v is not None
                             ),
                             1,
                         ),
                         2,
                     )
-                    if any(avgs.get(i) for i in (2, 3, 4))
+                    if any(avgs.get(i) is not None for i in (2, 3, 4))
                     else None
                 ),
             }

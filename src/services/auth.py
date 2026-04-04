@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from sqlalchemy.exc import IntegrityError
+
 from src.core.config import settings
 from src.dao.role import PermissionDAO, RoleDAO
 from src.dao.user import UserDAO
@@ -94,11 +96,17 @@ class AuthService:
 
         is_admin = real_id in settings.admin_ids
         role_obj = await RoleDAO.get_by_name("admin" if is_admin else "student")
-        created = await UserDAO.add(
-            telegram_id=real_id,
-            username=tg_user.username,
-            name=tg_user.full_name,
-            role_id=role_obj.id if role_obj else None,
-            registered_at=datetime.now(timezone.utc),
-        )
-        return created
+        try:
+            return await UserDAO.add(
+                telegram_id=real_id,
+                username=tg_user.username,
+                name=tg_user.full_name,
+                role_id=role_obj.id if role_obj else None,
+                registered_at=datetime.now(timezone.utc),
+            )
+        except IntegrityError:
+            # Race condition: another concurrent /start created the user simultaneously
+            existing = await UserDAO.find_one_or_none(telegram_id=real_id)
+            if existing:
+                return existing
+            raise

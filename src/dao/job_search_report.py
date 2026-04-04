@@ -65,8 +65,12 @@ class JobSearchReportDAO:
             if date_to is not None:
                 query = query.where(Meeting.scheduled_at <= date_to)
 
-            query = query.group_by(direction, mentor_name).order_by(
-                direction, mentor_name
+            query = query.group_by(
+                func.coalesce(Cohort.value, "—"),
+                func.coalesce(User.name, "—"),
+            ).order_by(
+                func.coalesce(Cohort.value, "—"),
+                func.coalesce(User.name, "—"),
             )
 
             result = await session.execute(query)

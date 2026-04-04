@@ -23,8 +23,12 @@ class UserDAO(BaseDAO):
         **filter_by,
     ):
         async with async_session_maker() as session:
-            query = select(cls.model).options(
-                joinedload(cls.model.role_rel),
+            query = (
+                select(cls.model)
+                .options(
+                    joinedload(cls.model.role_rel),
+                )
+                .where(cls.model.is_placeholder.is_(False))
             )
             if filter_by:
                 query = query.filter_by(**filter_by)
@@ -65,7 +69,10 @@ class UserDAO(BaseDAO):
     async def get_telegram_ids_by_role(cls, role_id: int) -> list[int]:
         async with async_session_maker() as session:
             result = await session.execute(
-                select(cls.model.telegram_id).where(cls.model.role_id == role_id)
+                select(cls.model.telegram_id).where(
+                    cls.model.role_id == role_id,
+                    cls.model.is_placeholder.is_(False),
+                )
             )
             return list(result.scalars().all())
 

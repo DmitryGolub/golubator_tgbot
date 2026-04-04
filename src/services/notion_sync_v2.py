@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
@@ -114,12 +115,29 @@ async def _ensure_user_exists(
 
             if not real_user:
                 # No real user yet — update placeholder PK (CASCADE updates all FKs)
-                await session.execute(
-                    update(User)
-                    .where(User.telegram_id == current_placeholder_id)
-                    .values(telegram_id=telegram_id, is_placeholder=False)
-                )
-                await session.flush()
+                try:
+                    result = await session.execute(
+                        update(User)
+                        .where(User.telegram_id == current_placeholder_id)
+                        .values(telegram_id=telegram_id, is_placeholder=False)
+                        .returning(User.telegram_id)
+                    )
+                    await session.flush()
+                    if result.scalar_one_or_none() is None:
+                        # Another webhook already performed the merge — skip
+                        logger.debug(
+                            "Placeholder merge skipped (already merged): %s -> %s",
+                            current_placeholder_id,
+                            telegram_id,
+                        )
+                except IntegrityError:
+                    await session.rollback()
+                    logger.warning(
+                        "IntegrityError during placeholder merge %s -> %s, skipping",
+                        current_placeholder_id,
+                        telegram_id,
+                    )
+                    return
             else:
                 # Real user already exists — delete placeholder
                 placeholder = await session.execute(

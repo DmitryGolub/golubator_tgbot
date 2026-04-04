@@ -10,6 +10,9 @@ from src.services.events.recipient_resolver import RecipientResolver
 
 logger = logging.getLogger(__name__)
 
+# Action instances are reused for all calls. Actions MUST remain stateless
+# (no instance variables mutated during execute) — they run concurrently
+# in the bot's asyncio event loop for different recipients.
 ACTION_MAP = {
     ActionType.send_notification: SendNotificationAction(),
     ActionType.send_survey: SendSurveyAction(),

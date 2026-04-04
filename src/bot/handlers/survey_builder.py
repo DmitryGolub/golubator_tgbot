@@ -31,7 +31,11 @@ from src.bot.states.survey_builder import SurveyBuilderFSM
 from src.dao.survey_session import SurveySessionDAO
 from src.dao.user import UserDAO
 from src.services.survey_session import SessionNotFoundError, SurveySessionService
-from src.services.survey_template import SlugAlreadyExistsError, SurveyTemplateService
+from src.services.survey_template import (
+    SlugAlreadyExistsError,
+    SurveyTemplateService,
+    TemplateNotFoundError,
+)
 from src.services.ui_text import UiTextService
 from src.utils.escape import e
 
@@ -82,8 +86,12 @@ async def cb_template_detail(
     service = SurveyTemplateService()
     try:
         template = await service.get(callback_data.template_id)
-    except Exception:
+    except TemplateNotFoundError:
         await callback.answer("Опрос не найден")
+        return
+    except Exception:
+        logger.exception("Unexpected error in cb_template_detail")
+        await callback.answer("Произошла ошибка")
         return
 
     questions_text = ""
@@ -119,8 +127,12 @@ async def cb_toggle_template(
     try:
         template = await service.get(callback_data.template_id)
         template = await service.toggle_active(template.id, not template.is_active)
-    except Exception:
+    except TemplateNotFoundError:
         await callback.answer("Опрос не найден")
+        return
+    except Exception:
+        logger.exception("Unexpected error in cb_toggle_template")
+        await callback.answer("Произошла ошибка")
         return
 
     status = "включен" if template.is_active else "выключен"
@@ -138,8 +150,12 @@ async def cb_delete_template(
     service = SurveyTemplateService()
     try:
         await service.delete(callback_data.template_id)
-    except Exception:
+    except TemplateNotFoundError:
         await callback.answer("Опрос не найден")
+        return
+    except Exception:
+        logger.exception("Unexpected error in cb_delete_template")
+        await callback.answer("Произошла ошибка")
         return
 
     await callback.answer("Опрос удалён")

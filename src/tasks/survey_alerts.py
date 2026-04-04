@@ -93,47 +93,50 @@ async def _process_survey_alerts_async() -> None:
             sent = 0
 
             for alert in alerts:
-                # Determine student stage -> role
-                role_name = None
-                student_id = alert.student_id
-                if student_id:
-                    statuses = await CohortDAO.get_user_cohort_values_by_type(
-                        student_id, "Status"
-                    )
-                    for status in statuses:
-                        role_name = STAGE_ROLE_MAP.get(status)
-                        if role_name:
-                            break
-
-                if not role_name:
-                    role_name = "education_lead"
-
-                recipients = await UserDAO.get_all(role_name=role_name)
-                message = _format_alert_message(alert)
-
-                for user in recipients:
-                    if user.telegram_id < 0:
-                        continue
-                    try:
-                        await bot.send_message(
-                            user.telegram_id,
-                            message,
-                            parse_mode="HTML",
+                try:
+                    # Determine student stage -> role
+                    role_name = None
+                    student_id = alert.student_id
+                    if student_id:
+                        statuses = await CohortDAO.get_user_cohort_values_by_type(
+                            student_id, "Status"
                         )
-                        sent += 1
-                    except TelegramForbiddenError:
-                        logger.warning(
-                            "User %s blocked the bot, skipping alert",
-                            user.telegram_id,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Failed to send alert %d to user %s",
-                            alert.id,
-                            user.telegram_id,
-                        )
+                        for status in statuses:
+                            role_name = STAGE_ROLE_MAP.get(status)
+                            if role_name:
+                                break
 
-                await SurveyAlertDAO.mark_notified(alert.id)
+                    if not role_name:
+                        role_name = "education_lead"
+
+                    recipients = await UserDAO.get_all(role_name=role_name)
+                    message = _format_alert_message(alert)
+
+                    for user in recipients:
+                        if user.telegram_id < 0:
+                            continue
+                        try:
+                            await bot.send_message(
+                                user.telegram_id,
+                                message,
+                                parse_mode="HTML",
+                            )
+                            sent += 1
+                        except TelegramForbiddenError:
+                            logger.warning(
+                                "User %s blocked the bot, skipping alert",
+                                user.telegram_id,
+                            )
+                        except Exception:
+                            logger.exception(
+                                "Failed to send alert %d to user %s",
+                                alert.id,
+                                user.telegram_id,
+                            )
+
+                    await SurveyAlertDAO.mark_notified(alert.id)
+                except Exception:
+                    logger.exception("Failed to process alert %d, skipping", alert.id)
 
             logger.info("Survey alerts processed: sent=%d messages", sent)
         finally:

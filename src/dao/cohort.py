@@ -169,61 +169,61 @@ class CohortDAO:
     ) -> tuple[str | None, str]:
         """Update user cohort and return (old_value, new_value)."""
         async with async_session_maker() as session:
-            old_result = await session.execute(
-                select(Cohort.value)
-                .join(UserCohort, UserCohort.cohort_id == Cohort.id)
-                .where(
-                    UserCohort.user_telegram_id == user_telegram_id,
-                    Cohort.type == cohort_type,
+            async with session.begin():
+                old_result = await session.execute(
+                    select(Cohort.value)
+                    .join(UserCohort, UserCohort.cohort_id == Cohort.id)
+                    .where(
+                        UserCohort.user_telegram_id == user_telegram_id,
+                        Cohort.type == cohort_type,
+                    )
                 )
-            )
-            old_value = old_result.scalar_one_or_none()
+                old_value = old_result.scalar_one_or_none()
 
-            if old_value == cohort_value:
-                return old_value, cohort_value
+                if old_value == cohort_value:
+                    return old_value, cohort_value
 
-            await session.execute(
-                delete(UserCohort).where(
-                    UserCohort.user_telegram_id == user_telegram_id,
-                    UserCohort.cohort_id.in_(
-                        select(Cohort.id).where(Cohort.type == cohort_type)
-                    ),
+                await session.execute(
+                    delete(UserCohort).where(
+                        UserCohort.user_telegram_id == user_telegram_id,
+                        UserCohort.cohort_id.in_(
+                            select(Cohort.id).where(Cohort.type == cohort_type)
+                        ),
+                    )
                 )
-            )
-            now = datetime.now(timezone.utc)
-            await session.execute(
-                pg_insert(Cohort)
-                .values(type=cohort_type, value=cohort_value)
-                .on_conflict_do_nothing(constraint="uq_cohort_type_value")
-            )
-            result = await session.execute(
-                select(Cohort.id).where(
-                    Cohort.type == cohort_type, Cohort.value == cohort_value
+                now = datetime.now(timezone.utc)
+                await session.execute(
+                    pg_insert(Cohort)
+                    .values(type=cohort_type, value=cohort_value)
+                    .on_conflict_do_nothing(constraint="uq_cohort_type_value")
                 )
-            )
-            cohort_id = result.scalar_one()
-            session.add(
-                UserCohort(
-                    user_telegram_id=user_telegram_id,
-                    cohort_id=cohort_id,
-                    synced_at=now,
+                result = await session.execute(
+                    select(Cohort.id).where(
+                        Cohort.type == cohort_type, Cohort.value == cohort_value
+                    )
                 )
-            )
-            await session.execute(
-                update(User)
-                .where(User.telegram_id == user_telegram_id)
-                .values(updated_at=now)
-            )
-            from src.models.stage_transition import StageTransition
+                cohort_id = result.scalar_one()
+                session.add(
+                    UserCohort(
+                        user_telegram_id=user_telegram_id,
+                        cohort_id=cohort_id,
+                        synced_at=now,
+                    )
+                )
+                await session.execute(
+                    update(User)
+                    .where(User.telegram_id == user_telegram_id)
+                    .values(updated_at=now)
+                )
+                from src.models.stage_transition import StageTransition
 
-            session.add(
-                StageTransition(
-                    user_telegram_id=user_telegram_id,
-                    cohort_type=cohort_type,
-                    old_value=old_value,
-                    new_value=cohort_value,
-                    source="bot",
+                session.add(
+                    StageTransition(
+                        user_telegram_id=user_telegram_id,
+                        cohort_type=cohort_type,
+                        old_value=old_value,
+                        new_value=cohort_value,
+                        source="bot",
+                    )
                 )
-            )
-            await session.commit()
             return old_value, cohort_value

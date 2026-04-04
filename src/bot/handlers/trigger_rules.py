@@ -385,19 +385,30 @@ async def cb_cohort_to(
     )
 
 
+_CRON_RANGES = [
+    (0, 59),
+    (0, 23),
+    (1, 31),
+    (1, 12),
+    (0, 6),
+]  # min, hour, dom, month, dow
+
+
 def _validate_cron(expr: str) -> str | None:
     """Return error message if cron expression is invalid, else None."""
     parts = expr.split()
     if len(parts) != 5:
         return "Cron-выражение должно содержать ровно 5 полей."
-    for part in parts:
+    for part, (lo, hi) in zip(parts, _CRON_RANGES):
         if part == "*":
             continue
         if part.startswith("*/"):
             try:
-                int(part[2:])
+                n = int(part[2:])
             except ValueError:
                 return f"Невалидное поле: {part}"
+            if n < 1 or n > hi:
+                return f"Шаг {part} вне допустимого диапазона 1–{hi}."
             continue
         for sub in part.split(","):
             if "-" in sub:
@@ -405,15 +416,18 @@ def _validate_cron(expr: str) -> str | None:
                 if len(pieces) != 2:
                     return f"Невалидный диапазон: {sub}"
                 try:
-                    int(pieces[0])
-                    int(pieces[1])
+                    a, b = int(pieces[0]), int(pieces[1])
                 except ValueError:
                     return f"Невалидный диапазон: {sub}"
+                if not (lo <= a <= hi) or not (lo <= b <= hi):
+                    return f"Диапазон {sub} вне допустимых значений {lo}–{hi}."
             else:
                 try:
-                    int(sub)
+                    val = int(sub)
                 except ValueError:
                     return f"Невалидное значение: {sub}"
+                if not (lo <= val <= hi):
+                    return f"Значение {val} вне допустимого диапазона {lo}–{hi}."
     return None
 
 
@@ -573,6 +587,11 @@ async def msg_recipient_config(message: Message, state: FSMContext):
         user_ids = [
             int(uid.strip()) for uid in text.split(",") if uid.strip().isdigit()
         ]
+        if not user_ids:
+            await message.answer(
+                "Введите хотя бы один числовой Telegram ID через запятую."
+            )
+            return
         config = {"user_ids": user_ids}
 
     await state.update_data(recipient_config=config)

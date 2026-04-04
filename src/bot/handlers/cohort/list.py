@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
@@ -16,6 +18,7 @@ from src.services.notion_client import get_notion_service
 from src.services.ui_text import UiTextService
 from src.utils.escape import e
 
+logger = logging.getLogger(__name__)
 
 router = Router(name="cohort-list")
 router.callback_query.filter(PermissionFilter("manage_cohorts"))
@@ -57,10 +60,18 @@ async def show_cohort_type_detail(
 
     notion = get_notion_service()
     if not notion:
+        await callback.answer("Notion не настроен")
         return
 
     try:
         types = await notion.get_cohort_types()
+    except Exception:
+        logger.exception("Failed to fetch cohort types from Notion")
+        await callback.message.edit_text(
+            "Не удалось загрузить данные из Notion. Попробуйте позже.",
+            reply_markup=await back_to_menu_keyboard(),
+        )
+        return
     finally:
         await notion.close()
 
@@ -109,10 +120,18 @@ async def show_options_list(
 
     notion = get_notion_service()
     if not notion:
+        await callback.answer("Notion не настроен")
         return
 
     try:
         options = await notion.get_options(type_name)
+    except Exception:
+        logger.exception("Failed to fetch cohort options from Notion")
+        await callback.message.edit_text(
+            "Не удалось загрузить данные из Notion. Попробуйте позже.",
+            reply_markup=await back_to_menu_keyboard(),
+        )
+        return
     finally:
         await notion.close()
 

@@ -4,6 +4,7 @@ from sqlalchemy import select, update
 
 from src.core.database import async_session_maker
 from src.models.survey_alert import AlertType, SurveyAlert
+from src.models.survey_session import SurveySession
 
 
 class SurveyAlertDAO:
@@ -63,6 +64,18 @@ class SurveyAlertDAO:
                 .order_by(SurveyAlert.created_at.desc())
                 .limit(limit)
             )
+            if template_slug is not None:
+                from src.models.survey_template import SurveyTemplate
+
+                query = (
+                    query.join(
+                        SurveySession, SurveySession.id == SurveyAlert.session_id
+                    )
+                    .join(
+                        SurveyTemplate, SurveyTemplate.id == SurveySession.template_id
+                    )
+                    .where(SurveyTemplate.slug == template_slug)
+                )
             result = await db.execute(query)
             return list(result.scalars().all())
 
