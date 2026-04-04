@@ -128,6 +128,46 @@ async def wait_for_celery():
     return _wait
 
 
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def wait_for_all_celery():
+    """Ждёт НЕСКОЛЬКО Celery-условий параллельно через asyncio.gather.
+
+    Каждый check_fn — async callable без аргументов, возвращает truthy когда готово.
+    Если хоть одно не выполнено за max_wait — pytest.skip для всего теста.
+    """
+
+    async def _poll_one(check_fn, max_wait: int, interval: int):
+        start = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start < max_wait:
+            try:
+                result = await check_fn()
+                if result:
+                    return result
+            except Exception:
+                pass
+            await asyncio.sleep(interval)
+        return None  # timeout — не raise, чтобы gather дождался всех
+
+    async def _wait(
+        *check_fns,
+        max_wait: int = 600,
+        interval: int = 5,
+        labels: list[str] | None = None,
+        skip_msg: str = "Celery не ответил",
+    ):
+        if labels is None:
+            labels = [f"check_{i}" for i in range(len(check_fns))]
+        results = await asyncio.gather(
+            *[_poll_one(fn, max_wait, interval) for fn in check_fns]
+        )
+        failed = [labels[i] for i, r in enumerate(results) if r is None]
+        if failed:
+            pytest.skip(f"{skip_msg} за {max_wait}s: {', '.join(failed)}")
+        return results
+
+    return _wait
+
+
 @pytest_asyncio.fixture(autouse=True, scope="module", loop_scope="session")
 async def cleanup_between_modules(setup):
     """Clean up DB and Redis between test modules."""

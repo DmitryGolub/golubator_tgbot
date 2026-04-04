@@ -2,8 +2,6 @@ import asyncio
 import os
 from datetime import datetime, timezone
 
-import pytest
-
 from tests.e2e.helpers.buttons import find_button
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
@@ -11,6 +9,8 @@ from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 ACCOUNT_1_TG_ID = int(os.environ.get("TEST_ACCOUNT_1_TG_ID", "0"))
 ACCOUNT_2_TG_ID = int(os.environ.get("TEST_ACCOUNT_2_TG_ID", "0"))
+
+UTC = timezone.utc
 
 _module_state: dict = {}
 
@@ -25,8 +25,10 @@ async def test_low_score_alert_created(
     setup: E2ESetup,
 ):
     """Student fills survey with low rating -> SurveyAlert(low_score) in DB."""
-    await account1.send_command_multi("/start", count=2)
-    await account2.send_command_multi("/start", count=2)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
     await setup.set_user_role(ACCOUNT_2_TG_ID, "student")
@@ -138,148 +140,90 @@ async def test_mentor_not_recommend_alert(
     )
 
 
-# ── Celery-dependent: alert notification ──
+# ── Celery-dependent: alert + escalation pipeline (parallelized) ──
 
 
-async def test_alert_notification_sent_to_lead(
-    db: DBAssertions,
-    setup: E2ESetup,
-):
-    """Celery surveys.process_alerts sends notification -> alert.notified=true."""
-    session_id = _module_state.get("low_score_session_id")
-    assert session_id is not None, "test_low_score_alert_created must run first"
+async def test_setup_all_celery_conditions(db: DBAssertions, setup: E2ESetup):
+    """Создаём 3 escalation-сессии параллельно, чтобы затем ждать их одновременно."""
+    template_id = _module_state["alert_template_id"]
 
-    # Ensure student has a cohort so alert routes to education_lead
-    await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "Study")
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "education_lead")
-
-    # Poll DB: wait for Celery beat to process the alert (runs every 5 min)
-    max_wait = 360
-    interval = 5
-    start = asyncio.get_event_loop().time()
-
-    while asyncio.get_event_loop().time() - start < max_wait:
-        alerts = await db.get_survey_alerts_by_type(session_id, "low_score")
-        if alerts and alerts[0]["notified"] is True:
-            return  # Success
-        await asyncio.sleep(interval)
-
-    pytest.skip(
-        f"Alert not notified within {max_wait}s — Celery beat may not be running"
+    # Создаём 3 сессии параллельно (независимые INSERT'ы)
+    s_reminder, s_mentor, s_escalate = await asyncio.gather(
+        setup.create_survey_session(template_id, ACCOUNT_2_TG_ID, "esc", "r"),
+        setup.create_survey_session(template_id, ACCOUNT_2_TG_ID, "esc", "m"),
+        setup.create_survey_session(template_id, ACCOUNT_2_TG_ID, "esc", "e"),
     )
 
-
-# ── Celery-dependent: escalation pipeline ──
-
-
-async def test_escalation_reminder_sent(
-    db: DBAssertions,
-    setup: E2ESetup,
-):
-    """Unanswered survey 25h+ -> reminder sent -> reminder_sent_at filled."""
-    template_id = _module_state.get("alert_template_id")
-    if template_id is None:
-        template_id = await setup.create_survey_template(
-            title="E2E Escalation",
-            slug="e2e_escalation",
-            questions=[
-                {
-                    "title": "Rate",
-                    "type": "rating",
-                    "config": {"min": 1, "max": 10},
-                },
-            ],
-        )
-        _module_state["alert_template_id"] = template_id
-
-    session_id = await setup.create_survey_session(
-        template_id, ACCOUNT_2_TG_ID, context_type="esc", context_id="r"
-    )
-    _module_state["escalation_session_id"] = session_id
-
-    await setup.backdate_session(session_id, hours_ago=25)
-
-    # Poll DB: wait for Celery beat to send reminder
-    max_wait = 600
-    interval = 5
-    start = asyncio.get_event_loop().time()
-
-    while asyncio.get_event_loop().time() - start < max_wait:
-        fields = await db.get_session_escalation_fields(session_id)
-        if fields and fields["reminder_sent_at"] is not None:
-            return  # Success
-        await asyncio.sleep(interval)
-
-    pytest.skip(
-        f"Reminder not sent within {max_wait}s — Celery beat may not be running"
+    # Backdate параллельно
+    await asyncio.gather(
+        setup.backdate_session(s_reminder, hours_ago=25),
+        setup.backdate_session(s_mentor, hours_ago=73),
+        setup.backdate_session(s_escalate, hours_ago=97),
     )
 
-
-async def test_escalation_mentor_notify(
-    db: DBAssertions,
-    setup: E2ESetup,
-):
-    """Unanswered survey 73h+ -> mentor notified -> mentor_notified_at filled."""
-    session_id = _module_state.get("escalation_session_id")
-    assert session_id is not None, "test_escalation_reminder_sent must run first"
-
+    # mentor/mentee нужны для проверки уведомлений
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
-    await setup.backdate_session(session_id, hours_ago=73)
-    # Ensure reminder step is already done so escalation logic proceeds
+    # Для 73h-сессии: предзаполняем reminder_sent_at (иначе Celery попытается сначала сделать reminder)
+    # Для 97h-сессии: предзаполняем оба предшествующих поля
+    await asyncio.gather(
+        setup.set_session_field(
+            s_mentor, "reminder_sent_at", datetime(2026, 1, 1, tzinfo=UTC)
+        ),
+        setup.set_session_field(
+            s_escalate, "reminder_sent_at", datetime(2026, 1, 1, tzinfo=UTC)
+        ),
+    )
     await setup.set_session_field(
-        session_id,
-        "reminder_sent_at",
-        datetime(2026, 1, 1, tzinfo=timezone.utc),
+        s_escalate, "mentor_notified_at", datetime(2026, 1, 1, tzinfo=UTC)
     )
 
-    # Poll DB: wait for Celery beat to notify mentor
-    max_wait = 600
-    interval = 5
-    start = asyncio.get_event_loop().time()
-
-    while asyncio.get_event_loop().time() - start < max_wait:
-        fields = await db.get_session_escalation_fields(session_id)
-        if fields and fields["mentor_notified_at"] is not None:
-            return  # Success
-        await asyncio.sleep(interval)
-
-    pytest.skip(
-        f"Mentor not notified within {max_wait}s — Celery beat may not be running"
+    # Роли для получателей эскалации
+    await asyncio.gather(
+        setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "Study"),
+        setup.set_user_role(ACCOUNT_1_TG_ID, "education_lead"),
     )
 
+    _module_state["escalation_session_id"] = s_reminder
+    _module_state["mentor_session_id"] = s_mentor
+    _module_state["escalate_session_id"] = s_escalate
 
-async def test_escalation_to_lead(
+
+async def test_all_celery_conditions_resolved(
     db: DBAssertions,
-    setup: E2ESetup,
+    wait_for_all_celery,
 ):
-    """Unanswered survey 97h+ -> escalated_at filled."""
-    session_id = _module_state.get("escalation_session_id")
-    assert session_id is not None, "test_escalation_reminder_sent must run first"
+    """Ждём все Celery-условия одновременно: alert + 3 ступени эскалации."""
+    low_score_session_id = _module_state["low_score_session_id"]
+    s_reminder = _module_state["escalation_session_id"]
+    s_mentor = _module_state["mentor_session_id"]
+    s_escalate = _module_state["escalate_session_id"]
 
-    await setup.backdate_session(session_id, hours_ago=97)
-    # Ensure previous escalation steps are already done
-    await setup.set_session_field(
-        session_id,
-        "mentor_notified_at",
-        datetime(2026, 1, 1, tzinfo=timezone.utc),
-    )
-    await setup.set_user_role(ACCOUNT_1_TG_ID, "education_lead")
+    async def check_alert_notified():
+        alerts = await db.get_survey_alerts_by_type(low_score_session_id, "low_score")
+        return alerts and alerts[0]["notified"] is True
 
-    # Poll DB: wait for Celery beat to escalate
-    max_wait = 600
-    interval = 5
-    start = asyncio.get_event_loop().time()
+    async def check_reminder_sent():
+        fields = await db.get_session_escalation_fields(s_reminder)
+        return fields and fields["reminder_sent_at"] is not None
 
-    while asyncio.get_event_loop().time() - start < max_wait:
-        fields = await db.get_session_escalation_fields(session_id)
-        if fields and fields["escalated_at"] is not None:
-            return  # Success
-        await asyncio.sleep(interval)
+    async def check_mentor_notified():
+        fields = await db.get_session_escalation_fields(s_mentor)
+        return fields and fields["mentor_notified_at"] is not None
 
-    pytest.skip(
-        f"Escalation not triggered within {max_wait}s — Celery beat may not be running"
+    async def check_escalated():
+        fields = await db.get_session_escalation_fields(s_escalate)
+        return fields and fields["escalated_at"] is not None
+
+    await wait_for_all_celery(
+        check_alert_notified,
+        check_reminder_sent,
+        check_mentor_notified,
+        check_escalated,
+        max_wait=600,
+        labels=["alert_notified", "reminder_25h", "mentor_notify_73h", "escalate_97h"],
+        skip_msg="Celery tasks (process_alerts + escalate_pending_sessions) не ответили",
     )
 
 
