@@ -3,6 +3,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.mentor_stats import MentorStatsCB
 from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
+from src.bot.keyboards.utils import format_user_label
 from src.models.mentor import Mentor
 
 
@@ -17,15 +18,13 @@ def mentor_select_keyboard(
         builder.row(*nav)
 
     for m in page_items:
-        username = f" @{m.user.username}" if m.user and m.user.username else ""
+        username = m.user.username if m.user and m.user.username else None
         builder.row(
             InlineKeyboardButton(
-                text=f"{m.name}{username}",
+                text=format_user_label(m.name, username),
                 callback_data=MentorStatsCB(mentor_id=m.telegram_id).pack(),
             )
         )
 
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu")
-    )
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))
     return builder.as_markup()

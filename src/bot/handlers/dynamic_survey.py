@@ -1,7 +1,7 @@
 import logging
 
 from aiogram import Router
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.fsm.context import FSMContext
 
 from src.bot.callbacks.dynamic_survey import DynamicSurveyAnswerCB, StartDynamicSurveyCB
@@ -223,8 +223,11 @@ def _build_keyboard_from_dict(question: dict, selected: list[str] | None = None)
             )
         builder.adjust(1)
 
-    builder.button(
-        text="Отмена", callback_data=DynamicSurveyAnswerCB(value="__cancel__")
+    builder.row(
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data=DynamicSurveyAnswerCB(value="__cancel__").pack(),
+        )
     )
     return builder.as_markup()
 

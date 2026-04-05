@@ -8,6 +8,7 @@ from src.bot.callbacks.rbac import (
     RoleDetailCB,
     TogglePermCB,
 )
+from src.bot.keyboards.utils import truncate_button_text
 from src.models.role import Permission, RoleModel
 
 
@@ -19,7 +20,7 @@ def roles_list_keyboard(roles: list[RoleModel]) -> InlineKeyboardMarkup:
             callback_data=RoleDetailCB(role_id=role.id).pack(),
         )
     kb.button(text="➕ Создать роль", callback_data="rbac_create_role")
-    kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
+    kb.button(text="⬅️ Назад", callback_data="back_to_menu")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -35,7 +36,7 @@ def role_detail_keyboard(role: RoleModel, user_count: int) -> InlineKeyboardMark
             text="🗑 Удалить роль",
             callback_data=DeleteRoleCB(role_id=role.id).pack(),
         )
-    kb.button(text="⬅️ К списку ролей", callback_data="menu_roles")
+    kb.button(text="⬅️ Назад", callback_data="menu_roles")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -48,11 +49,12 @@ def permissions_keyboard(
     kb = InlineKeyboardBuilder()
     for perm in all_permissions:
         check = "✅" if perm.id in role_perm_ids else "❌"
+        raw = f"{check} {perm.description}"
         kb.button(
-            text=f"{check} {perm.description}",
+            text=truncate_button_text(raw, 32),
             callback_data=TogglePermCB(role_id=role.id, perm_id=perm.id).pack(),
         )
-    kb.button(text="⬅️ Назад к роли", callback_data=RoleDetailCB(role_id=role.id).pack())
+    kb.button(text="⬅️ Назад", callback_data=RoleDetailCB(role_id=role.id).pack())
     kb.adjust(1)
     return kb.as_markup()
 

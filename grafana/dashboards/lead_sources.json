@@ -1,0 +1,190 @@
+{
+  "uid": "mentoring-lead-sources",
+  "title": "Источники лидов",
+  "tags": ["mentoring"],
+  "timezone": "browser",
+  "refresh": "5m",
+  "time": { "from": "now-90d", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Реферальные",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS \"Реферальные\"\nFROM iam.users u\nJOIN iam.lead_sources ls ON ls.id = u.lead_source_id\nWHERE ls.source_type = 'referral'\n  AND u.is_placeholder = false",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "green" }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Канальные",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS \"Канальные\"\nFROM iam.users u\nJOIN iam.lead_sources ls ON ls.id = u.lead_source_id\nWHERE ls.source_type = 'channel'\n  AND u.is_placeholder = false",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Без источника",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS \"Без источника\"\nFROM iam.users u\nWHERE u.lead_source_id IS NULL\n  AND u.is_placeholder = false",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "orange" }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Регистрации по источникам за период",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  date_trunc('week', u.created_at) AS time,\n  CASE\n    WHEN ls.source_type = 'referral' THEN 'Реферальные'\n    WHEN ls.source_type = 'channel' THEN 'Канальные'\n    ELSE 'Органика'\n  END AS metric,\n  COUNT(*) AS value\nFROM iam.users u\nLEFT JOIN iam.lead_sources ls ON ls.id = u.lead_source_id\nWHERE u.is_placeholder = false\n  AND u.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 50,
+            "stacking": { "mode": "normal" },
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 5,
+      "title": "TOP реферреры",
+      "type": "barchart",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  COALESCE(u_ref.name, u_ref.username, u_ref.telegram_id::text) AS referrer,\n  COUNT(u.telegram_id) AS invited\nFROM iam.lead_sources ls\nJOIN iam.users u ON u.lead_source_id = ls.id\nJOIN iam.users u_ref ON u_ref.telegram_id = ls.created_by\nWHERE ls.source_type = 'referral'\n  AND u.is_placeholder = false\n  AND u.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY referrer\nORDER BY invited DESC\nLIMIT 15",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "xTickLabelRotation": -45,
+        "xTickLabelMaxLength": 25
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Канальные ссылки — переходы",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  ls.label AS \"Описание\",\n  ls.code AS \"Код\",\n  ls.created_at::date AS \"Создана\",\n  COALESCE(u_admin.name, u_admin.username) AS \"Создал\",\n  COUNT(u.telegram_id) AS \"Переходов\"\nFROM iam.lead_sources ls\nLEFT JOIN iam.users u ON u.lead_source_id = ls.id AND u.is_placeholder = false\nLEFT JOIN iam.users u_admin ON u_admin.telegram_id = ls.created_by\nWHERE ls.source_type = 'channel'\nGROUP BY ls.id, ls.label, ls.code, ls.created_at, u_admin.name, u_admin.username\nORDER BY ls.created_at DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Конверсия: источник → стадия",
+      "type": "barchart",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 26 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  CASE\n    WHEN ls.source_type = 'referral' THEN 'Реферальные'\n    WHEN ls.source_type = 'channel' THEN 'Канальные'\n    ELSE 'Органика'\n  END AS source,\n  c.value AS stage,\n  COUNT(DISTINCT uc.user_telegram_id) AS users\nFROM iam.users u\nLEFT JOIN iam.lead_sources ls ON ls.id = u.lead_source_id\nJOIN integrations.user_cohorts uc ON uc.user_telegram_id = u.telegram_id\nJOIN integrations.cohorts c ON c.id = uc.cohort_id AND c.type = 'Status'\nWHERE u.is_placeholder = false\nGROUP BY source, c.value\nORDER BY users DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "xTickLabelRotation": -45,
+        "xTickLabelMaxLength": 25
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Динамика канальных ссылок",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 26 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  date_trunc('week', u.created_at) AS time,\n  COALESCE(ls.label, ls.code) AS metric,\n  COUNT(*) AS value\nFROM iam.users u\nJOIN iam.lead_sources ls ON ls.id = u.lead_source_id\nWHERE ls.source_type = 'channel'\n  AND u.is_placeholder = false\n  AND u.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "lines",
+            "fillOpacity": 10,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" }
+      }
+    }
+  ],
+  "schemaVersion": 39
+}

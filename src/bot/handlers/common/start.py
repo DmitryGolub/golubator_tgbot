@@ -2,19 +2,21 @@ import asyncio
 import logging
 
 from aiogram import Router
+from aiogram.filters import Command, CommandStart
+from aiogram.filters.command import CommandObject
 from aiogram.types import Message
-from aiogram.filters import CommandStart, Command
 
-from src.dao.user import UserDAO
-from src.dao.role import RoleDAO
-from src.dao.mentor import MentorDAO
-from src.dao.mentee import MenteeDAO
-
-from src.core.config import settings
-from src.services.auth import AuthService
-from src.services.ui_text import UiTextService
-from src.bot.keyboards.menu import menu_keyboard
 from src.bot.handlers.common.menu import _check_has_mentor
+from src.bot.keyboards.menu import menu_keyboard
+from src.core.config import settings
+from src.dao.mentee import MenteeDAO
+from src.dao.mentor import MentorDAO
+from src.dao.role import RoleDAO
+from src.dao.user import UserDAO
+from src.models.lead_source import LeadSourceType
+from src.services.auth import AuthService
+from src.services.lead_source import LeadSourceService
+from src.services.ui_text import UiTextService
 from src.utils.onboarding import schedule_onboarding_notifications
 
 logger = logging.getLogger(__name__)
@@ -50,10 +52,12 @@ async def _ensure_user(tg_user):
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, command: CommandObject):
     user = message.from_user
 
+    existing_before = await UserDAO.find_one_or_none(telegram_id=user.id)
     await _ensure_user(user)
+    is_new_user = existing_before is None
 
     username = (user.username or "").strip()
 
@@ -66,7 +70,25 @@ async def cmd_start(message: Message):
     _background_tasks.add(task)
     task.add_done_callback(_task_done)
 
-    welcome = await UiTextService.get("start.welcome", name=user.first_name)
+    # Resolve deep link payload
+    lead_source = None
+    if command.args:
+        lead_source = await LeadSourceService.resolve_and_record(
+            user.id, command.args, is_new_user
+        )
+
+    if lead_source and lead_source.source_type == LeadSourceType.referral:
+        referrer = await UserDAO.find_one_or_none(telegram_id=lead_source.created_by)
+        referrer_name = referrer.name if referrer else "—"
+        welcome = await UiTextService.get(
+            "start.welcome_referral",
+            name=user.first_name,
+            referrer_name=referrer_name,
+        )
+    elif lead_source and lead_source.source_type == LeadSourceType.channel:
+        welcome = await UiTextService.get("start.welcome_channel", name=user.first_name)
+    else:
+        welcome = await UiTextService.get("start.welcome", name=user.first_name)
     await message.answer(welcome)
 
     permissions = await AuthService.get_user_permissions(user.id)

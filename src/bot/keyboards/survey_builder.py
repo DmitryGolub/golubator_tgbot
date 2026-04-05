@@ -10,6 +10,7 @@ from src.bot.callbacks.survey_builder import (
     SurveyTemplateDetailCB,
     SurveyTemplateToggleCB,
 )
+from src.bot.keyboards.utils import truncate_button_text
 from src.models.survey_session import SurveySession
 from src.models.survey_template import SurveyTemplate
 
@@ -33,7 +34,7 @@ def survey_builder_menu_keyboard() -> InlineKeyboardMarkup:
     builder.button(
         text="Результаты", callback_data=SurveyBuilderActionCB(action="results")
     )
-    builder.button(text="Назад", callback_data="back_to_menu")
+    builder.button(text="⬅️ Назад", callback_data="back_to_menu")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -42,7 +43,9 @@ def question_type_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for value, label in QUESTION_TYPE_LABELS.items():
         builder.button(text=label, callback_data=SurveyQuestionTypeCB(value=value))
-    builder.button(text="Отмена", callback_data=SurveyBuilderActionCB(action="cancel"))
+    builder.button(
+        text="❌ Отмена", callback_data=SurveyBuilderActionCB(action="cancel")
+    )
     builder.adjust(1)
     return builder.as_markup()
 
@@ -56,7 +59,9 @@ def after_question_keyboard() -> InlineKeyboardMarkup:
     builder.button(
         text="Завершить создание", callback_data=SurveyBuilderActionCB(action="finish")
     )
-    builder.button(text="Отмена", callback_data=SurveyBuilderActionCB(action="cancel"))
+    builder.button(
+        text="❌ Отмена", callback_data=SurveyBuilderActionCB(action="cancel")
+    )
     builder.adjust(1)
     return builder.as_markup()
 
@@ -67,7 +72,9 @@ def add_option_keyboard() -> InlineKeyboardMarkup:
         text="Закончить добавление вариантов",
         callback_data=SurveyBuilderActionCB(action="options_done"),
     )
-    builder.button(text="Отмена", callback_data=SurveyBuilderActionCB(action="cancel"))
+    builder.button(
+        text="❌ Отмена", callback_data=SurveyBuilderActionCB(action="cancel")
+    )
     builder.adjust(1)
     return builder.as_markup()
 
@@ -76,11 +83,12 @@ def templates_list_keyboard(templates: list[SurveyTemplate]) -> InlineKeyboardMa
     builder = InlineKeyboardBuilder()
     for t in templates:
         status = "ON" if t.is_active else "OFF"
+        raw = f"[{status}] {t.title}"
         builder.button(
-            text=f"[{status}] {t.title}",
+            text=truncate_button_text(raw),
             callback_data=SurveyTemplateDetailCB(template_id=t.id),
         )
-    builder.button(text="Назад", callback_data="menu_surveys")
+    builder.button(text="⬅️ Назад", callback_data="menu_surveys")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -94,7 +102,7 @@ def template_detail_keyboard(template: SurveyTemplate) -> InlineKeyboardMarkup:
     builder.button(
         text="Удалить", callback_data=SurveyTemplateDeleteCB(template_id=template.id)
     )
-    builder.button(text="Назад", callback_data=SurveyBuilderActionCB(action="list"))
+    builder.button(text="⬅️ Назад", callback_data=SurveyBuilderActionCB(action="list"))
     builder.adjust(1)
     return builder.as_markup()
 
@@ -106,7 +114,7 @@ def results_templates_keyboard(templates: list[SurveyTemplate]) -> InlineKeyboar
             text=t.title,
             callback_data=SurveyResultsTemplateCB(template_id=t.id),
         )
-    builder.button(text="Назад", callback_data="menu_surveys")
+    builder.button(text="⬅️ Назад", callback_data="menu_surveys")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -119,13 +127,17 @@ def results_sessions_keyboard(sessions: list[SurveySession]) -> InlineKeyboardMa
             text=f"#{s.id} ({date_str})",
             callback_data=SurveyResultsSessionCB(session_id=s.id),
         )
-    builder.button(text="Назад", callback_data=SurveyBuilderActionCB(action="results"))
+    builder.button(
+        text="⬅️ Назад", callback_data=SurveyBuilderActionCB(action="results")
+    )
     builder.adjust(1)
     return builder.as_markup()
 
 
 def cancel_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="Отмена", callback_data=SurveyBuilderActionCB(action="cancel"))
+    builder.button(
+        text="❌ Отмена", callback_data=SurveyBuilderActionCB(action="cancel")
+    )
     builder.adjust(1)
     return builder.as_markup()

@@ -14,6 +14,7 @@ from src.bot.callbacks.update_user import (
     CancelUpdateCB,
 )
 from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
+from src.bot.keyboards.utils import format_user_label
 from src.models.user import User
 
 _CANCEL_BTN = InlineKeyboardButton(
@@ -174,8 +175,7 @@ def mentors_keyboard(mentors: Sequence[User], page: int = 0) -> InlineKeyboardMa
     for mentor in page_items:
         kb.row(
             InlineKeyboardButton(
-                text=f"{mentor.name}"
-                + (f" @{mentor.username}" if mentor.username else ""),
+                text=format_user_label(mentor.name, mentor.username),
                 callback_data=ChooseMentorCB(mentor_id=mentor.telegram_id).pack(),
             )
         )
@@ -199,7 +199,7 @@ def mentees_keyboard(mentees: Sequence, page: int = 0) -> InlineKeyboardMarkup:
         username = None
         if hasattr(mentee, "user") and mentee.user:
             username = mentee.user.username
-        label = f"{display_name} @{username}" if username else display_name
+        label = format_user_label(display_name, username)
         kb.row(
             InlineKeyboardButton(
                 text=label,
@@ -222,7 +222,7 @@ def users_keyboard(users: Sequence[User], page: int = 0) -> InlineKeyboardMarkup
     for user in page_items:
         kb.row(
             InlineKeyboardButton(
-                text=f"{user.name}" + (f" @{user.username}" if user.username else ""),
+                text=format_user_label(user.name, user.username),
                 callback_data=ChooseUserCB(user_id=user.telegram_id).pack(),
             )
         )

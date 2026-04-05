@@ -3,12 +3,16 @@ import logging
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.feedback_report import (
     FeedbackRecipientCB,
     FeedbackSkipPhotoCB,
     FeedbackTypeCB,
+)
+from src.bot.keyboards.feedback_report import (
+    feedback_recipient_keyboard,
+    feedback_skip_photo_keyboard,
+    feedback_type_keyboard,
 )
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.states.feedback_report import FeedbackReportFSM
@@ -25,13 +29,7 @@ router = Router(name="feedback_report")
 async def cb_feedback_menu(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     text = await UiTextService.get("feedback.choose_type")
-    kb = InlineKeyboardBuilder()
-    kb.button(
-        text="Проблема или предложение", callback_data=FeedbackTypeCB(value="problem")
-    )
-    kb.button(text="Баг-репорт", callback_data=FeedbackTypeCB(value="bug"))
-    kb.adjust(1)
-    await safe_edit_text(callback, text, reply_markup=kb.as_markup())
+    await safe_edit_text(callback, text, reply_markup=feedback_type_keyboard())
     await state.set_state(FeedbackReportFSM.choosing_type)
 
 
@@ -58,29 +56,11 @@ async def msg_enter_text(message: Message, state: FSMContext):
 
     if data["feedback_type"] == "problem":
         text = await UiTextService.get("feedback.choose_recipient")
-        kb = InlineKeyboardBuilder()
-        kb.button(text="Координатор", callback_data=FeedbackRecipientCB(role="admin"))
-        kb.button(
-            text="Лид направления",
-            callback_data=FeedbackRecipientCB(role="direction_lead"),
-        )
-        kb.button(
-            text="Лид по сопровождению",
-            callback_data=FeedbackRecipientCB(role="education_lead"),
-        )
-        kb.button(
-            text="Лид по поиску работы",
-            callback_data=FeedbackRecipientCB(role="job_search_lead"),
-        )
-        kb.adjust(1)
-        await message.answer(text, reply_markup=kb.as_markup())
+        await message.answer(text, reply_markup=feedback_recipient_keyboard())
         await state.set_state(FeedbackReportFSM.choosing_recipient)
     else:
         text = await UiTextService.get("feedback.attach_photo")
-        kb = InlineKeyboardBuilder()
-        kb.button(text="Пропустить", callback_data=FeedbackSkipPhotoCB())
-        kb.adjust(1)
-        await message.answer(text, reply_markup=kb.as_markup())
+        await message.answer(text, reply_markup=feedback_skip_photo_keyboard())
         await state.set_state(FeedbackReportFSM.waiting_photo)
 
 

@@ -248,6 +248,14 @@ class TelegramTestClient:
             f"No new message from bot within {timeout}s (after_id={after_id})"
         )
 
+    async def try_get_message_after(self, after_id: int) -> Message | None:
+        """Non-blocking check for a message with id > after_id. Returns None if not found."""
+        messages = await _guarded_call(self._client.get_messages, self._bot, limit=5)
+        for m in messages:
+            if m.id > after_id:
+                return m
+        return None
+
     async def wait_for_message(self, timeout: float = 30) -> Message:
         """Wait for an incoming message from the bot (for notifications/triggers).
 
@@ -326,6 +334,13 @@ class TelegramTestClient:
             )
 
         return await self.click_button(target, text=button_text, timeout=timeout)
+
+    async def get_message_by_id(self, msg_id: int) -> Message | None:
+        """Fetch a single message by its ID."""
+        messages = await _guarded_call(self._client.get_messages, self._bot, ids=msg_id)
+        if isinstance(messages, list):
+            return messages[0] if messages else None
+        return messages
 
     async def get_last_messages(self, limit: int = 5) -> list[Message]:
         """Get last messages from the bot chat."""

@@ -66,6 +66,15 @@ class DBAssertions:
         assert row is not None, f"Meeting {meeting_id} not found"
         assert row["call_status"] == expected_status
 
+    async def assert_meeting_call_started_at(self, meeting_id: int):
+        row = await self._pool.fetchrow(
+            "SELECT call_started_at FROM meetings.meetings WHERE id = $1", meeting_id
+        )
+        assert row is not None, f"Meeting {meeting_id} not found"
+        assert row["call_started_at"] is not None, (
+            "call_started_at should be set after start_call"
+        )
+
     async def get_survey_session(self, session_id: int) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(
             "SELECT * FROM surveys.survey_sessions WHERE id = $1", session_id

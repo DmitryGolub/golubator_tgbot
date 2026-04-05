@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import asyncpg
@@ -296,6 +297,16 @@ class BotSetup:
                 create_msg, data=toggle_btn.data.decode()
             )
         confirm_btn = find_button(toggled_msg, "mtg_confirm_sel:")
+        if confirm_btn is None:
+            # Retry: re-fetch the original message that toggle handler edits in-place
+            for _ in range(3):
+                await asyncio.sleep(1.0)
+                refreshed = await mentor_client.get_message_by_id(create_msg.id)
+                if refreshed:
+                    confirm_btn = find_button(refreshed, "mtg_confirm_sel:")
+                    if confirm_btn:
+                        toggled_msg = refreshed
+                        break
         assert confirm_btn is not None, "Should find confirm selection button"
         type_msg = await mentor_client.click_button(
             toggled_msg, data=confirm_btn.data.decode()

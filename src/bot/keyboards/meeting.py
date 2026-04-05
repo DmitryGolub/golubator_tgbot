@@ -21,6 +21,7 @@ from src.bot.callbacks.meeting import (
     ToggleMeetingParticipantCB,
 )
 from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
+from src.bot.keyboards.utils import format_user_label
 from src.models.meeting import Meeting, ProposalStatus
 
 
@@ -178,7 +179,7 @@ def mentor_meetings_keyboard(
             text="📋 Завершённые созвоны", callback_data="past_meetings_mentor"
         )
     )
-    kb.row(InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu"))
+    kb.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))
     return kb.as_markup()
 
 
@@ -241,7 +242,7 @@ def student_meetings_keyboard(
             text="📋 Завершённые созвоны", callback_data="past_meetings_student"
         )
     )
-    kb.row(InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu"))
+    kb.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))
     return kb.as_markup()
 
 
@@ -271,11 +272,11 @@ def meeting_participants_multiselect_keyboard(
         username = getattr(user, "username", None)
         if not username and hasattr(user, "user") and user.user:
             username = user.user.username
-        label = f"{display_name} @{username}" if username else display_name
         prefix = "✓ " if tid in selected_ids else "  "
+        label = format_user_label(display_name, username, prefix=prefix)
         kb.row(
             InlineKeyboardButton(
-                text=f"{prefix}{label}",
+                text=label,
                 callback_data=ToggleMeetingParticipantCB(user_id=tid).pack(),
             )
         )
@@ -332,7 +333,7 @@ def meeting_students_keyboard(students, page: int = 0) -> InlineKeyboardMarkup:
         username = getattr(student, "username", None)
         if not username and hasattr(student, "user") and student.user:
             username = student.user.username
-        label = f"{display_name} @{username}" if username else display_name
+        label = format_user_label(display_name, username)
         kb.row(
             InlineKeyboardButton(
                 text=label,

@@ -47,7 +47,7 @@ def cohort_types_keyboard(
     kb.row(
         InlineKeyboardButton(text="➕ Создать тип", callback_data="cohort_create_type")
     )
-    kb.row(InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu"))
+    kb.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))
     return kb.as_markup(), mapping
 
 
@@ -105,9 +105,17 @@ def cohort_options_select_keyboard(
     return kb.as_markup(), mapping
 
 
+def cohort_empty_keyboard() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="➕ Создать тип", callback_data="cohort_create_type")
+    kb.button(text="⬅️ Назад", callback_data="back_to_menu")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
 def cohort_cancel_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="Отмена", callback_data="cohort_cancel_fsm")
+    kb.button(text="❌ Отмена", callback_data="cohort_cancel_fsm")
     kb.adjust(1)
     return kb.as_markup()
 

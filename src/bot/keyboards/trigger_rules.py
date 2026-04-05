@@ -17,6 +17,7 @@ from src.bot.callbacks.trigger_rules import (
     TriggerSurveyTemplateCB,
     TriggerTypeCB,
 )
+from src.bot.keyboards.utils import truncate_button_text
 from src.models.trigger import TriggerRule
 
 
@@ -66,7 +67,7 @@ def trigger_menu_keyboard() -> InlineKeyboardMarkup:
     builder.button(
         text="Отправить вручную", callback_data=TriggerActionCB(action="manual_send")
     )
-    builder.button(text="Назад", callback_data="back_to_menu")
+    builder.button(text="⬅️ Назад", callback_data="back_to_menu")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -75,7 +76,7 @@ def trigger_type_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for value, label in TRIGGER_TYPE_LABELS.items():
         builder.button(text=label, callback_data=TriggerTypeCB(value=value))
-    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
 
@@ -84,7 +85,7 @@ def action_type_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for value, label in ACTION_TYPE_LABELS.items():
         builder.button(text=label, callback_data=TriggerActionTypeCB(value=value))
-    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
 
@@ -93,7 +94,7 @@ def recipient_type_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for value, label in RECIPIENT_TYPE_LABELS.items():
         builder.button(text=label, callback_data=TriggerRecipientTypeCB(value=value))
-    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
 
@@ -104,7 +105,7 @@ def survey_templates_keyboard(templates) -> InlineKeyboardMarkup:
         builder.button(
             text=t.title, callback_data=TriggerSurveyTemplateCB(template_id=t.id)
         )
-    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
 
@@ -116,11 +117,12 @@ def rules_list_keyboard(rules: list[TriggerRule]) -> InlineKeyboardMarkup:
         trigger_label = TRIGGER_TYPE_LABELS.get(
             r.trigger_type.value, r.trigger_type.value
         )
+        raw = f"[{status}] {r.name} ({trigger_label})"
         builder.button(
-            text=f"[{status}] {r.name} ({trigger_label})",
+            text=truncate_button_text(raw, 35),
             callback_data=TriggerRuleDetailCB(rule_id=r.id),
         )
-    builder.button(text="Назад", callback_data="menu_triggers")
+    builder.button(text="⬅️ Назад", callback_data="menu_triggers")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -133,7 +135,7 @@ def rule_detail_keyboard(rule: TriggerRule) -> InlineKeyboardMarkup:
         text="Отправить сейчас", callback_data=TriggerRuleSendCB(rule_id=rule.id)
     )
     builder.button(text="Удалить", callback_data=TriggerRuleDeleteCB(rule_id=rule.id))
-    builder.button(text="Назад", callback_data=TriggerActionCB(action="list"))
+    builder.button(text="⬅️ Назад", callback_data=TriggerActionCB(action="list"))
     builder.adjust(1)
     return builder.as_markup()
 
@@ -142,7 +144,7 @@ def manual_send_rules_keyboard(rules: list[TriggerRule]) -> InlineKeyboardMarkup
     builder = InlineKeyboardBuilder()
     for r in rules:
         builder.button(text=r.name, callback_data=TriggerRuleSendCB(rule_id=r.id))
-    builder.button(text="Назад", callback_data="menu_triggers")
+    builder.button(text="⬅️ Назад", callback_data="menu_triggers")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -153,8 +155,8 @@ def confirm_delete_rule_keyboard(rule_id: int) -> InlineKeyboardMarkup:
         text="Да, удалить",
         callback_data=TriggerRuleConfirmDeleteCB(rule_id=rule_id),
     )
-    builder.button(text="Отмена", callback_data=TriggerActionCB(action="list"))
-    builder.adjust(1)
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="list"))
+    builder.adjust(2)
     return builder.as_markup()
 
 
@@ -162,7 +164,7 @@ def schedule_mode_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for value, label in SCHEDULE_MODE_LABELS.items():
         builder.button(text=label, callback_data=TriggerScheduleModeCB(value=value))
-    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
 
@@ -171,7 +173,7 @@ def regularity_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for value, label in REGULARITY_LABELS.items():
         builder.button(text=label, callback_data=TriggerRegularityCB(value=value))
-    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
 
@@ -181,7 +183,7 @@ def cohort_type_keyboard(types: list[str]) -> InlineKeyboardMarkup:
     builder.button(text="Любой тип", callback_data=TriggerCohortTypeCB(value="*"))
     for t in types:
         builder.button(text=t, callback_data=TriggerCohortTypeCB(value=t))
-    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
 
@@ -191,7 +193,7 @@ def cohort_value_keyboard(values: list[str]) -> InlineKeyboardMarkup:
     builder.button(text="Любой", callback_data=TriggerCohortValueCB(value="*"))
     for v in values:
         builder.button(text=v, callback_data=TriggerCohortValueCB(value=v))
-    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
 
@@ -199,13 +201,13 @@ def cohort_value_keyboard(values: list[str]) -> InlineKeyboardMarkup:
 def cohort_wildcard_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="Любой", callback_data=TriggerCohortValueCB(value="*"))
-    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
 
 
 def cancel_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()

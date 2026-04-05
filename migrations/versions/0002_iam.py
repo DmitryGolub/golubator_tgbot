@@ -87,6 +87,42 @@ def upgrade() -> None:
         schema="iam",
     )
 
+    lead_source_type_enum = sa.Enum(
+        "referral", "channel", name="lead_source_type_enum", schema="iam"
+    )
+    lead_source_type_enum.create(op.get_bind(), checkfirst=True)
+
+    op.create_table(
+        "lead_sources",
+        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column(
+            "source_type",
+            lead_source_type_enum,
+            nullable=False,
+        ),
+        sa.Column("code", sa.String(50), unique=True, nullable=False, index=True),
+        sa.Column("label", sa.String(255), nullable=True),
+        sa.Column("created_by", sa.BigInteger, nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        schema="iam",
+    )
+
+    op.add_column(
+        "users",
+        sa.Column(
+            "lead_source_id",
+            sa.Integer,
+            sa.ForeignKey("iam.lead_sources.id"),
+            nullable=True,
+        ),
+        schema="iam",
+    )
+
     op.create_table(
         "mentors",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
@@ -160,6 +196,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("mentees", schema="iam")
     op.drop_table("mentors", schema="iam")
+    op.drop_column("users", "lead_source_id", schema="iam")
+    op.drop_table("lead_sources", schema="iam")
+    op.execute(sa.text("DROP TYPE IF EXISTS iam.lead_source_type_enum"))
     op.drop_table("users", schema="iam")
     op.drop_table("role_permissions", schema="iam")
     op.drop_table("roles", schema="iam")

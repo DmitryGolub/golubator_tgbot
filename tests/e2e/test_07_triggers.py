@@ -506,7 +506,14 @@ async def test_cohort_changed_auto_fires(
 
     update_btn = find_button(users_msg, "user_update_menu")
     assert update_btn is not None, "Users menu should have update button"
-    param_msg = await account1.click_button(users_msg, text=update_btn.text)
+    # Select user first (new flow: user → param → value)
+    user_select_msg = await account1.click_button(users_msg, text=update_btn.text)
+
+    user_btn, user_msg = await find_button_paginated(
+        account1, user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
+    )
+    assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
+    param_msg = await account1.click_button(user_msg, data=user_btn.data.decode())
 
     status_btn = find_button(param_msg, "upd_param:status")
     assert status_btn is not None, "Should find status param button"
@@ -515,13 +522,7 @@ async def test_cohort_changed_auto_fires(
     # Pick any different status
     any_status_btn = find_button(value_msg, "upd_enum:status:")
     assert any_status_btn is not None, "Should find status value button"
-    user_msg = await account1.click_button(value_msg, text=any_status_btn.text)
-
-    user_btn, user_msg = await find_button_paginated(
-        account1, user_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
-    )
-    assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
-    await account1.click_button(user_msg, data=user_btn.data.decode())
+    await account1.click_button(value_msg, text=any_status_btn.text)
 
     # Wait for notification on account2 (the user whose cohort changed)
     try:

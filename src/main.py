@@ -24,6 +24,7 @@ from src.bot.handlers.user.direction_students import router as direction_student
 from src.bot.handlers.job_search_report import router as job_search_report_router
 from src.bot.handlers.education_feedback import router as education_feedback_router
 from src.bot.handlers.feedback_report import router as feedback_report_router
+from src.bot.handlers.lead_source import router as lead_source_router
 from src.bot.middlewares.logging_middleware import LoggingMiddleware
 from src.bot.middlewares.user_sync_middleware import UserSyncMiddleware
 from src.core.config import settings
@@ -69,6 +70,7 @@ async def main():
         job_search_report_router,
         education_feedback_router,
         feedback_report_router,
+        lead_source_router,
     )
 
     @dp.callback_query(F.data == "noop")

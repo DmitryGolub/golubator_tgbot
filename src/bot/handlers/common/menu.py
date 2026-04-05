@@ -7,7 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import menu_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
-from src.bot.keyboards.cohort import cohort_types_keyboard
+from src.bot.keyboards.cohort import cohort_empty_keyboard, cohort_types_keyboard
 from src.bot.utils import safe_edit_text
 from src.services.auth import AuthService
 from src.services.ui_text import UiTextService
@@ -94,11 +94,7 @@ async def cb_menu_cohorts(callback: CallbackQuery, state: FSMContext):
     types_with_counts = await CohortDAO.get_types_with_value_counts()
     if not types_with_counts:
         text = await UiTextService.get("cohort.not_found")
-        kb = InlineKeyboardBuilder()
-        kb.button(text="➕ Создать тип", callback_data="cohort_create_type")
-        kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
-        kb.adjust(1)
-        await safe_edit_text(callback, text, reply_markup=kb.as_markup())
+        await safe_edit_text(callback, text, reply_markup=cohort_empty_keyboard())
         return
 
     header = await UiTextService.get("cohort.types.header")

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.core.database import Base
 
 if TYPE_CHECKING:
+    from src.models.lead_source import LeadSource
     from src.models.meeting import Meeting
     from src.models.mentor import Mentor
     from src.models.mentee import Mentee
@@ -36,6 +37,11 @@ class User(Base):
     is_placeholder: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
+
+    lead_source_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("iam.lead_sources.id"), nullable=True
+    )
+    lead_source: Mapped["LeadSource | None"] = relationship("LeadSource", lazy="noload")
 
     role_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("iam.roles.id"), nullable=True

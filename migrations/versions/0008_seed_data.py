@@ -121,6 +121,8 @@ PERMISSIONS = [
     ("export_education_feedback", "Экспорт обратной связи о сопровождении"),
     ("update_student_status", "Обновление статуса менти (ментором)"),
     ("mentor_role", "Marker: user has mentor capabilities"),
+    ("view_referral_link", "Просмотр реферальной ссылки"),
+    ("manage_channel_links", "Управление канальными ссылками"),
 ]
 
 ROLES = [
@@ -146,13 +148,23 @@ MENTOR_PERMS = [
 
 ROLE_PERMISSIONS_MAP = {
     "admin": ["all_permissions"],
-    "mentor": MENTOR_PERMS,
-    "student": ["view_own_meetings", "view_own_info", "fill_survey"],
+    "mentor": MENTOR_PERMS + ["view_referral_link"],
+    "student": [
+        "view_own_meetings",
+        "view_own_info",
+        "fill_survey",
+        "view_referral_link",
+    ],
     "direction_lead": MENTOR_PERMS
-    + ["view_direction_students", "receive_direction_notifications"],
-    "job_search_lead": MENTOR_PERMS + ["view_job_search_reports", "export_job_search"],
+    + [
+        "view_direction_students",
+        "receive_direction_notifications",
+        "view_referral_link",
+    ],
+    "job_search_lead": MENTOR_PERMS
+    + ["view_job_search_reports", "export_job_search", "view_referral_link"],
     "education_lead": MENTOR_PERMS
-    + ["view_education_feedback", "export_education_feedback"],
+    + ["view_education_feedback", "export_education_feedback", "view_referral_link"],
 }
 
 TEMPLATES = [
@@ -826,7 +838,7 @@ UI_TEXTS = [
     # ── Start ──
     (
         "start.welcome",
-        "<b>Привет, $name!</b>\n\nЯ буду напоминать вам о встречах и присылать полезную информацию.\nЧерез команду <b>/menu</b> можно открыть главное меню, посмотреть свои данные и доступные действия.\n\nЕсли что-то не работает — напишите куратору.",
+        "<b>Привет, $name!</b>\n\nЯ буду напоминать вам о встречах и присылать полезную информацию.\nЧерез команду <b>/menu</b> можно открыть главное меню, посмотреть свои данные и доступные действия.\n\nЕсли что-то не работает — воспользуйся кнопкой Обратная связь / Баг.",
         "Welcome message",
     ),
     # ── Users ──
@@ -1073,6 +1085,47 @@ UI_TEXTS = [
         "feedback.bug_sent",
         "✅ Баг-репорт отправлен.",
         "Feedback: bug sent confirmation",
+    ),
+    # ── Lead sources ──
+    (
+        "menu.btn.referral_link",
+        "🔗 Моя реферальная ссылка",
+        "Menu button: referral link",
+    ),
+    (
+        "menu.btn.channel_links",
+        "📢 Канальные ссылки",
+        "Menu button: channel links",
+    ),
+    (
+        "start.welcome_referral",
+        "<b>Привет, $name!</b>\n\nВас пригласил(а) <b>$referrer_name</b>.\n\nЯ буду напоминать вам о встречах и присылать полезную информацию.\nЧерез команду <b>/menu</b> можно открыть главное меню.",
+        "Welcome message for referral deep link",
+    ),
+    (
+        "start.welcome_channel",
+        "<b>Привет, $name!</b>\n\nРады, что вы нашли нас!\n\nЯ буду напоминать вам о встречах и присылать полезную информацию.\nЧерез команду <b>/menu</b> можно открыть главное меню.",
+        "Welcome message for channel deep link",
+    ),
+    (
+        "lead_source.my_link",
+        "🔗 <b>Ваша реферальная ссылка:</b>\n\n<code>$link</code>\n\nПриглашено пользователей: <b>$count</b>",
+        "Referral link display with counter",
+    ),
+    (
+        "lead_source.channel_list_title",
+        "📢 <b>Канальные ссылки:</b>",
+        "Channel links list title",
+    ),
+    (
+        "lead_source.channel_created",
+        "✅ Ссылка создана:\n\n<code>$link</code>\n\nОписание: $label",
+        "Channel link created confirmation",
+    ),
+    (
+        "lead_source.enter_label",
+        "Введите описание для канальной ссылки (например, название поста):",
+        "Prompt for channel link label",
     ),
     # ── Common ──
     ("common.cancel", "❌ Отмена", "Cancel button"),

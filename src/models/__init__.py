@@ -1,3 +1,5 @@
+from src.models.lead_source import LeadSource as LeadSource
+from src.models.lead_source import LeadSourceType as LeadSourceType
 from src.models.role import (
     Permission as Permission,
     RoleModel as RoleModel,

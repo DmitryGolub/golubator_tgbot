@@ -46,6 +46,14 @@ _STUDENT_BUTTONS = [
     ("propose_meetings", "menu.btn.propose_meeting", "student_propose_meeting"),
 ]
 
+_REFERRAL_BUTTONS = [
+    ("view_referral_link", "menu.btn.referral_link", "menu_referral_link"),
+]
+
+_CHANNEL_LINK_BUTTONS = [
+    ("manage_channel_links", "menu.btn.channel_links", "menu_channel_links"),
+]
+
 
 async def menu_keyboard(
     permissions: set[str], *, has_mentor: bool = True
@@ -82,6 +90,16 @@ async def menu_keyboard(
         if perm in permissions:
             if perm == "propose_meetings" and not has_mentor:
                 continue
+            needed_keys.append(key)
+            buttons_spec.append((key, cb))
+
+    for perm, key, cb in _REFERRAL_BUTTONS:
+        if perm in permissions:
+            needed_keys.append(key)
+            buttons_spec.append((key, cb))
+
+    for perm, key, cb in _CHANNEL_LINK_BUTTONS:
+        if perm in permissions:
             needed_keys.append(key)
             buttons_spec.append((key, cb))
 
