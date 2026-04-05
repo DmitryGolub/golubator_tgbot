@@ -196,6 +196,26 @@ async def _has_backfill_records(session: AsyncSession, user_tid: int) -> bool:
     return result.scalar_one_or_none() is not None
 
 
+async def _resolve_collection_id(
+    client: httpx.AsyncClient, database_id: str
+) -> str | None:
+    """Resolve real collection_id from a Notion database block."""
+    resp = await client.post(
+        "/api/v3/getRecordValues",
+        json={"requests": [{"id": database_id, "table": "block"}]},
+    )
+    if resp.status_code != 200:
+        logger.error(
+            "getRecordValues (block) failed: %d %s", resp.status_code, resp.text[:300]
+        )
+        return None
+    data = resp.json()
+    results = data.get("results", [])
+    if not results:
+        return None
+    return results[0].get("value", {}).get("collection_id")
+
+
 async def _fetch_status_prop_id(
     client: httpx.AsyncClient, collection_id: str
 ) -> str | None:
@@ -307,10 +327,13 @@ async def main(dry_run: bool = False) -> None:
             headers={"Content-Type": "application/json"},
             timeout=30.0,
         ) as http_client:
-            # Resolve Status property ID from collection schema
-            collection_id = mentee_repo.data_source_id
+            # Resolve real collection_id from Notion database block
+            database_id = mentee_repo._client.database_id
+            collection_id = await _resolve_collection_id(http_client, database_id)
             if not collection_id:
-                logger.error("Cannot determine collection ID for mentee DB")
+                logger.error(
+                    "Cannot resolve collection_id for database %s", database_id
+                )
                 return
             status_prop_id = await _fetch_status_prop_id(http_client, collection_id)
             if not status_prop_id:
