@@ -88,7 +88,11 @@ def upgrade() -> None:
     )
 
     lead_source_type_enum = sa.Enum(
-        "referral", "channel", name="lead_source_type_enum", schema="iam"
+        "referral",
+        "channel",
+        name="lead_source_type_enum",
+        schema="iam",
+        create_type=False,
     )
     lead_source_type_enum.create(op.get_bind(), checkfirst=True)
 
