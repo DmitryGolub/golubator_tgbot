@@ -6,24 +6,47 @@ from telethon.errors import FloodWaitError, MessageIdInvalidError
 from telethon.tl.custom import Message
 
 
+class _RateLimiter:
+    """Guarantees minimum interval between any Telegram API calls."""
+
+    def __init__(self, min_interval: float = 0.5):
+        self._min_interval = min_interval
+        self._lock = asyncio.Lock()
+        self._last_call = 0.0
+
+    async def acquire(self):
+        async with self._lock:
+            now = asyncio.get_event_loop().time()
+            wait = self._min_interval - (now - self._last_call)
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._last_call = asyncio.get_event_loop().time()
+
+
+_limiter = _RateLimiter(min_interval=0.5)  # 2 req/s
+
+
+async def _guarded_call(coro_fn, *args, **kwargs):
+    """Rate-limited wrapper with FloodWait retry for any Telethon API call."""
+    for attempt in range(3):
+        await _limiter.acquire()
+        try:
+            return await coro_fn(*args, **kwargs)
+        except FloodWaitError as e:
+            if e.seconds > 300:
+                raise AssertionError(
+                    f"Telegram FloodWait {e.seconds}s — aborting"
+                ) from e
+            await asyncio.sleep(min(e.seconds + 1, 120))
+    await _limiter.acquire()
+    return await coro_fn(*args, **kwargs)
+
+
 def _markup_signature(markup) -> tuple:
     """Extract button data as a hashable tuple for comparison."""
     if not markup or not hasattr(markup, "rows"):
         return ()
     return tuple((btn.text, btn.data) for row in markup.rows for btn in row.buttons)
-
-
-async def _send_with_flood_guard(conv, text: str):
-    """Send message with FloodWait retry (raises AssertionError if wait > 120s)."""
-    try:
-        await conv.send_message(text)
-    except FloodWaitError as e:
-        if e.seconds > 120:
-            raise AssertionError(
-                f"Telegram FloodWait {e.seconds}s — too many messages sent"
-            ) from e
-        await asyncio.sleep(e.seconds)
-        await conv.send_message(text)
 
 
 class TelegramTestClient:
@@ -36,19 +59,19 @@ class TelegramTestClient:
     async def send_command(self, command: str, timeout: float = 15) -> Message:
         """Send a command to the bot and get the first response."""
         async with self._client.conversation(self._bot, timeout=timeout) as conv:
-            await _send_with_flood_guard(conv, command)
-            return await conv.get_response()
+            await _guarded_call(conv.send_message, command)
+            return await _guarded_call(conv.get_response)
 
     async def send_command_multi(
         self, command: str, count: int = 2, timeout: float = 15
     ) -> list[Message]:
         """Send a command and get multiple responses (e.g. welcome + menu)."""
         async with self._client.conversation(self._bot, timeout=timeout) as conv:
-            await _send_with_flood_guard(conv, command)
+            await _guarded_call(conv.send_message, command)
             responses = []
             for _ in range(count):
                 try:
-                    responses.append(await conv.get_response())
+                    responses.append(await _guarded_call(conv.get_response))
                 except asyncio.TimeoutError:
                     break
             return responses
@@ -59,7 +82,7 @@ class TelegramTestClient:
         text: str | None = None,
         index: int | None = None,
         data: str | None = None,
-        timeout: float = 15,
+        timeout: float = 30,
     ) -> Message:
         """Click an inline button and wait for the bot response (edit or new message).
 
@@ -72,7 +95,9 @@ class TelegramTestClient:
             data: Match button by callback_data (exact match — unambiguous).
         """
         # Remember state before click
-        old_messages = await self._client.get_messages(self._bot, limit=3)
+        old_messages = await _guarded_call(
+            self._client.get_messages, self._bot, limit=3
+        )
         old_snapshots = {
             m.id: (m.text, m.edit_date, m.reply_markup) for m in old_messages
         }
@@ -82,13 +107,14 @@ class TelegramTestClient:
         for attempt in range(3):
             try:
                 if data is not None:
-                    await message.click(
-                        data=data.encode() if isinstance(data, str) else data
+                    await _guarded_call(
+                        message.click,
+                        data=data.encode() if isinstance(data, str) else data,
                     )
                 elif text is not None:
-                    await message.click(text=text)
+                    await _guarded_call(message.click, text=text)
                 elif index is not None:
-                    await message.click(index)
+                    await _guarded_call(message.click, index)
                 else:
                     raise ValueError("Specify text, index, or data")
                 break
@@ -96,7 +122,9 @@ class TelegramTestClient:
                 if attempt == 2:
                     raise
                 await asyncio.sleep(0.5)
-                fresh_messages = await self._client.get_messages(self._bot, limit=5)
+                fresh_messages = await _guarded_call(
+                    self._client.get_messages, self._bot, limit=5
+                )
                 matched = None
                 for m in fresh_messages:
                     if not m.reply_markup or not hasattr(m.reply_markup, "rows"):
@@ -130,12 +158,14 @@ class TelegramTestClient:
 
         # Poll for changes
         deadline = asyncio.get_event_loop().time() + timeout
-        interval = 0.1
+        interval = 0.5
         clicked_id = message.id
         while asyncio.get_event_loop().time() < deadline:
             await asyncio.sleep(interval)
-            interval = min(interval * 2, 0.5)
-            new_messages = await self._client.get_messages(self._bot, limit=5)
+            interval = min(interval * 2, 2.0)
+            new_messages = await _guarded_call(
+                self._client.get_messages, self._bot, limit=5
+            )
 
             # Priority 1: edit of the CLICKED message (most reliable)
             for m in new_messages:
@@ -178,25 +208,25 @@ class TelegramTestClient:
     async def send_text_in_fsm(self, text: str, timeout: float = 15) -> Message:
         """Send text in an FSM dialog and get the next prompt/confirmation."""
         async with self._client.conversation(self._bot, timeout=timeout) as conv:
-            await _send_with_flood_guard(conv, text)
-            return await conv.get_response()
+            await _guarded_call(conv.send_message, text)
+            return await _guarded_call(conv.get_response)
 
     async def fsm_dialog(self, steps: list[str], timeout: float = 15) -> list[Message]:
         """Run an FSM dialog: send a series of messages, collect all responses."""
         async with self._client.conversation(self._bot, timeout=timeout) as conv:
             responses = []
             for step in steps:
-                await _send_with_flood_guard(conv, step)
-                responses.append(await conv.get_response())
+                await _guarded_call(conv.send_message, step)
+                responses.append(await _guarded_call(conv.get_response))
             return responses
 
     async def snapshot_last_message_id(self) -> int:
         """Capture the current last message id for later use with wait_for_message_after."""
-        messages = await self._client.get_messages(self._bot, limit=1)
+        messages = await _guarded_call(self._client.get_messages, self._bot, limit=1)
         return max((m.id for m in messages), default=0)
 
     async def wait_for_message_after(
-        self, after_id: int, timeout: float = 15
+        self, after_id: int, timeout: float = 30
     ) -> Message:
         """Wait for a message with id > after_id.
 
@@ -204,11 +234,13 @@ class TelegramTestClient:
         the expected message, to avoid race conditions.
         """
         deadline = asyncio.get_event_loop().time() + timeout
-        interval = 0.1
+        interval = 0.5
         while asyncio.get_event_loop().time() < deadline:
             await asyncio.sleep(interval)
-            interval = min(interval * 2, 0.5)
-            new_messages = await self._client.get_messages(self._bot, limit=5)
+            interval = min(interval * 2, 2.0)
+            new_messages = await _guarded_call(
+                self._client.get_messages, self._bot, limit=5
+            )
             for m in new_messages:
                 if m.id > after_id:
                     return m
@@ -216,19 +248,23 @@ class TelegramTestClient:
             f"No new message from bot within {timeout}s (after_id={after_id})"
         )
 
-    async def wait_for_message(self, timeout: float = 15) -> Message:
+    async def wait_for_message(self, timeout: float = 30) -> Message:
         """Wait for an incoming message from the bot (for notifications/triggers).
 
         Uses polling: remembers the latest message id, then polls until a new one appears.
         """
-        old_messages = await self._client.get_messages(self._bot, limit=1)
+        old_messages = await _guarded_call(
+            self._client.get_messages, self._bot, limit=1
+        )
         max_old_id = max((m.id for m in old_messages), default=0)
         deadline = asyncio.get_event_loop().time() + timeout
-        interval = 0.1
+        interval = 0.5
         while asyncio.get_event_loop().time() < deadline:
             await asyncio.sleep(interval)
-            interval = min(interval * 2, 0.5)
-            new_messages = await self._client.get_messages(self._bot, limit=3)
+            interval = min(interval * 2, 2.0)
+            new_messages = await _guarded_call(
+                self._client.get_messages, self._bot, limit=3
+            )
             for m in new_messages:
                 if m.id > max_old_id:
                     return m
@@ -254,7 +290,7 @@ class TelegramTestClient:
         import httpx
 
         # Step 1: Send message with inline button via Bot API
-        me = await self._client.get_me()
+        me = await _guarded_call(self._client.get_me)
         token = os.environ["BOT_TOKEN"]
         keyboard = {
             "inline_keyboard": [[{"text": button_text, "callback_data": callback_data}]]
@@ -272,7 +308,7 @@ class TelegramTestClient:
 
         # Step 2: Wait for the message to appear and click the button
         await asyncio.sleep(1)
-        messages = await self._client.get_messages(self._bot, limit=3)
+        messages = await _guarded_call(self._client.get_messages, self._bot, limit=3)
         target = None
         for m in messages:
             if m.reply_markup and hasattr(m.reply_markup, "rows"):
@@ -293,7 +329,7 @@ class TelegramTestClient:
 
     async def get_last_messages(self, limit: int = 5) -> list[Message]:
         """Get last messages from the bot chat."""
-        return await self._client.get_messages(self._bot, limit=limit)
+        return await _guarded_call(self._client.get_messages, self._bot, limit=limit)
 
     async def drain_messages(self, settle_time: float = 1.5) -> None:
         """Wait for pending messages to arrive, then discard them.
@@ -302,7 +338,7 @@ class TelegramTestClient:
         may have stale messages queued that interfere with the next command.
         """
         await asyncio.sleep(settle_time)
-        await self._client.get_messages(self._bot, limit=10)
+        await _guarded_call(self._client.get_messages, self._bot, limit=10)
 
     @property
     def raw(self) -> TelegramClient:

@@ -189,11 +189,11 @@ class BotSetup:
     # ── Survey template setup ────────────────────────────────────────────────
 
     async def create_survey_template(
-        self, title: str, slug: str, questions: list[dict[str, Any]]
+        self, title: str, questions: list[dict[str, Any]]
     ) -> int:
-        """Create survey template via bot FSM. Returns existing ID if slug already exists."""
+        """Create survey template via bot FSM. Returns existing ID if title already exists."""
         existing = await self._pool.fetchval(
-            "SELECT id FROM surveys.survey_templates WHERE slug = $1", slug
+            "SELECT id FROM surveys.survey_templates WHERE title = $1", title
         )
         if existing is not None:
             return existing
@@ -202,9 +202,8 @@ class BotSetup:
         msg = await self._admin.click_button(msg, data="menu_surveys")
         await self._admin.click_button(msg, data="sb_action:create")
 
-        # Header: title -> slug -> description (skip with "-")
+        # Header: title -> description (slug is auto-generated)
         await self._admin.send_text_in_fsm(title)
-        await self._admin.send_text_in_fsm(slug)
         await self._admin.send_text_in_fsm("-")
 
         for i, q in enumerate(questions):
@@ -236,7 +235,6 @@ class BotSetup:
                 options = q.get("options", [])
                 opt_msg = None
                 for opt in options:
-                    await self._admin.send_text_in_fsm(opt["value"])
                     opt_msg = await self._admin.send_text_in_fsm(opt["label"])
                 assert opt_msg is not None, f"Question {q['title']!r} has no options"
                 # opt_msg has options_done button; click → "Question added"
@@ -255,9 +253,9 @@ class BotSetup:
                 await self._admin.click_button(after_q_msg, data="sb_action:finish")
 
         template_id = await self._pool.fetchval(
-            "SELECT id FROM surveys.survey_templates WHERE slug = $1", slug
+            "SELECT id FROM surveys.survey_templates WHERE title = $1", title
         )
-        assert template_id is not None, f"Survey template {slug!r} was not created"
+        assert template_id is not None, f"Survey template {title!r} was not created"
         return template_id
 
     # ── Meeting setup ────────────────────────────────────────────────────────

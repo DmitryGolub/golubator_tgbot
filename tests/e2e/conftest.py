@@ -84,7 +84,12 @@ async def notion() -> NotionAssertions:
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def account1(bot_username) -> TelegramTestClient:
-    client = TelegramClient(f"{SESSION_DIR}/{ACCOUNT_1_SESSION}", API_ID, API_HASH)
+    client = TelegramClient(
+        f"{SESSION_DIR}/{ACCOUNT_1_SESSION}",
+        API_ID,
+        API_HASH,
+        flood_sleep_threshold=120,
+    )
     await client.connect()
     yield TelegramTestClient(client, bot_username)
     await client.disconnect()
@@ -92,7 +97,12 @@ async def account1(bot_username) -> TelegramTestClient:
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def account2(bot_username) -> TelegramTestClient:
-    client = TelegramClient(f"{SESSION_DIR}/{ACCOUNT_2_SESSION}", API_ID, API_HASH)
+    client = TelegramClient(
+        f"{SESSION_DIR}/{ACCOUNT_2_SESSION}",
+        API_ID,
+        API_HASH,
+        flood_sleep_threshold=120,
+    )
     await client.connect()
     yield TelegramTestClient(client, bot_username)
     await client.disconnect()
@@ -100,7 +110,12 @@ async def account2(bot_username) -> TelegramTestClient:
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def account3(bot_username) -> TelegramTestClient:
-    client = TelegramClient(f"{SESSION_DIR}/{ACCOUNT_3_SESSION}", API_ID, API_HASH)
+    client = TelegramClient(
+        f"{SESSION_DIR}/{ACCOUNT_3_SESSION}",
+        API_ID,
+        API_HASH,
+        flood_sleep_threshold=120,
+    )
     await client.connect()
     tc = TelegramTestClient(client, bot_username)
     await tc.send_command_multi("/start", count=2)  # bootstrap admin role via ADMIN_IDS
@@ -198,6 +213,13 @@ async def trigger_task():
             resp.raise_for_status()
 
     return _trigger
+
+
+@pytest_asyncio.fixture(autouse=True, loop_scope="session")
+async def inter_test_cooldown():
+    """Cooldown between tests to reduce Telegram API rate pressure."""
+    yield
+    await asyncio.sleep(1.0)
 
 
 @pytest_asyncio.fixture(autouse=True, scope="module", loop_scope="session")

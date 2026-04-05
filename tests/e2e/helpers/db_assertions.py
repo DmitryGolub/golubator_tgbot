@@ -150,6 +150,12 @@ class DBAssertions:
         )
         return dict(row) if row else None
 
+    async def get_survey_template_by_title(self, title: str) -> dict[str, Any] | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM surveys.survey_templates WHERE title = $1", title
+        )
+        return dict(row) if row else None
+
     async def get_survey_questions(self, template_id: int) -> list[dict]:
         rows = await self._pool.fetch(
             "SELECT * FROM surveys.survey_questions WHERE template_id = $1 ORDER BY sort_order",

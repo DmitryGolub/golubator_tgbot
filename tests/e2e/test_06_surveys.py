@@ -42,9 +42,8 @@ async def test_create_survey_template(
     assert create_btn is not None, "Survey menu should have 'Create' button"
     await account1.click_button(surveys_msg, text=create_btn.text)
 
-    # FSM: title -> slug -> description
+    # FSM: title -> description (slug is auto-generated)
     await account1.send_text_in_fsm("E2E Test Survey")
-    await account1.send_text_in_fsm("e2e_test_survey")
     await account1.send_text_in_fsm("Test description")
 
     # The survey builder FSM is very long — verify entry point works,
@@ -56,7 +55,6 @@ async def _create_template_via_bot(bot_setup: BotSetup, db: DBAssertions) -> int
     """Helper: create survey template via bot setup."""
     template_id = await bot_setup.create_survey_template(
         title="E2E Test Survey",
-        slug="e2e_test_survey",
         questions=[
             {
                 "title": "What is your feedback?",
@@ -72,17 +70,17 @@ async def _create_template_via_bot(bot_setup: BotSetup, db: DBAssertions) -> int
                 "title": "Choose one",
                 "type": "single_choice",
                 "options": [
-                    {"value": "opt_a", "label": "Option A"},
-                    {"value": "opt_b", "label": "Option B"},
+                    {"label": "Option A"},
+                    {"label": "Option B"},
                 ],
             },
             {
                 "title": "Choose many",
                 "type": "multiple_choice",
                 "options": [
-                    {"value": "mc_a", "label": "Choice A"},
-                    {"value": "mc_b", "label": "Choice B"},
-                    {"value": "mc_c", "label": "Choice C"},
+                    {"label": "Choice A"},
+                    {"label": "Choice B"},
+                    {"label": "Choice C"},
                 ],
             },
         ],
@@ -98,7 +96,7 @@ async def test_list_survey_templates(
 ):
     """List survey templates shows created template."""
     # Ensure template exists
-    template = await db.get_survey_template_by_slug("e2e_test_survey")
+    template = await db.get_survey_template_by_title("E2E Test Survey")
     if template is None:
         template_id = await _create_template_via_bot(bot_setup, db)
         _module_state["template_id"] = template_id
@@ -201,20 +199,20 @@ async def test_student_takes_survey_all_types(
     q2_resp = await account2.click_button(q1_resp, text=rating_btn.text)
 
     # Q3: single_choice — click "Option A"
-    choice_btn = find_button(q2_resp, "ds_ans:opt_a")
-    assert choice_btn is not None, "Should find single choice button 'opt_a'"
+    choice_btn = find_button(q2_resp, "ds_ans:opt_1")
+    assert choice_btn is not None, "Should find single choice button 'opt_1'"
     q3_resp = await account2.click_button(q2_resp, text=choice_btn.text)
 
     # Q4: multiple_choice — select mc_a, mc_c, then done
     # Note: toggling mc options only updates FSM state + shows toast, no message edit.
     # Use raw click() for toggles, then click_button for "Done" which advances.
-    mc_a_btn = find_button(q3_resp, "ds_ans:mc_a")
-    assert mc_a_btn is not None, "Should find multiple choice button 'mc_a'"
+    mc_a_btn = find_button(q3_resp, "ds_ans:opt_1")
+    assert mc_a_btn is not None, "Should find multiple choice button 'opt_1'"
     await q3_resp.click(text=mc_a_btn.text)
     await asyncio.sleep(1)
 
-    mc_c_btn = find_button(q3_resp, "ds_ans:mc_c")
-    assert mc_c_btn is not None, "Should find multiple choice button 'mc_c'"
+    mc_c_btn = find_button(q3_resp, "ds_ans:opt_3")
+    assert mc_c_btn is not None, "Should find multiple choice button 'opt_3'"
     await q3_resp.click(text=mc_c_btn.text)
     await asyncio.sleep(1)
 
@@ -327,8 +325,8 @@ async def test_multiple_choice_no_selection_required(
     q3_msg = await account2.click_button(q2_msg, text=rating_btn.text)
 
     # Q3 single choice — click first option
-    sc_btn = find_button(q3_msg, "ds_ans:opt_a")
-    assert sc_btn is not None, "Should find single choice button 'opt_a' on Q3"
+    sc_btn = find_button(q3_msg, "ds_ans:opt_1")
+    assert sc_btn is not None, "Should find single choice button 'opt_1' on Q3"
     q4_msg = await account2.click_button(q3_msg, text=sc_btn.text)
 
     # Q4 multiple choice — click Done without selecting
@@ -442,5 +440,5 @@ async def test_delete_survey_template(
     await account1.click_button(detail_msg, text=delete_btn.text)
 
     # Verify deletion in DB
-    template = await db.get_survey_template_by_slug("e2e_test_survey")
+    template = await db.get_survey_template_by_title("E2E Test Survey")
     assert template is None, "Template should be deleted from DB"

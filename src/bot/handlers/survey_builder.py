@@ -1,5 +1,5 @@
 import logging
-import re
+import uuid
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, Message
@@ -200,25 +200,8 @@ async def msg_title(message: Message, state: FSMContext):
         await message.answer("Название не может быть пустым. Попробуйте снова:")
         return
 
-    await state.update_data(title=title, questions=[])
-    await state.set_state(SurveyBuilderFSM.entering_slug)
-    await message.answer(
-        "Введите slug (латиница, цифры, подчёркивания).\n"
-        "Slug — уникальный идентификатор опроса:",
-        reply_markup=cancel_keyboard(),
-    )
-
-
-@router.message(SurveyBuilderFSM.entering_slug)
-async def msg_slug(message: Message, state: FSMContext):
-    slug = message.text.strip().lower()
-    if not re.match(r"^[a-z0-9_]+$", slug):
-        await message.answer(
-            "Slug может содержать только латиницу, цифры и подчёркивания. Попробуйте снова:"
-        )
-        return
-
-    await state.update_data(slug=slug)
+    slug = uuid.uuid4().hex[:12]
+    await state.update_data(title=title, slug=slug, questions=[])
     await state.set_state(SurveyBuilderFSM.entering_description)
     await message.answer(
         "Введите описание опроса (или отправьте «-» чтобы пропустить):",
@@ -273,11 +256,10 @@ async def cb_question_type(
         )
     elif qtype in ("single_choice", "multiple_choice"):
         await state.update_data(current_options=[])
-        await state.set_state(SurveyBuilderFSM.adding_option_value)
+        await state.set_state(SurveyBuilderFSM.adding_option_label)
         await safe_edit_text(
             callback,
-            "Добавьте варианты ответа.\n\n"
-            "Введите машинное значение (slug) первого варианта:",
+            "Добавьте варианты ответа.\n\nВведите метку первого варианта:",
             reply_markup=cancel_keyboard(),
         )
     else:
@@ -326,23 +308,6 @@ async def msg_rating_max(message: Message, state: FSMContext):
 # --- Choice options ---
 
 
-@router.message(SurveyBuilderFSM.adding_option_value)
-async def msg_option_value(message: Message, state: FSMContext):
-    value = message.text.strip()
-    if not re.match(r"^[a-z0-9_]+$", value):
-        await message.answer(
-            "Значение может содержать только латиницу, цифры и подчёркивания:"
-        )
-        return
-
-    await state.update_data(current_option_value=value)
-    await state.set_state(SurveyBuilderFSM.adding_option_label)
-    await message.answer(
-        f"Введите отображаемую метку для варианта <code>{value}</code>:",
-        reply_markup=cancel_keyboard(),
-    )
-
-
 @router.message(SurveyBuilderFSM.adding_option_label)
 async def msg_option_label(message: Message, state: FSMContext):
     label = message.text.strip()
@@ -352,21 +317,20 @@ async def msg_option_label(message: Message, state: FSMContext):
 
     data = await state.get_data()
     options = data.get("current_options", [])
-    options.append({"value": data["current_option_value"], "label": label})
+    value = f"opt_{len(options) + 1}"
+    options.append({"value": value, "label": label})
     await state.update_data(current_options=options)
-
-    await state.set_state(SurveyBuilderFSM.adding_option_value)
 
     options_text = "\n".join(f"  - {o['label']} ({o['value']})" for o in options)
     await message.answer(
         f"Добавлено вариантов: {len(options)}\n{options_text}\n\n"
-        "Введите значение следующего варианта или нажмите кнопку ниже:",
+        "Введите метку следующего варианта или нажмите кнопку ниже:",
         reply_markup=add_option_keyboard(),
     )
 
 
 @router.callback_query(
-    SurveyBuilderFSM.adding_option_value,
+    SurveyBuilderFSM.adding_option_label,
     SurveyBuilderActionCB.filter(F.action == "options_done"),
 )
 async def cb_options_done(callback: CallbackQuery, state: FSMContext):
@@ -411,7 +375,6 @@ async def _save_question(message: Message, state: FSMContext):
         current_question_title=None,
         current_question_type=None,
         current_options=None,
-        current_option_value=None,
         rating_min=None,
         rating_max=None,
     )
@@ -466,7 +429,7 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
             questions=questions,
         )
     except SlugAlreadyExistsError:
-        await safe_edit_text(callback, "Опрос с таким slug уже существует")
+        await safe_edit_text(callback, "Не удалось создать опрос. Попробуйте ещё раз.")
         return
 
     await state.clear()
