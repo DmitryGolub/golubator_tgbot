@@ -99,7 +99,7 @@ async def _send_mentor_survey_batch(
                         continue
 
                     student_name = (
-                        mentee.user.name if mentee.user else mentee.doc_name or "Ученик"
+                        mentee.user.name if mentee.user else mentee.doc_name or "Менти"
                     )
 
                     kb = InlineKeyboardBuilder()
@@ -112,7 +112,7 @@ async def _send_mentor_survey_batch(
                         await bot.send_message(
                             mentor_tid,
                             f"<b>{e(title)}</b>\n\n"
-                            f"Ученик: <b>{e(student_name)}</b>\n"
+                            f"Менти: <b>{e(student_name)}</b>\n"
                             f"Пожалуйста, заполните опрос (~2 мин, 5 вопросов).",
                             reply_markup=kb.as_markup(),
                             parse_mode="HTML",
@@ -143,7 +143,7 @@ def send_weekly_mentor_per_student() -> None:
             cohort_type="Status",
             cohort_value="Study",
             context_type="weekly",
-            title="Еженедельный опрос по ученику",
+            title="Еженедельный опрос по менти",
             log_prefix="Weekly mentor",
         )
     )
@@ -158,7 +158,7 @@ def send_search_biweekly_mentor() -> None:
             cohort_type="Status",
             cohort_value="search",
             context_type="search_biweekly",
-            title="Опрос по ученику в поиске работы",
+            title="Опрос по менти в поиске работы",
             log_prefix="Search biweekly mentor",
             biweekly=True,
         )
@@ -273,7 +273,7 @@ def send_probation_biweekly_mentor() -> None:
             cohort_type="Status",
             cohort_value="Probationary period",
             context_type="probation_biweekly_mentor",
-            title="Опрос по ученику на испытательном сроке",
+            title="Опрос по менти на испытательном сроке",
             log_prefix="Probation biweekly mentor",
             biweekly=True,
         )

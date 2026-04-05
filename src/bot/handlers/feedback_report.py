@@ -65,7 +65,7 @@ async def msg_enter_text(message: Message, state: FSMContext):
             callback_data=FeedbackRecipientCB(role="direction_lead"),
         )
         kb.button(
-            text="Лид по обучению",
+            text="Лид по сопровождению",
             callback_data=FeedbackRecipientCB(role="education_lead"),
         )
         kb.button(

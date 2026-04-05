@@ -55,7 +55,7 @@
     },
     {
       "id": 3,
-      "title": "Созвоны по текущим стадиям учеников",
+      "title": "Созвоны по текущим стадиям менти",
       "type": "barchart",
       "gridPos": { "h": 12, "w": 12, "x": 0, "y": 12 },
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },

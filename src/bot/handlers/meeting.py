@@ -321,7 +321,7 @@ async def cb_meeting_create(callback: CallbackQuery, state: FSMContext):
     if not mentees:
         await safe_edit_text(
             callback,
-            "У вас пока нет учеников.",
+            "У вас пока нет менти.",
             reply_markup=await _menu_kb(callback.from_user.id),
         )
         return
@@ -1012,7 +1012,7 @@ async def cb_edit_field_chosen(
         if not mentees:
             await safe_edit_text(
                 callback,
-                "У вас нет учеников.",
+                "У вас нет менти.",
                 reply_markup=await _menu_kb(callback.from_user.id),
             )
             await state.clear()

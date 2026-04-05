@@ -33,7 +33,7 @@
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT\n  sa.created_at AS \"Дата\",\n  sa.alert_type AS \"Тип\",\n  COALESCE(u_student.name, sa.student_id::text, '—') AS \"Ученик\",\n  COALESCE(u_resp.name, (sa.details->>'respondent_id'), '—') AS \"Респондент\",\n  st.title AS \"Опрос\",\n  sa.details->>'question' AS \"Вопрос\",\n  sa.details->>'score' AS \"Оценка\",\n  sa.details->>'threshold' AS \"Порог\",\n  CASE WHEN sa.notified THEN 'Да' ELSE 'Нет' END AS \"Уведомлено\"\nFROM surveys.survey_alerts sa\nJOIN surveys.survey_sessions ss ON ss.id = sa.session_id\nJOIN surveys.survey_templates st ON st.id = ss.template_id\nLEFT JOIN iam.users u_student ON u_student.telegram_id = sa.student_id\nLEFT JOIN iam.users u_resp ON u_resp.telegram_id = ss.respondent_id\nWHERE sa.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ($__all = '${alert_type}' OR sa.alert_type::text IN (${alert_type:singlequote}))\nORDER BY sa.created_at DESC\nLIMIT 200",
+          "rawSql": "SELECT\n  sa.created_at AS \"Дата\",\n  sa.alert_type AS \"Тип\",\n  COALESCE(u_student.name, sa.student_id::text, '—') AS \"Менти\",\n  COALESCE(u_resp.name, (sa.details->>'respondent_id'), '—') AS \"Респондент\",\n  st.title AS \"Опрос\",\n  sa.details->>'question' AS \"Вопрос\",\n  sa.details->>'score' AS \"Оценка\",\n  sa.details->>'threshold' AS \"Порог\",\n  CASE WHEN sa.notified THEN 'Да' ELSE 'Нет' END AS \"Уведомлено\"\nFROM surveys.survey_alerts sa\nJOIN surveys.survey_sessions ss ON ss.id = sa.session_id\nJOIN surveys.survey_templates st ON st.id = ss.template_id\nLEFT JOIN iam.users u_student ON u_student.telegram_id = sa.student_id\nLEFT JOIN iam.users u_resp ON u_resp.telegram_id = ss.respondent_id\nWHERE sa.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ($__all = '${alert_type}' OR sa.alert_type::text IN (${alert_type:singlequote}))\nORDER BY sa.created_at DESC\nLIMIT 200",
           "format": "table",
           "refId": "A"
         }
@@ -113,7 +113,7 @@
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT\n  sa.created_at AS \"Дата\",\n  COALESCE(u_student.name, sa.student_id::text, '—') AS \"Ученик\",\n  sa.details->>'slug' AS \"Опрос менти\",\n  sa.details->>'paired_slug' AS \"Опрос ментора\",\n  (sa.details->>'avg_current')::numeric AS \"Средняя (менти)\",\n  (sa.details->>'avg_paired')::numeric AS \"Средняя (ментор)\",\n  (sa.details->>'diff')::numeric AS \"Разница\"\nFROM surveys.survey_alerts sa\nLEFT JOIN iam.users u_student ON u_student.telegram_id = sa.student_id\nWHERE sa.alert_type = 'cross_mismatch'\n  AND sa.created_at BETWEEN $__timeFrom() AND $__timeTo()\nORDER BY (sa.details->>'diff')::numeric DESC\nLIMIT 100",
+          "rawSql": "SELECT\n  sa.created_at AS \"Дата\",\n  COALESCE(u_student.name, sa.student_id::text, '—') AS \"Менти\",\n  sa.details->>'slug' AS \"Опрос менти\",\n  sa.details->>'paired_slug' AS \"Опрос ментора\",\n  (sa.details->>'avg_current')::numeric AS \"Средняя (менти)\",\n  (sa.details->>'avg_paired')::numeric AS \"Средняя (ментор)\",\n  (sa.details->>'diff')::numeric AS \"Разница\"\nFROM surveys.survey_alerts sa\nLEFT JOIN iam.users u_student ON u_student.telegram_id = sa.student_id\nWHERE sa.alert_type = 'cross_mismatch'\n  AND sa.created_at BETWEEN $__timeFrom() AND $__timeTo()\nORDER BY (sa.details->>'diff')::numeric DESC\nLIMIT 100",
           "format": "table",
           "refId": "A"
         }

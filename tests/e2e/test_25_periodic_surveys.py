@@ -46,11 +46,11 @@ async def test_weekly_survey_sent_to_mentor(
     await setup.ensure_user_cohort(ACCOUNT_2_TG_ID, "Status", "Study")
 
     template_id = await setup.create_survey_template(
-        title="Еженедельный опрос по ученику",
+        title="Еженедельный опрос по менти",
         slug="weekly_mentor_per_student",
         questions=[
             {
-                "title": "Оцените прогресс ученика",
+                "title": "Оцените прогресс менти",
                 "type": "rating",
                 "config": {"min": 1, "max": 10},
             }

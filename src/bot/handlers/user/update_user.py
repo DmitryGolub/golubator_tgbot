@@ -93,7 +93,7 @@ async def cmd_start_update_student_by_mentor(
     mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     if not mentees:
         await _msg(callback).edit_text(
-            "Ученики не найдены.",
+            "Менти не найдены.",
             reply_markup=await back_to_menu_keyboard(),
         )
         return
@@ -102,7 +102,7 @@ async def cmd_start_update_student_by_mentor(
     await state.update_data(flow_perm="update_student_status")
     await state.set_state(UpdateUserFSM.choosing_user)
     await _msg(callback).edit_text(
-        "Выберите ученика:",
+        "Выберите менти:",
         reply_markup=mentees_keyboard(mentees),
     )
 
@@ -184,14 +184,14 @@ async def cb_mentee_selected(
 
     mentee = await MenteeDAO.find_one_or_none(id=callback_data.mentee_id)
     if not mentee:
-        await _msg(callback).edit_text("Ученик не найден.")
+        await _msg(callback).edit_text("Менти не найден(а).")
         await state.clear()
         return
 
     user_id = mentee.telegram_id
     if not user_id:
         await _msg(callback).edit_text(
-            "У ученика не привязан Telegram-аккаунт.",
+            "У менти не привязан Telegram-аккаунт.",
             reply_markup=await back_to_menu_keyboard(),
         )
         await state.clear()
@@ -232,7 +232,7 @@ async def cb_choose_param(
 
     if flow_perm != "manage_users" and callback_data.param != UpdateParam.STATUS:
         await _msg(callback).edit_text(
-            "Ментору доступно только обновление статуса ученика.",
+            "Ментору доступно только обновление статуса менти.",
             reply_markup=await back_to_menu_keyboard(),
         )
         await state.clear()
@@ -361,7 +361,7 @@ async def cb_choose_enum_value(
                 mentor_record.id if mentor_record else None
             ):
                 await _msg(callback).edit_text(
-                    "Можно обновлять только своих учеников.",
+                    "Можно обновлять только своих менти.",
                     reply_markup=await back_to_menu_keyboard(),
                 )
                 await state.clear()

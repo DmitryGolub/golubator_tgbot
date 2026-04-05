@@ -39,7 +39,7 @@ BATCH_KWARGS = dict(
     cohort_type="Status",
     cohort_value="search",
     context_type="search_biweekly",
-    title="Опрос по ученику в поиске работы",
+    title="Опрос по менти в поиске работы",
     log_prefix="Search biweekly mentor",
     biweekly=True,
 )

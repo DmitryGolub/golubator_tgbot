@@ -46,7 +46,7 @@ ACTION_TYPE_LABELS = {
 }
 
 RECIPIENT_TYPE_LABELS = {
-    "event_student": "Ученик из события",
+    "event_student": "Менти из события",
     "event_mentor": "Ментор из события",
     "event_user": "Пользователь события",
     "by_role": "По роли",

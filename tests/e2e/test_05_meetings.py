@@ -47,13 +47,21 @@ async def test_create_meeting_fsm(
     )
     create_msg = await account1.click_button(meetings_msg, text=create_btn.text)
 
-    # Step 1: Choose student — find first student button
-    student_btn = find_button(create_msg, "meeting_student:")
-    assert student_btn is not None, (
-        f"Should find student button. Buttons: "
+    # Step 1a: Toggle student in multi-select
+    toggle_btn = find_button(create_msg, "mtg_toggle:")
+    assert toggle_btn is not None, (
+        f"Should find participant toggle button. Buttons: "
         f"{[(b.text, b.data.decode()) for b in get_buttons(create_msg)]}"
     )
-    type_msg = await account1.click_button(create_msg, data=student_btn.data.decode())
+    toggled_msg = await account1.click_button(create_msg, data=toggle_btn.data.decode())
+
+    # Step 1b: Confirm participant selection
+    confirm_sel_btn = find_button(toggled_msg, "mtg_confirm_sel")
+    assert confirm_sel_btn is not None, (
+        f"Should find confirm selection button. Buttons: "
+        f"{[(b.text, b.data.decode()) for b in get_buttons(toggled_msg)]}"
+    )
+    type_msg = await account1.click_button(toggled_msg, data="mtg_confirm_sel")
 
     # Step 2: Skip meeting type
     skip_type_btn = find_button(type_msg, "meeting_skip_type")

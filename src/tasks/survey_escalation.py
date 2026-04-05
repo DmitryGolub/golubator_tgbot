@@ -182,8 +182,8 @@ async def _notify_mentor(
     try:
         await bot.send_message(
             mentor.telegram_id,
-            f"<b>Ученик не ответил на опрос</b>\n\n"
-            f"Ваш ученик {e(respondent_name)} не заполнил опрос "
+            f"<b>Менти не ответил(а) на опрос</b>\n\n"
+            f"Ваш менти {e(respondent_name)} не заполнил(а) опрос "
             f"«{e(template_title)}»{reason}.\n"
             f"Пожалуйста, напомните ему.",
             parse_mode="HTML",

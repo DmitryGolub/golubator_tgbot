@@ -44,7 +44,7 @@ def _format_alert_message(alert) -> str:
             f"<b>Алёрт: низкая оценка</b>\n\n"
             f"Опрос: {template_title}\n"
             f"Респондент: {respondent_name}\n"
-            f"Ученик: {student_name}\n"
+            f"Менти: {student_name}\n"
             f"Вопрос: {e(details.get('question', '?'))}\n"
             f"Оценка: <b>{e(details.get('score'))}</b> "
             f"(порог: {e(details.get('threshold'))})"
@@ -55,13 +55,13 @@ def _format_alert_message(alert) -> str:
             f"<b>Алёрт: падение оценок</b>\n\n"
             f"Опрос: {template_title}\n"
             f"Респондент: {respondent_name}\n"
-            f"Ученик: {student_name}\n"
+            f"Менти: {student_name}\n"
             f"Оценки (новые→старые): {' → '.join(e(str(s)) for s in scores)}"
         )
     elif alert_type == "cross_mismatch":
         return (
             f"<b>Алёрт: расхождение оценок</b>\n\n"
-            f"Ученик: {student_name}\n"
+            f"Менти: {student_name}\n"
             f"Средняя оценка ({slug}): {e(details.get('avg_current'))}\n"
             f"Средняя оценка ({e(details.get('paired_slug'))}): "
             f"{e(details.get('avg_paired'))}\n"
@@ -69,10 +69,10 @@ def _format_alert_message(alert) -> str:
         )
     elif alert_type == "mentor_not_recommend":
         return (
-            f"<b>Алёрт: ментор не рекомендует брать ученика</b>\n\n"
+            f"<b>Алёрт: ментор не рекомендует брать менти</b>\n\n"
             f"Опрос: {template_title}\n"
             f"Ментор: {respondent_name}\n"
-            f"Ученик: {student_name}"
+            f"Менти: {student_name}"
         )
     else:
         return f"<b>Алёрт ({e(alert_type)})</b>\n\nОпрос: {template_title}"

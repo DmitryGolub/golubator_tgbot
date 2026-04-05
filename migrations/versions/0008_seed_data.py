@@ -105,31 +105,31 @@ PERMISSIONS = [
     ("update_user_mentor", "Назначение ментора"),
     ("update_user_cohort", "Назначение когорты"),
     ("update_user_state", "Изменение состояния пользователя"),
-    ("view_students", "Просмотр списка учеников"),
+    ("view_students", "Просмотр списка менти"),
     ("manage_meetings", "Управление встречами"),
     ("view_own_meetings", "Просмотр своих встреч"),
     ("view_own_info", "Просмотр своей информации"),
     ("end_call", "Завершение активного созвона"),
     ("fill_survey", "Заполнение опросов"),
     ("fill_self_review", "Заполнение самооценки"),
-    ("view_direction_students", "Просмотр учеников своего направления"),
+    ("view_direction_students", "Просмотр менти своего направления"),
     ("receive_direction_notifications", "Получение уведомлений по направлению"),
-    ("send_direction_notification", "Отправка уведомлений ученикам направления"),
+    ("send_direction_notification", "Отправка уведомлений менти направления"),
     ("view_job_search_reports", "Просмотр отчётов по поиску работы"),
-    ("view_education_feedback", "Просмотр обратной связи об обучении"),
+    ("view_education_feedback", "Просмотр обратной связи о сопровождении"),
     ("export_job_search", "Экспорт отчётов по поиску работы"),
-    ("export_education_feedback", "Экспорт обратной связи об обучении"),
-    ("update_student_status", "Обновление статуса ученика (ментором)"),
+    ("export_education_feedback", "Экспорт обратной связи о сопровождении"),
+    ("update_student_status", "Обновление статуса менти (ментором)"),
     ("mentor_role", "Marker: user has mentor capabilities"),
 ]
 
 ROLES = [
     {"name": "admin", "display_name": "Админ"},
     {"name": "mentor", "display_name": "Ментор"},
-    {"name": "student", "display_name": "Студент"},
+    {"name": "student", "display_name": "Менти"},
     {"name": "direction_lead", "display_name": "Лид направления"},
     {"name": "job_search_lead", "display_name": "Ответственный за поиск работы"},
-    {"name": "education_lead", "display_name": "Ответственный за обучение"},
+    {"name": "education_lead", "display_name": "Ответственный за сопровождение"},
 ]
 
 MENTOR_PERMS = [
@@ -158,8 +158,8 @@ ROLE_PERMISSIONS_MAP = {
 TEMPLATES = [
     {
         "slug": "post_call_student",
-        "title": "Опрос ученика после созвона",
-        "description": "Заполняется учеником после завершённого созвона с ментором",
+        "title": "Опрос менти после созвона",
+        "description": "Заполняется менти после завершённого созвона с ментором",
         "questions": [
             {
                 "sort_order": 1,
@@ -192,7 +192,7 @@ TEMPLATES = [
             },
             {
                 "sort_order": 4,
-                "title": "Насколько ученик понял материал",
+                "title": "Насколько менти усвоил(а) материал",
                 "question_type": "rating",
                 "is_required": True,
                 "config": {"min": 1, "max": 5},
@@ -211,11 +211,11 @@ TEMPLATES = [
     {
         "slug": "mentor_feedback",
         "title": "Фидбек ментора после созвона",
-        "description": "Заполняется ментором после завершённого созвона с учеником",
+        "description": "Заполняется ментором после завершённого созвона с менти",
         "questions": [
             {
                 "sort_order": 1,
-                "title": "Готовность ученика",
+                "title": "Готовность менти",
                 "question_type": "single_choice",
                 "is_required": True,
                 "config": None,
@@ -241,7 +241,7 @@ TEMPLATES = [
             },
             {
                 "sort_order": 3,
-                "title": "Мотивация ученика",
+                "title": "Мотивация менти",
                 "question_type": "rating",
                 "is_required": True,
                 "config": {"min": 1, "max": 5},
@@ -322,12 +322,12 @@ TEMPLATES = [
     },
     {
         "slug": "greeting_mentee_feedback",
-        "title": "Опрос ученика после первого созвона",
-        "description": "Заполняется учеником через 24 часа после первого созвона (стадия greeting)",
+        "title": "Опрос менти после первого созвона",
+        "description": "Заполняется менти через 24 часа после первого созвона (стадия greeting)",
         "questions": [
             {
                 "sort_order": 1,
-                "title": "Насколько понятны условия обучения",
+                "title": "Насколько понятны условия сопровождения",
                 "question_type": "rating",
                 "is_required": True,
                 "config": {"min": 1, "max": 10},
@@ -351,7 +351,7 @@ TEMPLATES = [
             },
             {
                 "sort_order": 4,
-                "title": "Что повлияло на решение начать/не начать обучение?",
+                "title": "Что повлияло на решение начать/не начать сопровождение?",
                 "question_type": "text",
                 "is_required": True,
                 "config": None,
@@ -366,7 +366,7 @@ TEMPLATES = [
         "questions": [
             {
                 "sort_order": 1,
-                "title": "Мотивация ученика",
+                "title": "Мотивация менти",
                 "question_type": "rating",
                 "is_required": True,
                 "config": {"min": 1, "max": 10},
@@ -374,7 +374,7 @@ TEMPLATES = [
             },
             {
                 "sort_order": 2,
-                "title": "Реалистичность ожиданий ученика",
+                "title": "Реалистичность ожиданий менти",
                 "question_type": "rating",
                 "is_required": True,
                 "config": {"min": 1, "max": 10},
@@ -403,8 +403,8 @@ TEMPLATES = [
     },
     {
         "slug": "weekly_mentee_study",
-        "title": "Еженедельный опрос ученика (Study)",
-        "description": "Заполняется учеником еженедельно в период обучения (Study)",
+        "title": "Еженедельный опрос менти (Study)",
+        "description": "Заполняется менти еженедельно в период сопровождения (Study)",
         "questions": [
             {
                 "sort_order": 1,
@@ -450,8 +450,8 @@ TEMPLATES = [
     },
     {
         "slug": "weekly_mentee_search",
-        "title": "Еженедельный опрос ученика (Search)",
-        "description": "Заполняется учеником еженедельно в период поиска работы (Search)",
+        "title": "Еженедельный опрос менти (Search)",
+        "description": "Заполняется менти еженедельно в период поиска работы (Search)",
         "questions": [
             {
                 "sort_order": 1,
@@ -489,12 +489,12 @@ TEMPLATES = [
     },
     {
         "slug": "weekly_mentor_per_student",
-        "title": "Еженедельный опрос ментора по ученику",
-        "description": "Заполняется ментором еженедельно на каждого ученика в стадии Study",
+        "title": "Еженедельный опрос ментора по менти",
+        "description": "Заполняется ментором еженедельно на каждого менти в стадии Study",
         "questions": [
             {
                 "sort_order": 1,
-                "title": "Вовлечённость ученика",
+                "title": "Вовлечённость менти",
                 "question_type": "rating",
                 "is_required": True,
                 "config": {"min": 1, "max": 10},
@@ -539,8 +539,8 @@ TEMPLATES = [
     },
     {
         "slug": "search_mentee_biweekly",
-        "title": "Двухнедельный опрос ученика (Search)",
-        "description": "Заполняется учеником раз в две недели в период поиска работы (search)",
+        "title": "Двухнедельный опрос менти (Search)",
+        "description": "Заполняется менти раз в две недели в период поиска работы (search)",
         "questions": [
             {
                 "sort_order": 1,
@@ -586,12 +586,12 @@ TEMPLATES = [
     },
     {
         "slug": "search_mentor_biweekly",
-        "title": "Двухнедельный опрос ментора по ученику (Search)",
-        "description": "Заполняется ментором раз в две недели на каждого ученика в стадии search",
+        "title": "Двухнедельный опрос ментора по менти (Search)",
+        "description": "Заполняется ментором раз в две недели на каждого менти в стадии search",
         "questions": [
             {
                 "sort_order": 1,
-                "title": "Активность ученика в поиске",
+                "title": "Активность менти в поиске",
                 "question_type": "rating",
                 "is_required": True,
                 "config": {"min": 1, "max": 10},
@@ -694,12 +694,12 @@ TEMPLATES = [
     },
     {
         "slug": "probation_mentor_biweekly",
-        "title": "Двухнедельный опрос ментора по ученику (Probationary period)",
-        "description": "Заполняется ментором раз в две недели на каждого ученика на испытательном сроке",
+        "title": "Двухнедельный опрос ментора по менти (Probationary period)",
+        "description": "Заполняется ментором раз в две недели на каждого менти на испытательном сроке",
         "questions": [
             {
                 "sort_order": 1,
-                "title": "Как проходит адаптация ученика на рабочем месте?",
+                "title": "Как проходит адаптация менти на рабочем месте?",
                 "question_type": "rating",
                 "is_required": True,
                 "config": {"min": 1, "max": 10},
@@ -707,7 +707,7 @@ TEMPLATES = [
             },
             {
                 "sort_order": 2,
-                "title": "Насколько ученик самостоятелен в работе?",
+                "title": "Насколько менти самостоятелен(на) в работе?",
                 "question_type": "rating",
                 "is_required": True,
                 "config": {"min": 1, "max": 10},
@@ -819,7 +819,7 @@ LEAD_TO_STUDY_RULES = [
         "require_category": "__none__",
         "text": (
             "Добро пожаловать в Голубятню! 🎉\n\n"
-            "Ты зачислен(а) на обучение.\n\n"
+            "Ты подключён(а) к программе сопровождения.\n\n"
             "Вступай в общий чат: [ССЫЛКА]\n\n"
             "Направление пока не указано — обратись к куратору."
         ),
@@ -840,7 +840,7 @@ UI_TEXTS = [
         "📊 Статистика менторов",
         "Menu button: mentor stats",
     ),
-    ("menu.btn.students", "🎓 Ученики", "Menu button: students (mentor)"),
+    ("menu.btn.students", "🎓 Менти", "Menu button: students (mentor)"),
     ("menu.btn.meetings", "📅 Созвоны", "Menu button: meetings (mentor)"),
     ("menu.btn.my_info", "ℹ️ Обо мне", "Menu button: my info (mentor)"),
     (
@@ -858,18 +858,18 @@ UI_TEXTS = [
     ("menu.users.title", "👥 Меню Пользователей", "Users submenu title"),
     ("menu.cohorts.title", "📂 Меню Когорт", "Cohorts submenu title"),
     ("menu.meetings.title", "📅 Созвоны:", "Meetings submenu title"),
-    ("menu.students.title", "🎓 Ученики:", "Students submenu title"),
+    ("menu.students.title", "🎓 Менти:", "Students submenu title"),
     # ── Mentor students ──
-    ("menu.students.empty", "Список учеников пуст.", "Empty students list"),
-    ("menu.students.header", "<b>Мои ученики:</b>", "Students list header"),
+    ("menu.students.empty", "Список менти пуст.", "Empty students list"),
+    ("menu.students.header", "<b>Мои менти:</b>", "Students list header"),
     (
         "menu.mentor_students.btn.list",
-        "Список учеников",
+        "Список менти",
         "Mentor: students list btn",
     ),
     (
         "menu.mentor_students.btn.update",
-        "Изменить статус ученика",
+        "Изменить статус менти",
         "Mentor: update student btn",
     ),
     # ── Mentor meetings ──
@@ -912,7 +912,7 @@ UI_TEXTS = [
     # ── Start ──
     (
         "start.welcome",
-        "<b>Привет, $name!</b>\n\nЯ буду напоминать вам о занятиях и присылать полезную информацию.\nЧерез команду <b>/menu</b> можно открыть главное меню, посмотреть свои данные и доступные действия.\n\nЕсли что-то не работает — напишите куратору.",
+        "<b>Привет, $name!</b>\n\nЯ буду напоминать вам о встречах и присылать полезную информацию.\nЧерез команду <b>/menu</b> можно открыть главное меню, посмотреть свои данные и доступные действия.\n\nЕсли что-то не работает — напишите куратору.",
         "Welcome message",
     ),
     # ── Users ──
@@ -923,7 +923,7 @@ UI_TEXTS = [
     ("user.btn.update_mentor", "👨‍🏫 Обновить ментора", "Users: update mentor btn"),
     (
         "user.btn.update_student_status",
-        "🔄 Обновить статус ученика",
+        "🔄 Обновить статус менти",
         "Users: update student status btn",
     ),
     ("user.list.header", "<b>Список пользователей:</b>", "Users list header"),
@@ -1021,7 +1021,7 @@ UI_TEXTS = [
     ("trigger.action.send_survey", "Отправить опрос", "Action: send survey"),
     (
         "trigger.recipient.event_student",
-        "Ученик из события",
+        "Менти из события",
         "Recipient: event student",
     ),
     (
@@ -1085,7 +1085,7 @@ UI_TEXTS = [
     # ── Lead menu ──
     (
         "menu.btn.direction_students",
-        "🎯 Ученики направления",
+        "🎯 Менти направления",
         "Menu button: direction students",
     ),
     (
@@ -1095,7 +1095,7 @@ UI_TEXTS = [
     ),
     (
         "menu.btn.education_feedback",
-        "📚 Обратная связь: обучение",
+        "📚 Обратная связь: сопровождение",
         "Menu button: education feedback",
     ),
     # ── Direction view ──
@@ -1123,7 +1123,7 @@ UI_TEXTS = [
     # ── Education feedback ──
     (
         "education.title",
-        "📚 Обратная связь об обучении",
+        "📚 Обратная связь о сопровождении",
         "Education feedback: title",
     ),
     (
@@ -1267,7 +1267,7 @@ def upgrade() -> None:
             "action_config": {"text": REMINDER_TEXT},
         },
         {
-            "name": "Опрос ученика после созвона",
+            "name": "Опрос менти после созвона",
             "trigger_type": "call_ended",
             "action_type": "send_survey",
             "is_active": True,
@@ -1276,7 +1276,7 @@ def upgrade() -> None:
             "recipient_type": "event_student",
             "action_config": {
                 "survey_template_id": template_ids["post_call_student"],
-                "survey_title": "Опрос ученика после созвона",
+                "survey_title": "Опрос менти после созвона",
             },
         },
         {
@@ -1309,7 +1309,7 @@ def upgrade() -> None:
             },
         },
         {
-            "name": "Опрос ученика после первого созвона (greeting)",
+            "name": "Опрос менти после первого созвона (greeting)",
             "trigger_type": "call_ended",
             "action_type": "send_survey",
             "is_active": True,
@@ -1319,7 +1319,7 @@ def upgrade() -> None:
             "trigger_config": {"is_first_call": True, "student_stage": "greeting"},
             "action_config": {
                 "survey_template_id": template_ids["greeting_mentee_feedback"],
-                "survey_title": "Опрос ученика после первого созвона",
+                "survey_title": "Опрос менти после первого созвона",
             },
         },
         {

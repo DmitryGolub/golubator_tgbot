@@ -21,13 +21,13 @@
   "panels": [
     {
       "id": 1,
-      "title": "Учеников всего",
+      "title": "Менти всего",
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT COUNT(*) AS \"Учеников\"\nFROM iam.mentees me\nJOIN iam.mentors mt ON mt.id = me.mentor_id\nWHERE mt.telegram_id = $mentor",
+          "rawSql": "SELECT COUNT(*) AS \"Менти\"\nFROM iam.mentees me\nJOIN iam.mentors mt ON mt.id = me.mentor_id\nWHERE mt.telegram_id = $mentor",
           "format": "table",
           "refId": "A"
         }
@@ -109,7 +109,7 @@
     },
     {
       "id": 6,
-      "title": "Ученики ментора",
+      "title": "Менти ментора",
       "type": "table",
       "gridPos": { "h": 10, "w": 12, "x": 12, "y": 4 },
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },

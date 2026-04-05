@@ -19,7 +19,7 @@ class EducationFeedbackService:
 
 
 def _format_rows(rows: list[EducationFeedbackRow]) -> str:
-    lines = ["<b>📚 Обратная связь: Обучение</b>\n"]
+    lines = ["<b>📚 Обратная связь: Сопровождение</b>\n"]
     for row in rows:
         rating = f"{row.avg_rating:.1f}" if row.avg_rating is not None else "—"
         lines.append(

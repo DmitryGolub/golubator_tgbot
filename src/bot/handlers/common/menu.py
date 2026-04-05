@@ -204,7 +204,7 @@ async def cb_mentor_students_add(callback: CallbackQuery):
     has_mentor = await _check_has_mentor(callback.from_user.id, permissions)
     await safe_edit_text(
         callback,
-        "Выберите ученика для изменения статуса.",
+        "Выберите менти для изменения статуса.",
         reply_markup=await menu_keyboard(permissions, has_mentor=has_mentor),
     )
 
