@@ -363,3 +363,29 @@ class DBAssertions:
             respondent_id,
         )
         return dict(row) if row else None
+
+    # ── Lead Source ──
+
+    async def get_lead_source_by_code(self, code: str) -> dict | None:
+        """Get lead source by its unique code."""
+        row = await self._pool.fetchrow(
+            "SELECT * FROM iam.lead_sources WHERE code = $1",
+            code,
+        )
+        return dict(row) if row else None
+
+    async def get_user_lead_source_id(self, telegram_id: int) -> int | None:
+        """Get lead_source_id for a user."""
+        row = await self._pool.fetchrow(
+            "SELECT lead_source_id FROM iam.users WHERE telegram_id = $1",
+            telegram_id,
+        )
+        return row["lead_source_id"] if row else None
+
+    async def count_users_by_lead_source(self, source_id: int) -> int:
+        """Count users attributed to a given lead source."""
+        row = await self._pool.fetchrow(
+            "SELECT COUNT(*) AS cnt FROM iam.users WHERE lead_source_id = $1",
+            source_id,
+        )
+        return row["cnt"]

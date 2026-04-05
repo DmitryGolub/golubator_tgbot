@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import ENUM as pgEnum
 
 revision: str = "0002_iam"
 down_revision: Union[str, None] = "0001_schemas"
@@ -87,14 +88,21 @@ def upgrade() -> None:
         schema="iam",
     )
 
-    lead_source_type_enum = sa.Enum(
+    op.execute(
+        sa.text(
+            "DO $$ BEGIN "
+            "CREATE TYPE iam.lead_source_type_enum AS ENUM ('referral', 'channel'); "
+            "EXCEPTION WHEN duplicate_object THEN NULL; "
+            "END $$"
+        )
+    )
+    lead_source_type_enum = pgEnum(
         "referral",
         "channel",
         name="lead_source_type_enum",
         schema="iam",
         create_type=False,
     )
-    lead_source_type_enum.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "lead_sources",

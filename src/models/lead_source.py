@@ -20,7 +20,12 @@ class LeadSource(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_type: Mapped[str] = mapped_column(
-        Enum(LeadSourceType, name="lead_source_type_enum", schema="iam")
+        Enum(
+            LeadSourceType,
+            name="lead_source_type_enum",
+            schema="iam",
+            create_type=False,
+        )
     )
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     label: Mapped[str | None] = mapped_column(String(255), nullable=True)
