@@ -121,7 +121,9 @@ async def _fetch_all_activities(
         activity_map = record_map.get("activity", {})
 
         for aid in activity_ids:
-            entry = activity_map.get(aid, {}).get("value")
+            raw = activity_map.get(aid, {}).get("value", {})
+            # syncRecordValues-style double nesting: value.value contains actual data
+            entry = raw.get("value", raw) if isinstance(raw, dict) else raw
             if entry:
                 all_activities.append(entry)
 
@@ -144,16 +146,10 @@ def _parse_status_transitions(
     transitions: list[dict] = []
 
     for activity in activities:
-        logger.info(
-            "Activity type=%s, edits=%d",
-            activity.get("type"),
-            len(activity.get("edits", [])),
-        )
         edits = activity.get("edits", [])
         for edit in edits:
             block_data = edit.get("block_data")
             if not block_data:
-                logger.info("  Edit has no block_data, keys: %s", list(edit.keys()))
                 continue
 
             before_props = (
@@ -202,42 +198,41 @@ def _to_uuid(raw: str) -> str:
     return f"{s[:8]}-{s[8:12]}-{s[12:16]}-{s[16:20]}-{s[20:]}"
 
 
-async def _resolve_collection_id(
-    client: httpx.AsyncClient, database_id: str
-) -> str | None:
-    """Resolve real collection_id via loadCachedPageChunk.
+async def _resolve_collection_id(client: httpx.AsyncClient, page_id: str) -> str | None:
+    """Resolve collection_id by looking up a page's parent via syncRecordValues.
 
-    The database_id from official API is a collection_view_page block.
-    loadCachedPageChunk returns recordMap.collection with the real collection_id as key.
+    Pages in a Notion database have parent_table="collection" and parent_id=collection_id.
     """
-    db_uuid = _to_uuid(database_id)
+    page_uuid = _to_uuid(page_id)
     resp = await client.post(
-        "/api/v3/loadCachedPageChunk",
+        "/api/v3/syncRecordValues",
         json={
-            "page": {"id": db_uuid},
-            "limit": 10,
-            "cursor": {"stack": []},
-            "chunkNumber": 0,
-            "verticalColumns": False,
+            "requests": [
+                {"pointer": {"table": "block", "id": page_uuid}, "version": -1}
+            ]
         },
     )
     if resp.status_code != 200:
         logger.error(
-            "loadCachedPageChunk failed: %d %s", resp.status_code, resp.text[:300]
+            "syncRecordValues failed: %d %s", resp.status_code, resp.text[:300]
         )
         return None
     data = resp.json()
-    record_map = data.get("recordMap", {})
-    logger.info("recordMap keys: %s", list(record_map.keys()))
-    for key in record_map:
-        ids = list(record_map[key].keys())[:3]
-        logger.info("  recordMap.%s: %s", key, ids)
-    collection_map = record_map.get("collection", {})
-    if collection_map:
-        collection_id = next(iter(collection_map))
-        logger.info("Resolved collection_id: %s", collection_id)
-        return collection_id
-    logger.error("No collection found in recordMap for database %s", database_id)
+    # syncRecordValues nests: recordMap.block[uuid].value = {value: {block data}, role: ...}
+    block_data = (
+        data.get("recordMap", {})
+        .get("block", {})
+        .get(page_uuid, {})
+        .get("value", {})
+        .get("value", {})
+    )
+    if not block_data:
+        logger.error("Empty block data for page %s", page_uuid)
+        return None
+    parent_table = block_data.get("parent_table")
+    parent_id = block_data.get("parent_id")
+    if parent_table == "collection" and parent_id:
+        return parent_id
     return None
 
 
@@ -262,7 +257,7 @@ async def _fetch_status_prop_id(
     collection_value = (
         data.get("recordMap", {}).get("collection", {}).get(collection_id, {})
     )
-    schema = collection_value.get("value", {}).get("schema", {})
+    schema = collection_value.get("value", {}).get("value", {}).get("schema", {})
     for prop_id, prop_def in schema.items():
         if prop_def.get("name") == "Status" and prop_def.get("type") == "status":
             return prop_id
@@ -358,13 +353,11 @@ async def main(dry_run: bool = False) -> None:
             headers={"Content-Type": "application/json"},
             timeout=30.0,
         ) as http_client:
-            # Resolve real collection_id from Notion database block
-            database_id = mentee_repo._client.database_id
-            collection_id = await _resolve_collection_id(http_client, database_id)
+            # Resolve collection_id via first mentee page's parent
+            first_page_id = mentees[0].page_id
+            collection_id = await _resolve_collection_id(http_client, first_page_id)
             if not collection_id:
-                logger.error(
-                    "Cannot resolve collection_id for database %s", database_id
-                )
+                logger.error("Cannot resolve collection_id from page %s", first_page_id)
                 return
             status_prop_id = await _fetch_status_prop_id(http_client, collection_id)
             if not status_prop_id:
