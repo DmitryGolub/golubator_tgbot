@@ -24,7 +24,7 @@ scrape_configs:
     relabel_configs:
       # Extract service name from container name (strip "tg_bot." prefix)
       - source_labels: ["__meta_docker_container_name"]
-        regex: "/tg_bot\\.(.*)"
+        regex: '/tg_bot\.(.*)'
         target_label: service
 
     pipeline_stages:
