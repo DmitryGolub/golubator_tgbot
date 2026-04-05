@@ -227,7 +227,12 @@ async def _resolve_collection_id(
         )
         return None
     data = resp.json()
-    collection_map = data.get("recordMap", {}).get("collection", {})
+    record_map = data.get("recordMap", {})
+    logger.info("recordMap keys: %s", list(record_map.keys()))
+    for key in record_map:
+        ids = list(record_map[key].keys())[:3]
+        logger.info("  recordMap.%s: %s", key, ids)
+    collection_map = record_map.get("collection", {})
     if collection_map:
         collection_id = next(iter(collection_map))
         logger.info("Resolved collection_id: %s", collection_id)
