@@ -226,7 +226,9 @@ async def _resolve_collection_id(
         logger.error("getRecordValues failed: %d %s", resp.status_code, resp.text[:300])
         return None
 
-    results = resp.json().get("results", [])
+    raw = resp.json()
+    logger.info("getRecordValues raw response: %s", str(raw)[:800])
+    results = raw.get("results", [])
     for i, result in enumerate(results):
         value = result.get("value", {})
         cand_id, cand_table = candidates[i]
