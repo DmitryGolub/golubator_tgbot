@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select, update
-from sqlalchemy.exc import IntegrityError, MultipleResultsFound
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
@@ -235,12 +235,13 @@ async def _ensure_user_exists(
     return placeholder_id
 
 
-async def _safe_scalar_one_or_none(result, label: str, value: str):
-    try:
-        return result.scalar_one_or_none()
-    except MultipleResultsFound:
+def _safe_scalar_one_or_none(result, label: str, value: str):
+    rows = result.scalars().all()
+    if not rows:
+        return None
+    if len(rows) > 1:
         logger.warning("Multiple results for %s='%s', using first", label, value)
-        return result.scalars().first()
+    return rows[0]
 
 
 async def _resolve_mentor_id(
@@ -252,7 +253,7 @@ async def _resolve_mentor_id(
         result = await session.execute(
             select(Mentor.id).where(Mentor.email == mentor_email)
         )
-        mid = await _safe_scalar_one_or_none(result, "mentor.email", mentor_email)
+        mid = _safe_scalar_one_or_none(result, "mentor.email", mentor_email)
         if mid:
             return mid
     if mentor_name:
@@ -261,7 +262,7 @@ async def _resolve_mentor_id(
             result = await session.execute(
                 select(Mentor.id).where(func.ltrim(Mentor.name, "@") == clean)
             )
-            mid = await _safe_scalar_one_or_none(result, "mentor.name", clean)
+            mid = _safe_scalar_one_or_none(result, "mentor.name", clean)
             if mid:
                 return mid
     return None
@@ -276,7 +277,7 @@ async def _resolve_mentor_telegram_id(
         result = await session.execute(
             select(Mentor.telegram_id).where(Mentor.email == mentor_email)
         )
-        tid = await _safe_scalar_one_or_none(result, "mentor.email", mentor_email)
+        tid = _safe_scalar_one_or_none(result, "mentor.email", mentor_email)
         if tid:
             return tid
     if mentor_name:
@@ -285,7 +286,7 @@ async def _resolve_mentor_telegram_id(
             result = await session.execute(
                 select(Mentor.telegram_id).where(func.ltrim(Mentor.name, "@") == clean)
             )
-            tid = await _safe_scalar_one_or_none(result, "mentor.name", clean)
+            tid = _safe_scalar_one_or_none(result, "mentor.name", clean)
             if tid:
                 return tid
     return None
@@ -298,7 +299,7 @@ async def _resolve_mentee_id(session: AsyncSession, tg_tag: str | None) -> int |
     result = await session.execute(
         select(User.telegram_id).where(User.username == clean)
     )
-    tid = await _safe_scalar_one_or_none(result, "user.username", clean)
+    tid = _safe_scalar_one_or_none(result, "user.username", clean)
     if tid is not None:
         return tid
     # Fallback: look up by doc_name in mentees (covers unregistered students)
@@ -306,7 +307,7 @@ async def _resolve_mentee_id(session: AsyncSession, tg_tag: str | None) -> int |
         result = await session.execute(
             select(Mentee.telegram_id).where(Mentee.doc_name == pattern)
         )
-        tid = await _safe_scalar_one_or_none(result, "mentee.doc_name", pattern)
+        tid = _safe_scalar_one_or_none(result, "mentee.doc_name", pattern)
         if tid is not None:
             return tid
     return None
