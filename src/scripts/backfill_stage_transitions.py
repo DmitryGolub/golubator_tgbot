@@ -203,34 +203,50 @@ def _to_uuid(raw: str) -> str:
 
 
 async def _resolve_collection_id(
-    client: httpx.AsyncClient, database_id: str
+    client: httpx.AsyncClient, database_id: str, data_source_id: str | None
 ) -> str | None:
-    """Resolve real collection_id from a Notion database block."""
-    uuid = _to_uuid(database_id)
+    """Try multiple ID candidates to resolve real collection_id."""
+    db_uuid = _to_uuid(database_id)
+    ds_uuid = data_source_id  # already has dashes
+
+    # Try each candidate as both block and collection
+    candidates = [
+        (db_uuid, "block"),
+        (db_uuid, "collection"),
+    ]
+    if ds_uuid:
+        candidates.append((ds_uuid, "block"))
+        candidates.append((ds_uuid, "collection"))
+
     resp = await client.post(
         "/api/v3/getRecordValues",
-        json={"requests": [{"id": uuid, "table": "block"}]},
+        json={"requests": [{"id": cid, "table": tbl} for cid, tbl in candidates]},
     )
     if resp.status_code != 200:
-        logger.error(
-            "getRecordValues (block) failed: %d %s", resp.status_code, resp.text[:300]
+        logger.error("getRecordValues failed: %d %s", resp.status_code, resp.text[:300])
+        return None
+
+    results = resp.json().get("results", [])
+    for i, result in enumerate(results):
+        value = result.get("value", {})
+        cand_id, cand_table = candidates[i]
+        if not value:
+            continue
+        logger.info(
+            "Candidate %s/%s: type=%s, keys=%s",
+            cand_table,
+            cand_id,
+            value.get("type"),
+            list(value.keys())[:10],
         )
-        return None
-    data = resp.json()
-    results = data.get("results", [])
-    if not results:
-        logger.info("_resolve_collection_id: no results for %s", uuid)
-        return None
-    value = results[0].get("value", {})
-    logger.info(
-        "_resolve_collection_id: block type=%s, keys=%s",
-        value.get("type"),
-        list(value.keys())[:15],
-    )
-    cid = value.get("collection_id")
-    if not cid:
-        logger.info("_resolve_collection_id: full value=%s", str(value)[:500])
-    return cid
+        # If it's a block with collection_id → return that
+        if cand_table == "block" and value.get("collection_id"):
+            return value["collection_id"]
+        # If it's a collection with schema → it IS the collection_id
+        if cand_table == "collection" and value.get("schema"):
+            return cand_id
+
+    return None
 
 
 async def _fetch_status_prop_id(
@@ -346,7 +362,10 @@ async def main(dry_run: bool = False) -> None:
         ) as http_client:
             # Resolve real collection_id from Notion database block
             database_id = mentee_repo._client.database_id
-            collection_id = await _resolve_collection_id(http_client, database_id)
+            data_source_id = mentee_repo._client.data_source_id
+            collection_id = await _resolve_collection_id(
+                http_client, database_id, data_source_id
+            )
             if not collection_id:
                 logger.error(
                     "Cannot resolve collection_id for database %s", database_id
