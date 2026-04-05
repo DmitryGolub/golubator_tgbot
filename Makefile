@@ -61,7 +61,7 @@ cert-renew:
 	sudo nginx -s reload
 
 backfill-transitions:
-	docker compose exec bot python -m src.scripts.backfill_stage_transitions
+	python -m src.scripts.backfill_stage_transitions
 
 # ── E2E tests ──
 test-e2e-up:
