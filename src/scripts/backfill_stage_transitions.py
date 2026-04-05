@@ -219,8 +219,18 @@ async def _resolve_collection_id(
     data = resp.json()
     results = data.get("results", [])
     if not results:
+        logger.debug("_resolve_collection_id: no results for %s", uuid)
         return None
-    return results[0].get("value", {}).get("collection_id")
+    value = results[0].get("value", {})
+    logger.debug(
+        "_resolve_collection_id: block type=%s, keys=%s",
+        value.get("type"),
+        list(value.keys())[:15],
+    )
+    cid = value.get("collection_id")
+    if not cid:
+        logger.debug("_resolve_collection_id: full value=%s", str(value)[:500])
+    return cid
 
 
 async def _fetch_status_prop_id(
