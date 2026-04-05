@@ -51,3 +51,15 @@ class EditMeetingCB(CallbackData, prefix="mtg_edit"):
 
 class EditMeetingFieldCB(CallbackData, prefix="mtg_edit_field"):
     field: str  # "datetime", "description", "link", "type", "student"
+
+
+class ToggleMeetingParticipantCB(CallbackData, prefix="mtg_toggle"):
+    user_id: int
+
+
+class ConfirmParticipantSelectionCB(CallbackData, prefix="mtg_confirm_sel"):
+    pass
+
+
+class ShowAllUsersCB(CallbackData, prefix="mtg_show_all"):
+    pass

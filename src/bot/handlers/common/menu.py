@@ -2,7 +2,6 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.filters.permission import PermissionFilter
@@ -48,11 +47,7 @@ async def _render_menu(
     if isinstance(message_or_callback, Message):
         await message_or_callback.answer(text=text, reply_markup=markup)
     else:
-        try:
-            await safe_edit_text(message_or_callback, text, reply_markup=markup)
-        except TelegramBadRequest as exc:
-            if "message is not modified" not in str(exc).lower():
-                raise
+        await safe_edit_text(message_or_callback, text, reply_markup=markup)
 
 
 @router.message(Command("menu"))
@@ -103,32 +98,20 @@ async def cb_menu_cohorts(callback: CallbackQuery, state: FSMContext):
         kb.button(text="➕ Создать тип", callback_data="cohort_create_type")
         kb.button(text="⬅️ Назад к меню", callback_data="back_to_menu")
         kb.adjust(1)
-        try:
-            await safe_edit_text(callback, text, reply_markup=kb.as_markup())
-        except TelegramBadRequest as exc:
-            if "message is not modified" not in str(exc).lower():
-                raise
+        await safe_edit_text(callback, text, reply_markup=kb.as_markup())
         return
 
     header = await UiTextService.get("cohort.types.header")
     markup, types_map = cohort_types_keyboard(types_with_counts)
     await state.update_data(cohort_types_map=types_map)
-    try:
-        await safe_edit_text(callback, header, reply_markup=markup)
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+    await safe_edit_text(callback, header, reply_markup=markup)
 
 
 @router.callback_query(PermissionFilter("manage_mailings"), F.data == "menu_mailings")
 async def cb_menu_mailings(callback: CallbackQuery):
     await callback.answer()
     text = "Рассылки перенесены в систему триггеров. Используйте меню триггеров."
-    try:
-        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+    await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
 
 
 # ==== MENTOR ====
@@ -179,15 +162,11 @@ async def cb_mentor_students_menu(callback: CallbackQuery):
     mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     if not mentees:
         text = await UiTextService.get("menu.students.empty")
-        try:
-            await safe_edit_text(
-                callback,
-                text,
-                reply_markup=await _mentor_students_menu_kb(),
-            )
-        except TelegramBadRequest as exc:
-            if "message is not modified" not in str(exc).lower():
-                raise
+        await safe_edit_text(
+            callback,
+            text,
+            reply_markup=await _mentor_students_menu_kb(),
+        )
         return
 
     header = await UiTextService.get("menu.students.header")
@@ -209,15 +188,11 @@ async def cb_mentor_students_menu(callback: CallbackQuery):
             f"   • Состояние: <b>{e(status_display)}</b>\n"
         )
 
-    try:
-        await safe_edit_text(
-            callback,
-            "\n".join(lines),
-            reply_markup=await _mentor_students_menu_kb(),
-        )
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+    await safe_edit_text(
+        callback,
+        "\n".join(lines),
+        reply_markup=await _mentor_students_menu_kb(),
+    )
 
 
 @router.callback_query(
@@ -312,11 +287,7 @@ async def cb_mentor_me_info(callback: CallbackQuery):
 
     text = "\n".join(lines)
 
-    try:
-        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+    await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
 
 
 # ==== STUDENT ====
@@ -360,8 +331,4 @@ async def cb_student_me_info(callback: CallbackQuery):
         f"Состояние: <b>{e(mentee_state)}</b>\n"
     )
 
-    try:
-        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+    await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())

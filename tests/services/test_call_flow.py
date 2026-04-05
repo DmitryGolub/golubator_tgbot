@@ -9,9 +9,11 @@ from src.services.call_flow import (
     CallFlowService,
     MeetingAlreadyCompletedError,
     MeetingNotFoundError,
-    MeetingStudentNotFoundError,
     MentorNotInMeetingError,
+    NoOtherParticipantsError,
+    _is_participant,
     _resolve_mentor,
+    _resolve_other_participants,
     _resolve_student,
 )
 from tests.conftest import make_meeting, make_user
@@ -39,6 +41,17 @@ def _meeting(**kwargs):
     return make_meeting(**defaults)
 
 
+class TestIsParticipant:
+    def test_is_participant(self):
+        meeting = _meeting()
+        assert _is_participant(meeting, MENTOR_ID) is True
+        assert _is_participant(meeting, STUDENT_ID) is True
+
+    def test_not_participant(self):
+        meeting = _meeting()
+        assert _is_participant(meeting, 999) is False
+
+
 class TestResolveMentor:
     def test_found(self):
         meeting = _meeting()
@@ -48,12 +61,25 @@ class TestResolveMentor:
         meeting = _meeting()
         assert _resolve_mentor(meeting, 999) is None
 
-    def test_mentor_telegram_id_mismatch(self):
-        meeting = make_meeting(
-            participants=[make_user(telegram_id=MENTOR_ID)],
-            mentor_telegram_id=999,
-        )
-        assert _resolve_mentor(meeting, MENTOR_ID) is None
+
+class TestResolveOtherParticipants:
+    def test_single_other(self):
+        meeting = _meeting()
+        result = _resolve_other_participants(meeting, MENTOR_ID)
+        assert len(result) == 1
+        assert result[0].telegram_id == STUDENT_ID
+
+    def test_multiple_participants(self):
+        p3 = make_user(telegram_id=300)
+        meeting = _meeting(participants=[_mentor(), _student(), p3])
+        result = _resolve_other_participants(meeting, MENTOR_ID)
+        assert len(result) == 2
+        assert {p.telegram_id for p in result} == {STUDENT_ID, 300}
+
+    def test_empty_participants(self):
+        meeting = make_meeting(participants=[])
+        result = _resolve_other_participants(meeting, MENTOR_ID)
+        assert result == []
 
 
 class TestResolveStudent:
@@ -82,7 +108,7 @@ class TestResolveStudent:
 class TestStartCall:
     async def test_happy_path(self, mock_meeting_dao):
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=_meeting())
-        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=None)
+        mock_meeting_dao.get_active_call_for_user = AsyncMock(return_value=None)
         started = _meeting(call_status="ongoing", student_telegram_id=STUDENT_ID)
         mock_meeting_dao.start_call = AsyncMock(return_value=started)
 
@@ -90,6 +116,7 @@ class TestStartCall:
             mentor_id=MENTOR_ID, meeting_id=MEETING_ID
         )
         assert result.id == started.id
+        mock_meeting_dao.start_call.assert_awaited_once_with(MEETING_ID)
 
     async def test_meeting_not_found(self, mock_meeting_dao):
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=None)
@@ -98,7 +125,7 @@ class TestStartCall:
                 mentor_id=MENTOR_ID, meeting_id=MEETING_ID
             )
 
-    async def test_mentor_not_in_meeting(self, mock_meeting_dao):
+    async def test_user_not_participant(self, mock_meeting_dao):
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=_meeting())
         with pytest.raises(MentorNotInMeetingError):
             await CallFlowService().start_call(mentor_id=999, meeting_id=MEETING_ID)
@@ -116,7 +143,7 @@ class TestStartCall:
     async def test_active_call_exists(self, mock_meeting_dao):
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=_meeting())
         existing = _meeting(call_status="ongoing", student_telegram_id=STUDENT_ID)
-        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=existing)
+        mock_meeting_dao.get_active_call_for_user = AsyncMock(return_value=existing)
         with pytest.raises(ActiveCallAlreadyExistsError) as exc_info:
             await CallFlowService().start_call(
                 mentor_id=MENTOR_ID, meeting_id=MEETING_ID
@@ -127,20 +154,20 @@ class TestStartCall:
         mock_meeting_dao.get_with_participants = AsyncMock(
             return_value=_meeting(call_status="finished")
         )
-        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=None)
+        mock_meeting_dao.get_active_call_for_user = AsyncMock(return_value=None)
         with pytest.raises(CallAlreadyExistsError):
             await CallFlowService().start_call(
                 mentor_id=MENTOR_ID, meeting_id=MEETING_ID
             )
 
-    async def test_no_student(self, mock_meeting_dao):
+    async def test_no_other_participants(self, mock_meeting_dao):
         meeting = make_meeting(
             participants=[_mentor()],
             mentor_telegram_id=MENTOR_ID,
         )
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=meeting)
-        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=None)
-        with pytest.raises(MeetingStudentNotFoundError):
+        mock_meeting_dao.get_active_call_for_user = AsyncMock(return_value=None)
+        with pytest.raises(NoOtherParticipantsError):
             await CallFlowService().start_call(
                 mentor_id=MENTOR_ID, meeting_id=MEETING_ID
             )
@@ -162,7 +189,7 @@ class TestEndActiveCall:
             mentor_telegram_id=MENTOR_ID,
             student_telegram_id=STUDENT_ID,
         )
-        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=active)
+        mock_meeting_dao.get_active_call_for_user = AsyncMock(return_value=active)
         mock_meeting_dao.finish_call = AsyncMock(return_value=finished)
 
         result = await CallFlowService().end_active_call(mentor_id=MENTOR_ID)
@@ -170,13 +197,13 @@ class TestEndActiveCall:
         assert result.meeting_was_completed is True
 
     async def test_no_active_call(self, mock_meeting_dao):
-        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=None)
+        mock_meeting_dao.get_active_call_for_user = AsyncMock(return_value=None)
         with pytest.raises(ActiveCallNotFoundError):
             await CallFlowService().end_active_call(mentor_id=MENTOR_ID)
 
     async def test_finish_returns_none(self, mock_meeting_dao):
         active = _meeting(call_status="ongoing")
-        mock_meeting_dao.get_active_call_for_mentor = AsyncMock(return_value=active)
+        mock_meeting_dao.get_active_call_for_user = AsyncMock(return_value=active)
         mock_meeting_dao.finish_call = AsyncMock(return_value=None)
         with pytest.raises(ActiveCallNotFoundError):
             await CallFlowService().end_active_call(mentor_id=MENTOR_ID)

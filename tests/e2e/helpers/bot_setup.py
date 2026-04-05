@@ -74,9 +74,9 @@ class BotSetup:
         msg = await self._admin.send_command("/menu")
         msg = await self._admin.click_button(msg, data="menu_users")
         msg = await self._admin.click_button(msg, data="user_update_menu")
+        msg = await self._find_user_button(msg, telegram_id)
         msg = await self._admin.click_button(msg, data="upd_param:role")
-        msg = await self._admin.click_button(msg, data=f"upd_enum:role:{role_name}")
-        await self._find_user_button(msg, telegram_id)
+        await self._admin.click_button(msg, data=f"upd_enum:role:{role_name}")
 
     async def ensure_role_permission(
         self, role_name: str, permission_name: str
@@ -176,20 +176,15 @@ class BotSetup:
         msg = await self._admin.send_command("/menu")
         msg = await self._admin.click_button(msg, data="menu_users")
         msg = await self._admin.click_button(msg, data="user_update_menu")
+        msg = await self._find_user_button(msg, telegram_id)
 
         if cohort_type == "Status":
             msg = await self._admin.click_button(msg, data="upd_param:status")
-            msg = await self._admin.click_button(
-                msg, data=f"upd_enum:status:{cohort_value}"
-            )
+            await self._admin.click_button(msg, data=f"upd_enum:status:{cohort_value}")
         else:
             msg = await self._admin.click_button(msg, data="upd_param:cohort")
             msg = await self._admin.click_button(msg, data=f"upd_ctype:{cohort_type}")
-            msg = await self._admin.click_button(
-                msg, data=f"upd_enum:cohort:{cohort_value}"
-            )
-
-        await self._find_user_button(msg, telegram_id)
+            await self._admin.click_button(msg, data=f"upd_enum:cohort:{cohort_value}")
 
     # ── Survey template setup ────────────────────────────────────────────────
 

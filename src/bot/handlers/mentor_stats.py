@@ -2,8 +2,6 @@ import logging
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
-from aiogram.exceptions import TelegramBadRequest
-
 from src.bot.callbacks.mentor_stats import MentorStatsCB
 from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
@@ -66,11 +64,7 @@ async def cb_mentor_my_stats(callback: CallbackQuery):
     stats = await MentorStatsDAO.get_stats(mentor_id=mentor_id)
     text = await _format_stats(stats, mentor.name)
 
-    try:
-        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+    await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
 
 
 # Admin: select mentor
@@ -89,15 +83,11 @@ async def cb_admin_mentor_stats(callback: CallbackQuery):
         )
         return
 
-    try:
-        await safe_edit_text(
-            callback,
-            await UiTextService.get("mentor_stats.select"),
-            reply_markup=mentor_select_keyboard(mentors),
-        )
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+    await safe_edit_text(
+        callback,
+        await UiTextService.get("mentor_stats.select"),
+        reply_markup=mentor_select_keyboard(mentors),
+    )
 
 
 # Admin: view selected mentor stats
@@ -120,11 +110,7 @@ async def cb_admin_view_mentor_stats(
     stats = await MentorStatsDAO.get_stats(mentor_id=mentor_id)
     text = await _format_stats(stats, mentor.name)
 
-    try:
-        await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+    await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
 
 
 # Admin: paginate mentor list

@@ -14,7 +14,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     func,
-    text,
 )
 
 if TYPE_CHECKING:
@@ -35,15 +34,7 @@ class ProposalStatus(enum.Enum):
 
 class Meeting(Base):
     __tablename__ = "meetings"
-    __table_args__ = (
-        Index(
-            "ix_meetings_active_mentor",
-            "mentor_telegram_id",
-            unique=True,
-            postgresql_where=text("call_status = 'идёт'"),
-        ),
-        {"schema": "meetings"},
-    )
+    __table_args__ = ({"schema": "meetings"},)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -139,6 +130,17 @@ class Meeting(Base):
         lazy="selectin",
         overlaps="student",
     )
+
+    @property
+    def other_participants(self) -> list["User"]:
+        """All participants except the creator (mentor_telegram_id)."""
+        return [
+            p for p in self.participants if p.telegram_id != self.mentor_telegram_id
+        ]
+
+    @property
+    def participant_ids(self) -> set[int]:
+        return {p.telegram_id for p in self.participants}
 
 
 class MeetingUser(Base):

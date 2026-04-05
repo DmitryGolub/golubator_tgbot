@@ -7,15 +7,18 @@ from src.bot.callbacks.meeting import (
     ChooseMeetingStudentCB,
     ChooseMeetingTypeCB,
     ConfirmMeetingCB,
+    ConfirmParticipantSelectionCB,
     DeclineMeetingCB,
     DeleteMeetingCB,
     EditMeetingCB,
     EditMeetingFieldCB,
     ProposeNewTimeCB,
+    ShowAllUsersCB,
     StartMeetingCallCB,
     ChooseMeetingDateCB,
     NavigateMeetingMonthCB,
     ChooseMeetingTimeCB,
+    ToggleMeetingParticipantCB,
 )
 from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
 from src.models.meeting import Meeting, ProposalStatus
@@ -75,7 +78,7 @@ def edit_meeting_fields_keyboard() -> InlineKeyboardMarkup:
     )
     kb.row(
         InlineKeyboardButton(
-            text="👤 Ученик",
+            text="👥 Участники",
             callback_data=EditMeetingFieldCB(field="student").pack(),
         )
     )
@@ -239,6 +242,63 @@ def student_meetings_keyboard(
         )
     )
     kb.row(InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu"))
+    return kb.as_markup()
+
+
+def meeting_participants_multiselect_keyboard(
+    users: list,
+    selected_ids: set[int],
+    page: int = 0,
+    show_all_button: bool = True,
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+
+    page_items, total_pages = get_page_slice(list(users), page)
+
+    nav = paginate_buttons("participants", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    for user in page_items:
+        tid = getattr(user, "telegram_id", None)
+        if tid is None and hasattr(user, "user") and user.user:
+            tid = user.user.telegram_id
+        display_name = getattr(user, "doc_name", None) or getattr(user, "name", None)
+        if not display_name and hasattr(user, "user") and user.user:
+            display_name = user.user.name
+        if not display_name:
+            display_name = f"id={tid}"
+        username = getattr(user, "username", None)
+        if not username and hasattr(user, "user") and user.user:
+            username = user.user.username
+        label = f"{display_name} @{username}" if username else display_name
+        prefix = "✓ " if tid in selected_ids else "  "
+        kb.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{label}",
+                callback_data=ToggleMeetingParticipantCB(user_id=tid).pack(),
+            )
+        )
+
+    if show_all_button:
+        kb.row(
+            InlineKeyboardButton(
+                text="🔍 Показать всех пользователей",
+                callback_data=ShowAllUsersCB().pack(),
+            )
+        )
+
+    if selected_ids:
+        kb.row(
+            InlineKeyboardButton(
+                text=f"✅ Готово ({len(selected_ids)})",
+                callback_data=ConfirmParticipantSelectionCB().pack(),
+            )
+        )
+
+    kb.row(
+        InlineKeyboardButton(text="❌ Отмена", callback_data="meeting_create_cancel")
+    )
     return kb.as_markup()
 
 

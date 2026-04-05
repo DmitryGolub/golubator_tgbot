@@ -33,14 +33,30 @@ class MeetingDAO(BaseDAO):
         description: str | None,
         meeting_link: str | None,
         scheduled_at: datetime | None,
-        mentor_id: int,
-        student_id: int | None = None,
+        creator_id: int,
+        participant_ids: list[int] | None = None,
         topic: str | None = None,
         event_type: str | None = None,
         mentee_telegram_tag: str | None = None,
         proposal_status: ProposalStatus = ProposalStatus.confirmed,
         proposed_by: int | None = None,
+        # backward compat aliases
+        mentor_id: int | None = None,
+        student_id: int | None = None,
     ) -> Meeting:
+        # Support old call-sites: mentor_id → creator_id, student_id → participant
+        if mentor_id is not None and creator_id is None:
+            creator_id = mentor_id
+        if participant_ids is None:
+            participant_ids = [student_id] if student_id is not None else []
+
+        # Determine student_telegram_id for backward compat (first non-creator)
+        compat_student_id = next(
+            (pid for pid in participant_ids if pid != creator_id), None
+        )
+
+        all_ids = {creator_id} | set(participant_ids)
+
         async with async_session_maker() as session:
             meeting_stmt = (
                 insert(Meeting)
@@ -50,8 +66,8 @@ class MeetingDAO(BaseDAO):
                     scheduled_at=scheduled_at,
                     topic=topic or description,
                     event_type=event_type,
-                    mentor_telegram_id=mentor_id,
-                    student_telegram_id=student_id,
+                    mentor_telegram_id=creator_id,
+                    student_telegram_id=compat_student_id,
                     mentee_telegram_tag=mentee_telegram_tag,
                     proposal_status=proposal_status,
                     proposed_by=proposed_by,
@@ -61,11 +77,8 @@ class MeetingDAO(BaseDAO):
             meeting_res = await session.execute(meeting_stmt)
             meeting: Meeting = meeting_res.scalar_one()
 
-            participants = [{"meeting_id": meeting.id, "user_id": mentor_id}]
-            if student_id is not None:
-                participants.append({"meeting_id": meeting.id, "user_id": student_id})
-            participants_stmt = insert(MeetingUser).values(participants)
-            await session.execute(participants_stmt)
+            rows = [{"meeting_id": meeting.id, "user_id": uid} for uid in all_ids]
+            await session.execute(insert(MeetingUser).values(rows))
             await session.commit()
 
             return await cls._reload_with_participants(session, meeting.id)
@@ -100,15 +113,14 @@ class MeetingDAO(BaseDAO):
             return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
-    async def delete_for_mentor(
-        cls, meeting_id: int, mentor_id: int
+    async def delete_for_participant(
+        cls, meeting_id: int, user_id: int
     ) -> tuple[bool, str | None]:
         async with async_session_maker() as session:
-            # ensure mentor is participant of meeting
             query = (
                 select(Meeting)
                 .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
-                .where(Meeting.id == meeting_id, MeetingUser.user_id == mentor_id)
+                .where(Meeting.id == meeting_id, MeetingUser.user_id == user_id)
             )
             result = await session.execute(query)
             meeting = result.scalar_one_or_none()
@@ -120,13 +132,17 @@ class MeetingDAO(BaseDAO):
             await session.commit()
             return True, notion_page_id
 
+    # Keep old name as alias for backward compat
+    delete_for_mentor = delete_for_participant
+
     @classmethod
-    async def get_active_call_for_mentor(cls, mentor_id: int) -> Optional[Meeting]:
+    async def get_active_call_for_user(cls, user_id: int) -> Optional[Meeting]:
         async with async_session_maker() as session:
             query = (
                 select(Meeting)
+                .join(MeetingUser, MeetingUser.meeting_id == Meeting.id)
                 .where(
-                    Meeting.mentor_telegram_id == mentor_id,
+                    MeetingUser.user_id == user_id,
                     Meeting.call_status == CallStatus.ongoing,
                 )
                 .options(joinedload(Meeting.participants).selectinload(User.role_rel))
@@ -137,8 +153,11 @@ class MeetingDAO(BaseDAO):
             result = result.unique()
             return result.scalar_one_or_none()
 
+    # Keep old name as alias for backward compat
+    get_active_call_for_mentor = get_active_call_for_user
+
     @classmethod
-    async def start_call(cls, meeting_id: int, student_id: int) -> Optional[Meeting]:
+    async def start_call(cls, meeting_id: int) -> Optional[Meeting]:
         async with async_session_maker() as session:
             stmt = (
                 update(Meeting)
@@ -146,10 +165,7 @@ class MeetingDAO(BaseDAO):
                     Meeting.id == meeting_id,
                     Meeting.call_status.is_(None),
                 )
-                .values(
-                    call_status=CallStatus.ongoing,
-                    student_telegram_id=student_id,
-                )
+                .values(call_status=CallStatus.ongoing)
                 .returning(Meeting.id)
             )
             result = await session.execute(stmt)
@@ -162,14 +178,19 @@ class MeetingDAO(BaseDAO):
             return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
-    async def finish_call(cls, meeting_id: int, mentor_id: int) -> Optional[Meeting]:
+    async def finish_call(cls, meeting_id: int, user_id: int) -> Optional[Meeting]:
         async with async_session_maker() as session:
+            # Verify user is a participant
+            participant_check = select(MeetingUser.meeting_id).where(
+                MeetingUser.meeting_id == meeting_id,
+                MeetingUser.user_id == user_id,
+            )
             now = datetime.now(timezone.utc)
             stmt = (
                 update(Meeting)
                 .where(
                     Meeting.id == meeting_id,
-                    Meeting.mentor_telegram_id == mentor_id,
+                    Meeting.id.in_(participant_check),
                     Meeting.call_status == CallStatus.ongoing,
                 )
                 .values(
@@ -368,27 +389,38 @@ class MeetingDAO(BaseDAO):
             return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
-    async def update_student(
-        cls, meeting_id: int, new_student_id: int
+    async def update_participants(
+        cls, meeting_id: int, participant_ids: list[int]
     ) -> Meeting | None:
         async with async_session_maker() as session:
             meeting = await session.get(Meeting, meeting_id)
             if not meeting:
                 return None
-            old_student = meeting.student_telegram_id
-            meeting.student_telegram_id = new_student_id
-            if old_student:
-                await session.execute(
-                    delete(MeetingUser).where(
-                        MeetingUser.meeting_id == meeting_id,
-                        MeetingUser.user_id == old_student,
-                    )
-                )
+
+            creator_id = meeting.mentor_telegram_id
+
+            # Remove all non-creator participants
             await session.execute(
-                insert(MeetingUser)
-                .values(meeting_id=meeting_id, user_id=new_student_id)
-                .on_conflict_do_nothing()
+                delete(MeetingUser).where(
+                    MeetingUser.meeting_id == meeting_id,
+                    MeetingUser.user_id != creator_id,
+                )
             )
+
+            # Add new participants
+            all_ids = {creator_id} | set(participant_ids)
+            for uid in all_ids:
+                await session.execute(
+                    insert(MeetingUser)
+                    .values(meeting_id=meeting_id, user_id=uid)
+                    .on_conflict_do_nothing()
+                )
+
+            # Update student_telegram_id for backward compat (first non-creator)
+            compat_student = next(
+                (pid for pid in participant_ids if pid != creator_id), None
+            )
+            meeting.student_telegram_id = compat_student
             await session.commit()
             return await cls._reload_with_participants(session, meeting_id)
 

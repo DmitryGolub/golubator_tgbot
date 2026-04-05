@@ -38,3 +38,8 @@ class ChooseMenteeCB(CallbackData, prefix="upd_mentee"):
 # выбор типа когорты (Category, Stream, etc.)
 class ChooseCohortTypeCB(CallbackData, prefix="upd_ctype"):
     cohort_type: str
+
+
+# cancel update flow
+class CancelUpdateCB(CallbackData, prefix="upd_cancel"):
+    pass

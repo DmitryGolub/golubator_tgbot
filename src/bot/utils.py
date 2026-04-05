@@ -1,3 +1,4 @@
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 
 
@@ -17,4 +18,9 @@ async def safe_edit_text(
     if not isinstance(msg, Message):
         await callback.answer(text[:200], show_alert=True)
         return None
-    return await msg.edit_text(text, **kwargs)
+    try:
+        return await msg.edit_text(text, **kwargs)
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
+        return None

@@ -74,8 +74,11 @@ def make_meeting(
     call_status=None,
     student_telegram_id: int | None = None,
     mentor_telegram_id: int | None = None,
+    proposal_status=None,
+    proposed_by: int | None = None,
 ):
-    return SimpleNamespace(
+    p_list = participants or []
+    ns = SimpleNamespace(
         id=id,
         description=description,
         scheduled_at=scheduled_at,
@@ -95,9 +98,15 @@ def make_meeting(
         updated_at=None,
         call_status=call_status,
         student_telegram_id=student_telegram_id,
-        participants=participants or [],
+        participants=p_list,
         student=None,
+        proposal_status=proposal_status,
+        proposed_by=proposed_by,
     )
+    # Add computed properties matching Meeting model
+    ns.other_participants = [p for p in p_list if p.telegram_id != mentor_telegram_id]
+    ns.participant_ids = {p.telegram_id for p in p_list}
+    return ns
 
 
 def make_trigger_rule(

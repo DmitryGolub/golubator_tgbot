@@ -5,21 +5,22 @@ from aiogram.fsm.context import FSMContext
 from datetime import datetime, timedelta, date, timezone
 
 from src.utils.tz import MSK
-from aiogram.exceptions import TelegramBadRequest
 
 from src.bot.callbacks.meeting import (
-    ChooseMeetingStudentCB,
     ChooseMeetingTypeCB,
     ConfirmMeetingCB,
+    ConfirmParticipantSelectionCB,
     DeclineMeetingCB,
     DeleteMeetingCB,
     EditMeetingCB,
     EditMeetingFieldCB,
     ProposeNewTimeCB,
+    ShowAllUsersCB,
     StartMeetingCallCB,
     ChooseMeetingDateCB,
     NavigateMeetingMonthCB,
     ChooseMeetingTimeCB,
+    ToggleMeetingParticipantCB,
 )
 from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
@@ -30,7 +31,7 @@ from src.bot.keyboards.meeting import (
     student_past_meetings_keyboard,
     meeting_cancel_keyboard,
     meeting_link_cancel_keyboard,
-    meeting_students_keyboard,
+    meeting_participants_multiselect_keyboard,
     meeting_type_keyboard,
     meeting_calendar_keyboard,
     meeting_time_keyboard,
@@ -58,8 +59,8 @@ from src.services.call_flow import (
     CallFlowService,
     MeetingAlreadyCompletedError,
     MeetingNotFoundError,
-    MeetingStudentNotFoundError,
     MentorNotInMeetingError,
+    NoOtherParticipantsError,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,29 +86,26 @@ MEETINGS_PAGE_SIZE = 5
 
 
 def _resolve_participants(meeting, mentor_tg_ids: set[int]):
-    """Return (mentor, student) participant pair for a meeting."""
-    mentor = next(
-        (p for p in meeting.participants if p.telegram_id in mentor_tg_ids),
-        None,
-    )
-    if not mentor and meeting.mentor_telegram_id:
-        mentor = next(
-            (
-                p
-                for p in meeting.participants
-                if p.telegram_id == meeting.mentor_telegram_id
-            ),
-            None,
-        )
-    student = next(
+    """Return (creator, list[others]) for a meeting."""
+    creator = next(
         (
             p
             for p in meeting.participants
-            if not mentor or p.telegram_id != mentor.telegram_id
+            if p.telegram_id == meeting.mentor_telegram_id
         ),
         None,
     )
-    return mentor, student
+    if not creator:
+        creator = next(
+            (p for p in meeting.participants if p.telegram_id in mentor_tg_ids),
+            None,
+        )
+    others = [
+        p
+        for p in meeting.participants
+        if not creator or p.telegram_id != creator.telegram_id
+    ]
+    return creator, others
 
 
 def _filter_visible_meetings(
@@ -115,12 +113,15 @@ def _filter_visible_meetings(
 ) -> list:
     result = []
     for meeting in meetings:
-        mentor, student = _resolve_participants(meeting, mentor_tg_ids)
-        if viewer_is_mentor and mentor and mentor.telegram_id != viewer_id:
+        participant_ids = {p.telegram_id for p in meeting.participants}
+        if viewer_id in participant_ids:
+            result.append(meeting)
             continue
-        if not viewer_is_mentor and student and student.telegram_id != viewer_id:
-            continue
-        result.append(meeting)
+        # Backward compat: check legacy fields
+        if viewer_is_mentor and meeting.mentor_telegram_id == viewer_id:
+            result.append(meeting)
+        elif not viewer_is_mentor and meeting.student_telegram_id == viewer_id:
+            result.append(meeting)
     return result
 
 
@@ -132,7 +133,7 @@ def _format_meetings(
     title: str = "Мои созвоны:",
 ) -> str:
     if not meetings:
-        return "Список созвонов пуст."
+        return f"<b>{title}</b>\n\nСписок созвонов пуст."
 
     start = page * page_size
     page_meetings = meetings[start : start + page_size]
@@ -141,22 +142,24 @@ def _format_meetings(
     for local_idx, meeting in enumerate(page_meetings):
         display_idx = start + local_idx + 1
 
-        mentor, student = _resolve_participants(meeting, mentor_tg_ids)
+        creator, others = _resolve_participants(meeting, mentor_tg_ids)
 
-        mentor_text = (
-            f"Ментор: <b>{e(mentor.name)}</b>"
-            + (f" @{e(mentor.username)}" if mentor.username else "")
-            if mentor
-            else "Ментор: —"
+        creator_text = (
+            f"Организатор: <b>{e(creator.name)}</b>"
+            + (f" @{e(creator.username)}" if creator.username else "")
+            if creator
+            else "Организатор: —"
         )
-        if student:
-            student_text = f"Ученик: <b>{e(student.name)}</b>" + (
-                f" @{e(student.username)}" if student.username else ""
-            )
+        if others:
+            names = [
+                f"<b>{e(p.name)}</b>" + (f" @{e(p.username)}" if p.username else "")
+                for p in others
+            ]
+            others_text = f"Участники: {', '.join(names)}"
         elif meeting.mentee_telegram_tag:
-            student_text = f"Ученик: {e(meeting.mentee_telegram_tag)}"
+            others_text = f"Участники: {e(meeting.mentee_telegram_tag)}"
         else:
-            student_text = "Ученик: —"
+            others_text = "Участники: —"
         desc = e(meeting.description) if meeting.description else "—"
         link = e(meeting.meeting_link) if meeting.meeting_link else "—"
         if meeting.scheduled_at:
@@ -175,8 +178,8 @@ def _format_meetings(
 
         lines.append(
             f"🗓 Созвон #{display_idx}{status_tag}\n"
-            f"{mentor_text}\n"
-            f"{student_text}\n"
+            f"{creator_text}\n"
+            f"{others_text}\n"
             f"Когда: {date_str}\n"
             f"Описание: {desc}\n"
             f"Ссылка: {link}\n"
@@ -242,17 +245,13 @@ async def cb_student_meetings(callback: CallbackQuery):
         mentor_tg_ids=mentor_tg_ids,
     )
     text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids)
-    try:
-        await safe_edit_text(
-            callback,
-            text,
-            reply_markup=student_meetings_keyboard(
-                visible, page=0, viewer_id=callback.from_user.id
-            ),
-        )
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+    await safe_edit_text(
+        callback,
+        text,
+        reply_markup=student_meetings_keyboard(
+            visible, page=0, viewer_id=callback.from_user.id
+        ),
+    )
 
 
 @router.callback_query(PermissionFilter("manage_meetings"), StartMeetingCallCB.filter())
@@ -275,8 +274,8 @@ async def cb_start_meeting_call(
         text = "У вас нет доступа к этому созвону."
     except MeetingAlreadyCompletedError:
         text = "Этот созвон уже завершён."
-    except MeetingStudentNotFoundError:
-        text = "Не удалось определить ученика для этого созвона."
+    except NoOtherParticipantsError:
+        text = "В созвоне нет других участников."
     except ActiveCallAlreadyExistsError as exc:
         if exc.meeting.id == callback_data.meeting_id:
             text = "Этот созвон уже запущен и числится активным."
@@ -327,11 +326,14 @@ async def cb_meeting_create(callback: CallbackQuery, state: FSMContext):
         )
         return
 
+    await state.update_data(selected_participant_ids=[], showing_all=False)
     await state.set_state(CreateMeetingFSM.choosing_student)
     await safe_edit_text(
         callback,
-        "Выберите ученика для созвона:",
-        reply_markup=meeting_students_keyboard(mentees),
+        "Выберите участников для созвона:",
+        reply_markup=meeting_participants_multiselect_keyboard(
+            mentees, selected_ids=set(), show_all_button=True
+        ),
     )
 
 
@@ -368,38 +370,68 @@ async def cb_student_propose_meeting(callback: CallbackQuery, state: FSMContext)
 @router.callback_query(
     PermissionFilter("manage_meetings"),
     StateFilter(CreateMeetingFSM.choosing_student),
-    ChooseMeetingStudentCB.filter(),
+    ToggleMeetingParticipantCB.filter(),
 )
-async def cb_choose_meeting_student(
+async def cb_toggle_participant(
     callback: CallbackQuery,
-    callback_data: ChooseMeetingStudentCB,
+    callback_data: ToggleMeetingParticipantCB,
     state: FSMContext,
 ):
     await callback.answer()
+    data = await state.get_data()
+    selected: list[int] = data.get("selected_participant_ids", [])
+    uid = callback_data.user_id
+    if uid in selected:
+        selected.remove(uid)
+    else:
+        selected.append(uid)
+    await state.update_data(selected_participant_ids=selected)
 
-    mentee = await MenteeDAO.find_one_or_none(id=callback_data.mentee_id)
-    if not mentee:
-        await safe_edit_text(
-            callback,
-            "Ученик не найден.",
-            reply_markup=await _menu_kb(callback.from_user.id),
-        )
-        await state.clear()
-        return
-
-    if not mentee.telegram_id:
-        await safe_edit_text(
-            callback,
-            "У ученика не привязан Telegram.",
-            reply_markup=await _menu_kb(callback.from_user.id),
-        )
-        await state.clear()
-        return
-
-    await state.update_data(
-        student_id=mentee.telegram_id,
-        mentee_id=mentee.id,
+    showing_all = data.get("showing_all", False)
+    if showing_all:
+        users = await UserDAO.get_all()
+    else:
+        users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
+    await callback.message.edit_reply_markup(
+        reply_markup=meeting_participants_multiselect_keyboard(
+            users, selected_ids=set(selected), show_all_button=not showing_all
+        ),
     )
+
+
+@router.callback_query(
+    PermissionFilter("manage_meetings"),
+    StateFilter(CreateMeetingFSM.choosing_student),
+    ShowAllUsersCB.filter(),
+)
+async def cb_show_all_users(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    selected: list[int] = data.get("selected_participant_ids", [])
+    await state.update_data(showing_all=True)
+
+    users = await UserDAO.get_all()
+    await callback.message.edit_reply_markup(
+        reply_markup=meeting_participants_multiselect_keyboard(
+            users, selected_ids=set(selected), show_all_button=False
+        ),
+    )
+
+
+@router.callback_query(
+    PermissionFilter("manage_meetings"),
+    StateFilter(CreateMeetingFSM.choosing_student),
+    ConfirmParticipantSelectionCB.filter(),
+)
+async def cb_confirm_participant_selection(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    selected: list[int] = data.get("selected_participant_ids", [])
+    if not selected:
+        await callback.answer("Выберите хотя бы одного участника.", show_alert=True)
+        return
+
+    await state.update_data(participant_ids=selected)
     await state.set_state(CreateMeetingFSM.choosing_type)
 
     await safe_edit_text(
@@ -685,7 +717,7 @@ def _to_utc_assuming_msk(dt: datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
-async def _schedule_meeting_tasks(meeting, mentor_id: int, student_id: int) -> None:
+async def _schedule_meeting_tasks(meeting) -> None:
     meeting_id = meeting.id
     scheduled_at = meeting.scheduled_at
 
@@ -704,6 +736,12 @@ async def _schedule_meeting_tasks(meeting, mentor_id: int, student_id: int) -> N
                 "Scheduled reminder for meeting %s at %s", meeting_id, reminder_eta
             )
 
+    # Backward compat: first non-creator as student_id
+    participant_ids = [p.telegram_id for p in meeting.participants]
+    student_id = next(
+        (pid for pid in participant_ids if pid != meeting.mentor_telegram_id), None
+    )
+
     # New trigger system
     try:
         from src.models.trigger import TriggerType
@@ -713,8 +751,9 @@ async def _schedule_meeting_tasks(meeting, mentor_id: int, student_id: int) -> N
             TriggerType.meeting_created,
             {
                 "meeting_id": meeting_id,
-                "mentor_id": mentor_id,
+                "mentor_id": meeting.mentor_telegram_id,
                 "student_id": student_id,
+                "participant_ids": participant_ids,
                 "scheduled_at": scheduled_utc.isoformat() if scheduled_utc else None,
             },
         )
@@ -731,11 +770,15 @@ async def _finalize_meeting(
 
     mentor_id_from_state = data.get("mentor_id")
     if mentor_id_from_state:
-        mentor_id = mentor_id_from_state
-        student_id = data.get("student_id")
+        creator_id = mentor_id_from_state
     else:
-        mentor_id = user_id
-        student_id = data.get("student_id")
+        creator_id = user_id
+
+    # Multi-select participant_ids or fallback to old student_id
+    participant_ids: list[int] = data.get("participant_ids", [])
+    student_id = data.get("student_id")
+    if not participant_ids and student_id:
+        participant_ids = [student_id]
 
     description = data.get("description")
     event_type = data.get("event_type")
@@ -752,18 +795,17 @@ async def _finalize_meeting(
         await state.clear()
         return
 
-    # Resolve student username for Notion sync
-    mentee_tag = None
-    if student_id:
-        student = await UserDAO.find_one_or_none(telegram_id=student_id)
-        if student and student.username:
-            mentee_tag = f"@{student.username}"
-    if not mentee_tag:
-        mentee_id = data.get("mentee_id")
-        if mentee_id:
-            mentee = await MenteeDAO.find_one_or_none(id=mentee_id)
-            if mentee and mentee.doc_name:
-                mentee_tag = mentee.doc_name
+    # Resolve participant usernames for Notion sync (comma-separated tags)
+    mentee_tags: list[str] = []
+    for pid in participant_ids:
+        if pid == creator_id:
+            continue
+        user = await UserDAO.find_one_or_none(telegram_id=pid)
+        if user and user.username:
+            mentee_tags.append(f"@{user.username}")
+        elif user and user.name:
+            mentee_tags.append(user.name)
+    mentee_tag = ", ".join(mentee_tags) if mentee_tags else None
 
     # If counter-proposing, decline the original pending meeting first
     original_meeting_id = data.get("original_meeting_id")
@@ -774,8 +816,8 @@ async def _finalize_meeting(
         description=description,
         meeting_link=link,
         scheduled_at=scheduled_at,
-        mentor_id=mentor_id,
-        student_id=student_id,
+        creator_id=creator_id,
+        participant_ids=participant_ids,
         topic=description,
         event_type=event_type,
         mentee_telegram_tag=mentee_tag,
@@ -788,9 +830,11 @@ async def _finalize_meeting(
     proposer = await UserDAO.find_one_or_none(telegram_id=user_id)
     proposer_name = proposer.name if proposer else f"id={user_id}"
 
-    # Send proposal to the other participant
-    other_id = student_id if user_id == mentor_id else mentor_id
-    if other_id:
+    # Send proposal to ALL participants except the initiator
+    all_ids = set(participant_ids)
+    all_ids.add(creator_id)
+    all_ids.discard(user_id)
+    for other_id in all_ids:
         try:
             await bot.send_message(
                 other_id,
@@ -823,23 +867,24 @@ def _format_edit_header(meeting) -> str:
     desc = e(meeting.description) if meeting.description else "—"
     link = e(meeting.meeting_link) if meeting.meeting_link else "—"
     event_type = e(meeting.event_type) if meeting.event_type else "—"
-    student = None
-    for p in meeting.participants:
-        if p.telegram_id != meeting.mentor_telegram_id:
-            student = p
-            break
-    student_name = (
-        f"{e(student.name)}" + (f" @{e(student.username)}" if student.username else "")
-        if student
-        else "—"
-    )
+    others = [
+        p for p in meeting.participants if p.telegram_id != meeting.mentor_telegram_id
+    ]
+    if others:
+        names = [
+            f"{e(p.name)}" + (f" @{e(p.username)}" if p.username else "")
+            for p in others
+        ]
+        participants_str = ", ".join(names)
+    else:
+        participants_str = "—"
     return (
         f"✏️ <b>Редактирование созвона #{meeting.id}</b>\n\n"
         f"📅 Дата и время: {date_str}\n"
         f"📝 Описание: {desc}\n"
         f"🔗 Ссылка: {link}\n"
         f"📋 Тип: {event_type}\n"
-        f"👤 Ученик: {student_name}\n\n"
+        f"👥 Участники: {participants_str}\n\n"
         f"Выберите поле для редактирования:"
     )
 
@@ -852,25 +897,22 @@ async def _save_edit_and_return(user_id, state, reply_func, bot, **update_values
 
     meeting = await MeetingDAO.get_with_participants(meeting_id)
     if meeting:
-        other_id = (
-            meeting.student_telegram_id
-            if user_id == meeting.mentor_telegram_id
-            else meeting.mentor_telegram_id
-        )
-        if other_id:
-            editor = await UserDAO.find_one_or_none(telegram_id=user_id)
-            editor_name = editor.name if editor else f"id={user_id}"
-            changed_fields = ", ".join(update_values.keys())
+        editor = await UserDAO.find_one_or_none(telegram_id=user_id)
+        editor_name = editor.name if editor else f"id={user_id}"
+        changed_fields = ", ".join(update_values.keys())
+        for p in meeting.participants:
+            if p.telegram_id == user_id:
+                continue
             try:
                 await bot.send_message(
-                    other_id,
+                    p.telegram_id,
                     f"✏️ <b>{e(editor_name)}</b> изменил(а) созвон #{meeting_id} "
                     f"(поля: {changed_fields}).",
                 )
             except Exception as exc:
                 logger.error(
                     "Failed to notify %s about meeting %s edit: %s",
-                    other_id,
+                    p.telegram_id,
                     meeting_id,
                     exc,
                 )
@@ -954,6 +996,18 @@ async def cb_edit_field_chosen(
             reply_markup=meeting_type_keyboard(),
         )
     elif field == "student":
+        data = await state.get_data()
+        meeting_id = data["edit_meeting_id"]
+        meeting = await MeetingDAO.get_with_participants(meeting_id)
+        current_ids = (
+            {
+                p.telegram_id
+                for p in meeting.participants
+                if p.telegram_id != meeting.mentor_telegram_id
+            }
+            if meeting
+            else set()
+        )
         mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
         if not mentees:
             await safe_edit_text(
@@ -963,11 +1017,16 @@ async def cb_edit_field_chosen(
             )
             await state.clear()
             return
+        await state.update_data(
+            selected_participant_ids=list(current_ids), showing_all=False
+        )
         await state.set_state(EditMeetingFSM.editing_student)
         await safe_edit_text(
             callback,
-            "Выберите нового ученика:",
-            reply_markup=meeting_students_keyboard(mentees),
+            "Вы��ерите участников:",
+            reply_markup=meeting_participants_multiselect_keyboard(
+                mentees, selected_ids=current_ids, show_all_button=True
+            ),
         )
 
 
@@ -1032,51 +1091,99 @@ async def cb_edit_type(
 @router.callback_query(
     PermissionFilter("manage_meetings"),
     StateFilter(EditMeetingFSM.editing_student),
-    ChooseMeetingStudentCB.filter(),
+    ToggleMeetingParticipantCB.filter(),
 )
-async def cb_edit_student(
-    callback: CallbackQuery, callback_data: ChooseMeetingStudentCB, state: FSMContext
+async def cb_edit_toggle_participant(
+    callback: CallbackQuery,
+    callback_data: ToggleMeetingParticipantCB,
+    state: FSMContext,
 ):
     await callback.answer()
-    mentee = await MenteeDAO.find_one_or_none(id=callback_data.mentee_id)
-    if not mentee or not mentee.telegram_id:
-        await safe_edit_text(
-            callback,
-            "Ученик не найден или не привязан к Telegram.",
-            reply_markup=await _menu_kb(callback.from_user.id),
-        )
-        await state.clear()
+    data = await state.get_data()
+    selected: list[int] = data.get("selected_participant_ids", [])
+    uid = callback_data.user_id
+    if uid in selected:
+        selected.remove(uid)
+    else:
+        selected.append(uid)
+    await state.update_data(selected_participant_ids=selected)
+
+    showing_all = data.get("showing_all", False)
+    if showing_all:
+        users = await UserDAO.get_all()
+    else:
+        users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
+    await callback.message.edit_reply_markup(
+        reply_markup=meeting_participants_multiselect_keyboard(
+            users, selected_ids=set(selected), show_all_button=not showing_all
+        ),
+    )
+
+
+@router.callback_query(
+    PermissionFilter("manage_meetings"),
+    StateFilter(EditMeetingFSM.editing_student),
+    ShowAllUsersCB.filter(),
+)
+async def cb_edit_show_all_users(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    selected: list[int] = data.get("selected_participant_ids", [])
+    await state.update_data(showing_all=True)
+    users = await UserDAO.get_all()
+    await callback.message.edit_reply_markup(
+        reply_markup=meeting_participants_multiselect_keyboard(
+            users, selected_ids=set(selected), show_all_button=False
+        ),
+    )
+
+
+@router.callback_query(
+    PermissionFilter("manage_meetings"),
+    StateFilter(EditMeetingFSM.editing_student),
+    ConfirmParticipantSelectionCB.filter(),
+)
+async def cb_edit_confirm_participants(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    selected: list[int] = data.get("selected_participant_ids", [])
+    if not selected:
+        await callback.answer("Выберите хотя бы одного участника.", show_alert=True)
         return
 
-    data = await state.get_data()
     meeting_id = data["edit_meeting_id"]
-    await MeetingDAO.update_student(meeting_id, mentee.telegram_id)
-    # update mentee_telegram_tag too
-    mentee_tag = None
-    if mentee.doc_name:
-        mentee_tag = mentee.doc_name
-    elif mentee.user and mentee.user.username:
-        mentee_tag = f"@{mentee.user.username}"
-    if mentee_tag:
-        await MeetingDAO.update(meeting_id, mentee_telegram_tag=mentee_tag)
+    await MeetingDAO.update_participants(meeting_id, selected)
+
+    # Update mentee_telegram_tag for Notion sync
+    mentee_tags: list[str] = []
+    for pid in selected:
+        user = await UserDAO.find_one_or_none(telegram_id=pid)
+        if user and user.username:
+            mentee_tags.append(f"@{user.username}")
+        elif user and user.name:
+            mentee_tags.append(user.name)
+    if mentee_tags:
+        await MeetingDAO.update(meeting_id, mentee_telegram_tag=", ".join(mentee_tags))
+
     await state.clear()
 
     meeting = await MeetingDAO.get_with_participants(meeting_id)
     user_id = callback.from_user.id
     if meeting:
-        other_id = mentee.telegram_id
-        if other_id:
-            editor = await UserDAO.find_one_or_none(telegram_id=user_id)
-            editor_name = editor.name if editor else f"id={user_id}"
+        editor = await UserDAO.find_one_or_none(telegram_id=user_id)
+        editor_name = editor.name if editor else f"id={user_id}"
+        for p in meeting.participants:
+            if p.telegram_id == user_id:
+                continue
             try:
                 await callback.bot.send_message(
-                    other_id,
-                    f"✏️ <b>{e(editor_name)}</b> назначил(а) вас на созвон #{meeting_id}.",
+                    p.telegram_id,
+                    f"✏️ <b>{e(editor_name)}</b> ��бновил(а) участников созвона #{meeting_id}.",
                 )
             except Exception as exc:
                 logger.error(
                     "Failed to notify %s about meeting %s edit: %s",
-                    other_id,
+                    p.telegram_id,
                     meeting_id,
                     exc,
                 )
@@ -1161,24 +1268,24 @@ async def cb_confirm_meeting(callback: CallbackQuery, callback_data: ConfirmMeet
         await callback.answer("Уже обработано или нет прав.", show_alert=True)
         return
 
-    proposed_by = meeting.proposed_by
-
     if meeting.original_scheduled_at:
         # This was a reschedule proposal — clear original_scheduled_at
         meeting = await MeetingDAO.confirm_reschedule(meeting.id, user_id)
 
     if meeting:
-        await _schedule_meeting_tasks(
-            meeting,
-            mentor_id=meeting.mentor_telegram_id,
-            student_id=meeting.student_telegram_id,
-        )
+        await _schedule_meeting_tasks(meeting)
 
-    if proposed_by:
-        try:
-            await callback.bot.send_message(proposed_by, "✅ Ваш созвон подтверждён!")
-        except Exception as exc:
-            logger.error("Failed to notify proposer %s: %s", proposed_by, exc)
+    # Notify all other participants about confirmation
+    if meeting:
+        for p in meeting.participants:
+            if p.telegram_id == user_id:
+                continue
+            try:
+                await callback.bot.send_message(p.telegram_id, "✅ Созвон подтверждён!")
+            except Exception as exc:
+                logger.error(
+                    "Failed to notify %s about confirmation: %s", p.telegram_id, exc
+                )
 
     await safe_edit_text(
         callback,
@@ -1202,16 +1309,19 @@ async def cb_decline_meeting(callback: CallbackQuery, callback_data: DeclineMeet
         reverted = await MeetingDAO.decline_reschedule(
             callback_data.meeting_id, user_id
         )
-        if reverted and reverted.proposed_by:
-            try:
-                await callback.bot.send_message(
-                    reverted.proposed_by,
-                    "❌ Перенос отклонён. Созвон остаётся на прежнем времени.",
-                )
-            except Exception as exc:
-                logger.error(
-                    "Failed to notify proposer %s: %s", reverted.proposed_by, exc
-                )
+        if reverted:
+            for p in reverted.participants:
+                if p.telegram_id == user_id:
+                    continue
+                try:
+                    await callback.bot.send_message(
+                        p.telegram_id,
+                        "❌ Перенос отклонён. Созвон остаётся на прежнем времени.",
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to notify %s about decline: %s", p.telegram_id, exc
+                    )
         await safe_edit_text(
             callback,
             "Перенос отклонён.",
@@ -1219,16 +1329,19 @@ async def cb_decline_meeting(callback: CallbackQuery, callback_data: DeclineMeet
         )
     else:
         # Decline new meeting proposal — delete it
-        proposed_by = await MeetingDAO.decline_meeting(
-            callback_data.meeting_id, user_id
-        )
-        if proposed_by:
+        # Notify all participants before deleting
+        for p in meeting.participants:
+            if p.telegram_id == user_id:
+                continue
             try:
                 await callback.bot.send_message(
-                    proposed_by, "❌ Ваше предложение о созвоне отклонено."
+                    p.telegram_id, "❌ Предложение о созвоне отклонено."
                 )
             except Exception as exc:
-                logger.error("Failed to notify proposer %s: %s", proposed_by, exc)
+                logger.error(
+                    "Failed to notify %s about decline: %s", p.telegram_id, exc
+                )
+        await MeetingDAO.decline_meeting(callback_data.meeting_id, user_id)
         await safe_edit_text(
             callback,
             "Предложение отклонено.",
@@ -1248,13 +1361,16 @@ async def cb_propose_new_time(
         return
 
     user_id = callback.from_user.id
-    if user_id not in (meeting.mentor_telegram_id, meeting.student_telegram_id):
+    if user_id not in {p.telegram_id for p in meeting.participants}:
         await callback.answer("Нет доступа к этой встрече.", show_alert=True)
         return
 
+    other_ids = [
+        p.telegram_id for p in meeting.participants if p.telegram_id != user_id
+    ]
     await state.update_data(
         mentor_id=meeting.mentor_telegram_id,
-        student_id=meeting.student_telegram_id,
+        participant_ids=other_ids,
         original_meeting_id=meeting.id,
     )
     await state.set_state(CreateMeetingFSM.waiting_date)
@@ -1294,19 +1410,30 @@ async def cb_meeting_cancel(callback: CallbackQuery, state: FSMContext):
     )
 
 
-# Pagination: students list
+# Pagination: participants multi-select
 @router.callback_query(
     PermissionFilter("manage_meetings"),
     StateFilter(CreateMeetingFSM.choosing_student, EditMeetingFSM.editing_student),
-    PageNavCB.filter(F.menu == "students"),
+    PageNavCB.filter(F.menu == "participants"),
 )
-async def cb_students_page(
+async def cb_participants_page(
     callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
 ):
     await callback.answer()
-    mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
+    data = await state.get_data()
+    selected: list[int] = data.get("selected_participant_ids", [])
+    showing_all = data.get("showing_all", False)
+    if showing_all:
+        users = await UserDAO.get_all()
+    else:
+        users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     await callback.message.edit_reply_markup(
-        reply_markup=meeting_students_keyboard(mentees, page=callback_data.page)
+        reply_markup=meeting_participants_multiselect_keyboard(
+            users,
+            selected_ids=set(selected),
+            page=callback_data.page,
+            show_all_button=not showing_all,
+        )
     )
 
 

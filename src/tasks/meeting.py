@@ -26,8 +26,10 @@ def _format_dt(dt: Optional[datetime]) -> str:
     return dt.astimezone(MSK).strftime("%d.%m.%Y %H:%M MSK")
 
 
-def _split_participants(meeting: Meeting) -> tuple[Optional[User], Optional[User]]:
-    mentor = next(
+def _split_participants(
+    meeting: Meeting,
+) -> tuple[Optional[User], list[User]]:
+    creator = next(
         (
             p
             for p in meeting.participants
@@ -35,22 +37,12 @@ def _split_participants(meeting: Meeting) -> tuple[Optional[User], Optional[User
         ),
         None,
     )
-    student = None
-    if meeting.student_telegram_id:
-        student = next(
-            (
-                p
-                for p in meeting.participants
-                if p.telegram_id == meeting.student_telegram_id
-            ),
-            None,
-        )
-    if not student and mentor:
-        student = next(
-            (p for p in meeting.participants if p.telegram_id != mentor.telegram_id),
-            None,
-        )
-    return mentor, student
+    others = [
+        p
+        for p in meeting.participants
+        if not creator or p.telegram_id != creator.telegram_id
+    ]
+    return creator, others
 
 
 def _survey_notification_text(call_id: int) -> str:
@@ -70,18 +62,6 @@ async def _send_to_user(
     reply_markup: InlineKeyboardMarkup | None = None,
 ) -> None:
     await bot.send_message(user_id, text, reply_markup=reply_markup)
-
-
-async def _send_to_student(
-    bot: Bot,
-    student: Optional[User],
-    text: str,
-    *,
-    reply_markup: InlineKeyboardMarkup | None = None,
-) -> None:
-    if not student:
-        return
-    await _send_to_user(bot, student.telegram_id, text, reply_markup=reply_markup)
 
 
 async def _load_meeting(meeting_id: int) -> Optional[Meeting]:
@@ -113,26 +93,26 @@ async def _notify_created_inner(meeting_id: int) -> None:
 
     bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     try:
-        mentor, student = _split_participants(meeting)
+        creator, others = _split_participants(meeting)
         when = _format_dt(meeting.scheduled_at)
-        mentor_line = (
-            f"Ментор: <b>{e(mentor.name)}</b> @{e(mentor.username)}"
-            if mentor
-            else "Ментор не указан"
+        creator_line = (
+            f"Организатор: <b>{e(creator.name)}</b> @{e(creator.username)}"
+            if creator
+            else "Организатор не указан"
         )
         text = (
             "<b>Вам назначен созвон.</b>\n"
-            f"{mentor_line}\n"
+            f"{creator_line}\n"
             f"Когда: {when}\n"
             f"Описание: {e(meeting.description) or '—'}\n"
             f"Ссылка: {e(meeting.meeting_link) or '—'}"
         )
-        await _send_to_student(bot, student, text)
-        if student:
+        for other in others:
+            await _send_to_user(bot, other.telegram_id, text)
             logger.info(
                 "Meeting %s: created notification sent to user %s",
                 meeting_id,
-                student.telegram_id,
+                other.telegram_id,
             )
     finally:
         await bot.session.close()
@@ -146,14 +126,14 @@ async def _notify_reminder_async(meeting_id: int) -> None:
 
         bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
         try:
-            _, student = _split_participants(meeting)
             when = _format_dt(meeting.scheduled_at)
             text = (
                 "<b>Напоминание о созвоне через ~5 минут.</b>\n"
                 f"Когда: {when}\n"
                 f"Ссылка: {e(meeting.meeting_link) or '—'}"
             )
-            await _send_to_student(bot, student, text)
+            for p in meeting.participants:
+                await _send_to_user(bot, p.telegram_id, text)
         finally:
             await bot.session.close()
 

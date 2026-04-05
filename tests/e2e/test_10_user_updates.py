@@ -38,22 +38,32 @@ async def test_change_mentee_mentor(
     assert users_btn is not None, "Admin menu should have 'Users' button"
     users_msg = await account1.click_button(menu_msg, text=users_btn.text)
 
-    # Click "Update"
+    # Click "Update" → user list
     update_btn = find_button(users_msg, "user_update_menu")
     assert update_btn is not None, (
         f"Users list should have 'Update' button. Buttons: "
         f"{[(b.text, b.data.decode()) for b in get_buttons(users_msg)]}"
     )
-    param_msg = await account1.click_button(users_msg, text=update_btn.text)
+    user_select_msg = await account1.click_button(users_msg, text=update_btn.text)
 
-    # Choose "Mentor" parameter
-    mentor_param_btn = find_button(param_msg, "upd_param:mentor")
+    # Choose user (account2) → user info + param buttons
+    user_btn, user_select_msg = await find_button_paginated(
+        account1, user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
+    )
+    assert user_btn is not None, (
+        f"Should find user button for {ACCOUNT_2_TG_ID}. Buttons: "
+        f"{[(b.text, b.data.decode()) for b in get_buttons(user_select_msg)]}"
+    )
+    info_msg = await account1.click_button(user_select_msg, data=user_btn.data.decode())
+
+    # Choose "Mentor" parameter → mentor list
+    mentor_param_btn = find_button(info_msg, "upd_param:mentor")
     assert mentor_param_btn is not None, (
         f"Should find mentor param button. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in get_buttons(param_msg)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(info_msg)]}"
     )
     mentor_select_msg = await account1.click_button(
-        param_msg, text=mentor_param_btn.text
+        info_msg, text=mentor_param_btn.text
     )
 
     # Choose mentor (account1 — admin with manage_meetings, visible in mentor list)
@@ -64,20 +74,8 @@ async def test_change_mentee_mentor(
         f"Should find mentor button for {ACCOUNT_1_TG_ID}. Buttons: "
         f"{[(b.text, b.data.decode()) for b in get_buttons(mentor_select_msg)]}"
     )
-    user_select_msg = await account1.click_button(
-        mentor_select_msg, data=mentor_btn.data.decode()
-    )
-
-    # Choose user (account2 — student, visible in user list)
-    user_btn, user_select_msg = await find_button_paginated(
-        account1, user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
-    )
-    assert user_btn is not None, (
-        f"Should find user button for {ACCOUNT_2_TG_ID}. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in get_buttons(user_select_msg)]}"
-    )
     result_msg = await account1.click_button(
-        user_select_msg, data=user_btn.data.decode()
+        mentor_select_msg, data=mentor_btn.data.decode()
     )
     assert "обновлено" in result_msg.text.lower(), (
         f"Expected 'обновлено' in response, got: {result_msg.text[:200]}"
@@ -114,23 +112,33 @@ async def test_update_user_info(
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
     await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
 
-    # /menu -> Users -> Update -> Status
+    # /menu -> Users -> Update → user list
     menu_msg = await account1.send_command("/menu")
     users_btn = find_button(menu_msg, "menu_users")
     users_msg = await account1.click_button(menu_msg, text=users_btn.text)
 
     update_btn = find_button(users_msg, "user_update_menu")
     assert update_btn is not None
-    param_msg = await account1.click_button(users_msg, text=update_btn.text)
+    user_select_msg = await account1.click_button(users_msg, text=update_btn.text)
 
-    # Choose "Status" parameter
-    status_param_btn = find_button(param_msg, "upd_param:status")
+    # Choose user (account2) → info + param buttons
+    user_btn, user_select_msg = await find_button_paginated(
+        account1, user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
+    )
+    assert user_btn is not None, (
+        f"Should find user button for {ACCOUNT_2_TG_ID}. Buttons: "
+        f"{[(b.text, b.data.decode()) for b in get_buttons(user_select_msg)]}"
+    )
+    info_msg = await account1.click_button(user_select_msg, data=user_btn.data.decode())
+
+    # Choose "Status" parameter → status list
+    status_param_btn = find_button(info_msg, "upd_param:status")
     assert status_param_btn is not None, (
         f"Should find status param button. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in get_buttons(param_msg)]}"
+        f"{[(b.text, b.data.decode()) for b in get_buttons(info_msg)]}"
     )
     status_select_msg = await account1.click_button(
-        param_msg, text=status_param_btn.text
+        info_msg, text=status_param_btn.text
     )
 
     # Choose "search" status value
@@ -149,21 +157,7 @@ async def test_update_user_info(
         f"Should find status value button. Buttons: "
         f"{[(b.text, b.data.decode()) for b in get_buttons(status_select_msg)]}"
     )
-    user_select_msg = await account1.click_button(
-        status_select_msg, text=search_btn.text
-    )
-
-    # Choose user (account2)
-    user_btn, user_select_msg = await find_button_paginated(
-        account1, user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
-    )
-    assert user_btn is not None, (
-        f"Should find user button for {ACCOUNT_2_TG_ID}. Buttons: "
-        f"{[(b.text, b.data.decode()) for b in get_buttons(user_select_msg)]}"
-    )
-    result_msg = await account1.click_button(
-        user_select_msg, data=user_btn.data.decode()
-    )
+    result_msg = await account1.click_button(status_select_msg, text=search_btn.text)
     assert "обновлено" in result_msg.text.lower(), (
         f"Expected 'обновлено', got: {result_msg.text[:200]}"
     )

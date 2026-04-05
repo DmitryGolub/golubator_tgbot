@@ -313,10 +313,30 @@ async def _resolve_mentee_id(session: AsyncSession, tg_tag: str | None) -> int |
     return None
 
 
+async def _resolve_mentee_ids(session: AsyncSession, tg_tag: str | None) -> list[int]:
+    if not tg_tag:
+        return []
+    ids: list[int] = []
+    for tag in tg_tag.split(","):
+        tag = tag.strip()
+        if not tag:
+            continue
+        tid = await _resolve_mentee_id(session, tag)
+        if tid is not None:
+            ids.append(tid)
+    return ids
+
+
 async def _ensure_meeting_users(
-    session: AsyncSession, meeting_id: int, mentor_id: int | None, mentee_id: int | None
+    session: AsyncSession,
+    meeting_id: int,
+    user_ids: list[int] | None = None,
+    # backward compat params
+    mentor_id: int | None = None,
+    mentee_id: int | None = None,
 ) -> None:
-    user_ids = [uid for uid in (mentor_id, mentee_id) if uid is not None]
+    if user_ids is None:
+        user_ids = [uid for uid in (mentor_id, mentee_id) if uid is not None]
     if not user_ids:
         return
     stmt = (
@@ -402,7 +422,8 @@ class NotionSyncServiceV2:
                 mentor_tid = await _resolve_mentor_telegram_id(
                     session, data.mentor_name
                 )
-                mentee_tid = await _resolve_mentee_id(session, data.mentee_tg_tag)
+                mentee_tids = await _resolve_mentee_ids(session, data.mentee_tg_tag)
+                all_user_ids = ([mentor_tid] if mentor_tid else []) + mentee_tids
 
                 if meeting:
                     if (
@@ -412,7 +433,7 @@ class NotionSyncServiceV2:
                     ):
                         logger.debug("Skipping echo for event %s", page_id)
                         await _ensure_meeting_users(
-                            session, meeting.id, mentor_tid, mentee_tid
+                            session, meeting.id, user_ids=all_user_ids
                         )
                         await session.commit()
                         return
@@ -450,7 +471,7 @@ class NotionSyncServiceV2:
 
                     meeting.synced_at = now
                     await _ensure_meeting_users(
-                        session, meeting.id, mentor_tid, mentee_tid
+                        session, meeting.id, user_ids=all_user_ids
                     )
                 else:
                     scheduled_at = None
@@ -484,7 +505,7 @@ class NotionSyncServiceV2:
                     session.add(new_meeting)
                     await session.flush()
                     await _ensure_meeting_users(
-                        session, new_meeting.id, mentor_tid, mentee_tid
+                        session, new_meeting.id, user_ids=all_user_ids
                     )
 
                 await session.commit()
@@ -1249,7 +1270,12 @@ class NotionSyncServiceV2:
                         mentor_tid = await _resolve_mentor_telegram_id(
                             session, ev.mentor_name
                         )
-                        mentee_tid = await _resolve_mentee_id(session, ev.mentee_tg_tag)
+                        mentee_tids = await _resolve_mentee_ids(
+                            session, ev.mentee_tg_tag
+                        )
+                        all_user_ids = (
+                            [mentor_tid] if mentor_tid else []
+                        ) + mentee_tids
 
                         if meeting:
                             if (
@@ -1258,7 +1284,7 @@ class NotionSyncServiceV2:
                                 and meeting.synced_at >= ev.last_edited_time
                             ):
                                 await _ensure_meeting_users(
-                                    session, meeting.id, mentor_tid, mentee_tid
+                                    session, meeting.id, user_ids=all_user_ids
                                 )
                                 continue
                             meeting.topic = ev.topic
@@ -1283,7 +1309,7 @@ class NotionSyncServiceV2:
                                 meeting.is_cancelled = False
                             meeting.synced_at = now
                             await _ensure_meeting_users(
-                                session, meeting.id, mentor_tid, mentee_tid
+                                session, meeting.id, user_ids=all_user_ids
                             )
                         else:
                             scheduled_at = None
@@ -1317,7 +1343,7 @@ class NotionSyncServiceV2:
                             session.add(new_meeting)
                             await session.flush()
                             await _ensure_meeting_users(
-                                session, new_meeting.id, mentor_tid, mentee_tid
+                                session, new_meeting.id, user_ids=all_user_ids
                             )
 
                         count += 1

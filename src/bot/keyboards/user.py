@@ -11,44 +11,56 @@ from src.bot.callbacks.update_user import (
     ChooseUserCB,
     ChooseMenteeCB,
     ChooseCohortTypeCB,
+    CancelUpdateCB,
 )
 from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
 from src.models.user import User
 
+_CANCEL_BTN = InlineKeyboardButton(
+    text="❌ Отмена", callback_data=CancelUpdateCB().pack()
+)
 
-def update_param_keyboard() -> InlineKeyboardMarkup:
+
+async def user_update_params_keyboard(
+    user_telegram_id: int, is_mentor_flow: bool
+) -> InlineKeyboardMarkup:
+    """Build param buttons based on user type and flow permissions."""
     kb = InlineKeyboardBuilder()
 
-    kb.button(
-        text="🔄 Обновить статус",
-        callback_data=ChooseParamCB(param=UpdateParam.STATUS).pack(),
-    )
-    kb.button(
-        text="🛡 Обновить роль",
-        callback_data=ChooseParamCB(param=UpdateParam.ROLE).pack(),
-    )
-    kb.button(
-        text="👨‍🏫 Обновить ментора",
-        callback_data=ChooseParamCB(param=UpdateParam.MENTOR).pack(),
-    )
-    kb.button(
-        text="📋 Обновить когорту",
-        callback_data=ChooseParamCB(param=UpdateParam.COHORT).pack(),
-    )
+    if is_mentor_flow:
+        kb.button(
+            text="🔄 Обновить статус",
+            callback_data=ChooseParamCB(param=UpdateParam.STATUS).pack(),
+        )
+    else:
+        from src.dao.mentee import MenteeDAO
+
+        mentee = await MenteeDAO.find_by_telegram_id(user_telegram_id)
+
+        if mentee:
+            kb.button(
+                text="🔄 Обновить статус",
+                callback_data=ChooseParamCB(param=UpdateParam.STATUS).pack(),
+            )
+
+        kb.button(
+            text="🛡 Обновить роль",
+            callback_data=ChooseParamCB(param=UpdateParam.ROLE).pack(),
+        )
+
+        if mentee:
+            kb.button(
+                text="👨‍🏫 Обновить ментора",
+                callback_data=ChooseParamCB(param=UpdateParam.MENTOR).pack(),
+            )
+
+        kb.button(
+            text="📋 Обновить когорту",
+            callback_data=ChooseParamCB(param=UpdateParam.COHORT).pack(),
+        )
 
     kb.adjust(1)
-    return kb.as_markup()
-
-
-def update_param_keyboard_for_mentor() -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-
-    kb.button(
-        text="🔄 Обновить статус ученика",
-        callback_data=ChooseParamCB(param=UpdateParam.STATUS).pack(),
-    )
-
-    kb.adjust(1)
+    kb.row(_CANCEL_BTN)
     return kb.as_markup()
 
 
@@ -66,6 +78,7 @@ async def roles_keyboard() -> InlineKeyboardMarkup:
             ).pack(),
         )
     kb.adjust(1)
+    kb.row(_CANCEL_BTN)
     return kb.as_markup()
 
 
@@ -85,6 +98,7 @@ async def statuses_keyboard() -> InlineKeyboardMarkup:
         )
 
     kb.adjust(1)
+    kb.row(_CANCEL_BTN)
     return kb.as_markup()
 
 
@@ -103,6 +117,7 @@ async def cohort_types_keyboard() -> InlineKeyboardMarkup:
         )
 
     kb.adjust(1)
+    kb.row(_CANCEL_BTN)
     return kb.as_markup()
 
 
@@ -122,6 +137,7 @@ async def cohort_values_keyboard(cohort_type: str) -> InlineKeyboardMarkup:
         )
 
     kb.adjust(1)
+    kb.row(_CANCEL_BTN)
     return kb.as_markup()
 
 
@@ -164,6 +180,7 @@ def mentors_keyboard(mentors: Sequence[User], page: int = 0) -> InlineKeyboardMa
             )
         )
 
+    kb.row(_CANCEL_BTN)
     return kb.as_markup()
 
 
@@ -190,6 +207,7 @@ def mentees_keyboard(mentees: Sequence, page: int = 0) -> InlineKeyboardMarkup:
             )
         )
 
+    kb.row(_CANCEL_BTN)
     return kb.as_markup()
 
 
@@ -209,4 +227,5 @@ def users_keyboard(users: Sequence[User], page: int = 0) -> InlineKeyboardMarkup
             )
         )
 
+    kb.row(_CANCEL_BTN)
     return kb.as_markup()

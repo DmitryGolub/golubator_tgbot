@@ -56,10 +56,6 @@ def cohort_type_detail_keyboard(
 ) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
-    # List options (non-interactive display)
-    for opt in info.options:
-        kb.button(text=f"  {opt}", callback_data=f"cohort_noop:{type_idx}")
-
     # Action buttons based on editability
     if info.editable:
         kb.button(

@@ -22,7 +22,15 @@ class MentorNotInMeetingError(CallFlowError):
     pass
 
 
-class MeetingStudentNotFoundError(CallFlowError):
+class UserNotInMeetingError(CallFlowError):
+    pass
+
+
+# Keep old name as alias
+MeetingStudentNotFoundError = UserNotInMeetingError
+
+
+class NoOtherParticipantsError(CallFlowError):
     pass
 
 
@@ -52,8 +60,17 @@ class EndCallResult:
     meeting_was_completed: bool
 
 
+def _is_participant(meeting: Meeting, user_id: int) -> bool:
+    return any(p.telegram_id == user_id for p in meeting.participants)
+
+
+def _resolve_other_participants(meeting: Meeting, user_id: int) -> list[User]:
+    return [p for p in meeting.participants if p.telegram_id != user_id]
+
+
+# Keep old names for backward compat with tests
 def _resolve_mentor(meeting: Meeting, mentor_id: int) -> User | None:
-    if meeting.mentor_telegram_id != mentor_id:
+    if not _is_participant(meeting, mentor_id):
         return None
     return next(
         (p for p in meeting.participants if p.telegram_id == mentor_id),
@@ -94,29 +111,27 @@ class CallFlowService:
         if not meeting:
             raise MeetingNotFoundError
 
-        mentor = _resolve_mentor(meeting, mentor_id)
-        if not mentor:
+        if not _is_participant(meeting, mentor_id):
             raise MentorNotInMeetingError
 
         if meeting.completed_at is not None:
             raise MeetingAlreadyCompletedError
 
-        active = await MeetingDAO.get_active_call_for_mentor(mentor_id)
+        active = await MeetingDAO.get_active_call_for_user(mentor_id)
         if active:
             raise ActiveCallAlreadyExistsError(active)
 
         if meeting.call_status is not None:
             raise CallAlreadyExistsError(meeting)
 
-        student = _resolve_student(meeting)
-        if not student:
-            raise MeetingStudentNotFoundError
+        others = _resolve_other_participants(meeting, mentor_id)
+        if not others:
+            raise NoOtherParticipantsError
 
         try:
-            started = await MeetingDAO.start_call(meeting_id, student.telegram_id)
+            started = await MeetingDAO.start_call(meeting_id)
         except IntegrityError:
-            # Concurrent call creation — re-check state
-            existing = await MeetingDAO.get_active_call_for_mentor(mentor_id)
+            existing = await MeetingDAO.get_active_call_for_user(mentor_id)
             if existing:
                 raise ActiveCallAlreadyExistsError(existing)
             refreshed = await MeetingDAO.get_with_participants(meeting_id)
@@ -128,15 +143,14 @@ class CallFlowService:
             raise CallAlreadyExistsError(meeting)
 
         logger.info(
-            "Call started: meeting=%s mentor=%s student=%s",
+            "Call started: meeting=%s user=%s",
             meeting_id,
             mentor_id,
-            student.telegram_id,
         )
         return started
 
     async def end_active_call(self, *, mentor_id: int) -> EndCallResult:
-        active_meeting = await MeetingDAO.get_active_call_for_mentor(mentor_id)
+        active_meeting = await MeetingDAO.get_active_call_for_user(mentor_id)
         if not active_meeting:
             raise ActiveCallNotFoundError
 
@@ -151,7 +165,7 @@ class CallFlowService:
             meeting_was_completed=meeting_was_completed,
         )
         logger.info(
-            "Call ended: meeting=%s mentor=%s meeting_completed=%s",
+            "Call ended: meeting=%s user=%s meeting_completed=%s",
             finished_meeting.id,
             mentor_id,
             meeting_was_completed,
@@ -165,6 +179,7 @@ class CallFlowService:
                 from src.services.events.dispatcher import EventDispatcher
 
                 student_id = finished_meeting.student_telegram_id
+                participant_ids = [p.telegram_id for p in finished_meeting.participants]
                 completed_count = await MeetingDAO.count_completed_for_pair(
                     mentor_id, student_id
                 )
@@ -184,12 +199,12 @@ class CallFlowService:
                         "meeting_id": finished_meeting.id,
                         "mentor_id": finished_meeting.mentor_telegram_id,
                         "student_id": student_id,
+                        "participant_ids": participant_ids,
                         "is_first_call": is_first_call,
                         "student_stage": student_stage,
                     },
                 )
             except Exception:
-                # Trigger failure is non-fatal: call was already ended successfully
                 logger.exception("Failed to emit call_ended event")
 
         return result
