@@ -10,7 +10,7 @@ import os
 import pytest
 
 from tests.e2e.helpers.bot_setup import BotSetup
-from tests.e2e.helpers.buttons import find_button, button_labels
+from tests.e2e.helpers.buttons import find_button, get_buttons, button_labels
 from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
@@ -40,15 +40,26 @@ async def test_view_cohort_types(
 
     # Seed cohort data so the list is never empty after truncate_all
     await bot_setup.set_user_cohort(ACCOUNT_1_TG_ID, "Status", "study")
+    await bot_setup.set_user_cohort(ACCOUNT_1_TG_ID, "Category", "e2e_test_dir")
 
     cohorts_msg = await _navigate_to_cohorts(account1)
     assert cohorts_msg.text is not None
 
     # Should show cohort types
-    type_btn = find_button(cohorts_msg, "ctype:")
-    assert type_btn is not None, (
+    assert find_button(cohorts_msg, "ctype:") is not None, (
         f"Cohort types should be visible after seeding. Buttons: {button_labels(cohorts_msg)}"
     )
+
+    # Pick an editable (non-protected) type for subsequent management tests
+    type_btn = None
+    for btn in get_buttons(cohorts_msg):
+        if btn.data and btn.data.decode().startswith("ctype:"):
+            if btn.text not in ("Status", "Mentor", "Ментор"):
+                type_btn = btn
+                break
+    # Fallback to first available type
+    if type_btn is None:
+        type_btn = find_button(cohorts_msg, "ctype:")
 
     # Save index for subsequent tests
     _module_state["type_idx"] = type_btn.data.decode().split(":")[-1]
