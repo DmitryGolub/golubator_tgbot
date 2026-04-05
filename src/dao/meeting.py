@@ -72,7 +72,11 @@ class MeetingDAO(BaseDAO):
 
     @classmethod
     async def get_for_user(
-        cls, user_id: int, *, hide_past: bool = False
+        cls,
+        user_id: int,
+        *,
+        hide_past: bool = False,
+        only_past: bool = False,
     ) -> list[Meeting]:
         async with async_session_maker() as session:
             query = (
@@ -84,6 +88,8 @@ class MeetingDAO(BaseDAO):
             )
             if hide_past:
                 query = query.where(Meeting.completed_at.is_(None))
+            if only_past:
+                query = query.where(Meeting.completed_at.isnot(None))
             res = await session.execute(query)
             res = res.unique()
             return res.scalars().all()
@@ -359,6 +365,31 @@ class MeetingDAO(BaseDAO):
             await session.execute(stmt)
             await session.commit()
 
+            return await cls._reload_with_participants(session, meeting_id)
+
+    @classmethod
+    async def update_student(
+        cls, meeting_id: int, new_student_id: int
+    ) -> Meeting | None:
+        async with async_session_maker() as session:
+            meeting = await session.get(Meeting, meeting_id)
+            if not meeting:
+                return None
+            old_student = meeting.student_telegram_id
+            meeting.student_telegram_id = new_student_id
+            if old_student:
+                await session.execute(
+                    delete(MeetingUser).where(
+                        MeetingUser.meeting_id == meeting_id,
+                        MeetingUser.user_id == old_student,
+                    )
+                )
+            await session.execute(
+                insert(MeetingUser)
+                .values(meeting_id=meeting_id, user_id=new_student_id)
+                .on_conflict_do_nothing()
+            )
+            await session.commit()
             return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod

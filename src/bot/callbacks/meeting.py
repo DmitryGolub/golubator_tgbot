@@ -45,5 +45,9 @@ class ProposeNewTimeCB(CallbackData, prefix="mtg_newtime"):
     meeting_id: int  # исходная встреча
 
 
-class RequestRescheduleCB(CallbackData, prefix="mtg_reschedule"):
-    meeting_id: int  # подтверждённая встреча для переноса
+class EditMeetingCB(CallbackData, prefix="mtg_edit"):
+    meeting_id: int
+
+
+class EditMeetingFieldCB(CallbackData, prefix="mtg_edit_field"):
+    field: str  # "datetime", "description", "link", "type", "student"

@@ -47,7 +47,9 @@ _STUDENT_BUTTONS = [
 ]
 
 
-async def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
+async def menu_keyboard(
+    permissions: set[str], *, has_mentor: bool = True
+) -> InlineKeyboardMarkup:
     needed_keys: list[str] = []
     buttons_spec: list[tuple[str, str]] = []  # (ui_text_key, callback_data)
 
@@ -78,6 +80,8 @@ async def menu_keyboard(permissions: set[str]) -> InlineKeyboardMarkup:
 
     for perm, key, cb in _STUDENT_BUTTONS:
         if perm in permissions:
+            if perm == "propose_meetings" and not has_mentor:
+                continue
             needed_keys.append(key)
             buttons_spec.append((key, cb))
 

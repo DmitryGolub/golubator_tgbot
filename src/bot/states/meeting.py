@@ -10,7 +10,11 @@ class CreateMeetingFSM(StatesGroup):
     waiting_link = State()
 
 
-class RescheduleMeetingFSM(StatesGroup):
-    waiting_date = State()
-    waiting_time = State()
-    waiting_link = State()
+class EditMeetingFSM(StatesGroup):
+    choosing_field = State()
+    editing_datetime_date = State()
+    editing_datetime_time = State()
+    editing_description = State()
+    editing_link = State()
+    editing_type = State()
+    editing_student = State()

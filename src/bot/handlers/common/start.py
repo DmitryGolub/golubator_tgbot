@@ -14,6 +14,7 @@ from src.core.config import settings
 from src.services.auth import AuthService
 from src.services.ui_text import UiTextService
 from src.bot.keyboards.menu import menu_keyboard
+from src.bot.handlers.common.menu import _check_has_mentor
 from src.utils.onboarding import schedule_onboarding_notifications
 
 logger = logging.getLogger(__name__)
@@ -70,8 +71,11 @@ async def cmd_start(message: Message):
 
     permissions = await AuthService.get_user_permissions(user.id)
     if permissions:
+        has_mentor = await _check_has_mentor(user.id, permissions)
         title = await UiTextService.get("menu.title")
-        await message.answer(title, reply_markup=await menu_keyboard(permissions))
+        await message.answer(
+            title, reply_markup=await menu_keyboard(permissions, has_mentor=has_mentor)
+        )
 
 
 @router.message(Command("help"))
@@ -82,8 +86,11 @@ async def cmd_help(message: Message):
         await message.answer(text)
         return
 
+    has_mentor = await _check_has_mentor(message.from_user.id, permissions)
     title = await UiTextService.get("menu.title")
-    await message.answer(title, reply_markup=await menu_keyboard(permissions))
+    await message.answer(
+        title, reply_markup=await menu_keyboard(permissions, has_mentor=has_mentor)
+    )
 
 
 async def _merge_placeholder(telegram_id: int, placeholder_id: int) -> None:

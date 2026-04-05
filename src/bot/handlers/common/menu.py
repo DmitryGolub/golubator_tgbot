@@ -26,15 +26,24 @@ from src.utils.escape import e
 router = Router(name="menu")
 
 
+async def _check_has_mentor(user_id: int, permissions: set[str]) -> bool:
+    if "propose_meetings" not in permissions:
+        return True
+    mentee = await MenteeDAO.find_by_telegram_id(user_id)
+    return bool(mentee and mentee.mentor and mentee.mentor.telegram_id)
+
+
 async def _ensure_user(tg_user):
     from src.bot.handlers.common.start import _ensure_user as _start_ensure_user
 
     return await _start_ensure_user(tg_user)
 
 
-async def _render_menu(message_or_callback, permissions: set[str]):
+async def _render_menu(
+    message_or_callback, permissions: set[str], *, has_mentor: bool = True
+):
     text = await UiTextService.get("menu.title")
-    markup = await menu_keyboard(permissions)
+    markup = await menu_keyboard(permissions, has_mentor=has_mentor)
 
     if isinstance(message_or_callback, Message):
         await message_or_callback.answer(text=text, reply_markup=markup)
@@ -59,7 +68,8 @@ async def cmd_menu(message: Message, state: FSMContext):
         await message.answer(text)
         return
 
-    await _render_menu(message, permissions)
+    has_mentor = await _check_has_mentor(message.from_user.id, permissions)
+    await _render_menu(message, permissions, has_mentor=has_mentor)
 
 
 @router.callback_query(F.data == "back_to_menu")
@@ -77,7 +87,8 @@ async def cb_menu(callback: CallbackQuery, state: FSMContext):
         await safe_edit_text(callback, text)
         return
 
-    await _render_menu(callback, permissions)
+    has_mentor = await _check_has_mentor(callback.from_user.id, permissions)
+    await _render_menu(callback, permissions, has_mentor=has_mentor)
 
 
 # ==== ADMIN ====
@@ -215,10 +226,11 @@ async def cb_mentor_students_menu(callback: CallbackQuery):
 async def cb_mentor_students_add(callback: CallbackQuery):
     await callback.answer()
     permissions = await AuthService.get_user_permissions(callback.from_user.id)
+    has_mentor = await _check_has_mentor(callback.from_user.id, permissions)
     await safe_edit_text(
         callback,
         "Выберите ученика для изменения статуса.",
-        reply_markup=await menu_keyboard(permissions),
+        reply_markup=await menu_keyboard(permissions, has_mentor=has_mentor),
     )
 
 
@@ -228,7 +240,7 @@ async def cb_mentor_end_call(callback: CallbackQuery):
     text = await _finish_active_call_text(callback.from_user.id)
     meetings = await MeetingDAO.get_for_user(callback.from_user.id)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    from src.bot.handlers.meeting import _filter_visible_meetings
+    from src.bot.handlers.meeting import _filter_visible_meetings, _format_meetings
 
     visible = _filter_visible_meetings(
         meetings,
@@ -236,8 +248,11 @@ async def cb_mentor_end_call(callback: CallbackQuery):
         viewer_is_mentor=True,
         mentor_tg_ids=mentor_tg_ids,
     )
-    await safe_edit_text(
-        callback, text, reply_markup=mentor_meetings_keyboard(visible, page=0)
+    await safe_edit_text(callback, text)
+    meetings_text = _format_meetings(visible, mentor_tg_ids)
+    await callback.message.answer(
+        meetings_text,
+        reply_markup=mentor_meetings_keyboard(visible, page=0),
     )
 
 
@@ -246,7 +261,7 @@ async def cmd_end_call(message: Message):
     text = await _finish_active_call_text(message.from_user.id)
     meetings = await MeetingDAO.get_for_user(message.from_user.id)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    from src.bot.handlers.meeting import _filter_visible_meetings
+    from src.bot.handlers.meeting import _filter_visible_meetings, _format_meetings
 
     visible = _filter_visible_meetings(
         meetings,
@@ -254,7 +269,11 @@ async def cmd_end_call(message: Message):
         viewer_is_mentor=True,
         mentor_tg_ids=mentor_tg_ids,
     )
-    await message.answer(text, reply_markup=mentor_meetings_keyboard(visible, page=0))
+    await message.answer(text)
+    meetings_text = _format_meetings(visible, mentor_tg_ids)
+    await message.answer(
+        meetings_text, reply_markup=mentor_meetings_keyboard(visible, page=0)
+    )
 
 
 @router.callback_query(PermissionFilter("view_own_info"), F.data == "mentor_me_info")

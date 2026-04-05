@@ -9,8 +9,9 @@ from src.bot.callbacks.meeting import (
     ConfirmMeetingCB,
     DeclineMeetingCB,
     DeleteMeetingCB,
+    EditMeetingCB,
+    EditMeetingFieldCB,
     ProposeNewTimeCB,
-    RequestRescheduleCB,
     StartMeetingCallCB,
     ChooseMeetingDateCB,
     NavigateMeetingMonthCB,
@@ -46,25 +47,40 @@ def pending_meeting_keyboard(meeting_id: int) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def reschedule_pending_keyboard(meeting_id: int) -> InlineKeyboardMarkup:
+def edit_meeting_fields_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.row(
         InlineKeyboardButton(
-            text="✅ Подтвердить перенос",
-            callback_data=ConfirmMeetingCB(meeting_id=meeting_id).pack(),
+            text="📅 Дата и время",
+            callback_data=EditMeetingFieldCB(field="datetime").pack(),
         )
     )
     kb.row(
         InlineKeyboardButton(
-            text="🔄 Предложить другое время",
-            callback_data=ProposeNewTimeCB(meeting_id=meeting_id).pack(),
+            text="📝 Описание",
+            callback_data=EditMeetingFieldCB(field="description").pack(),
         )
     )
     kb.row(
         InlineKeyboardButton(
-            text="❌ Отклонить перенос",
-            callback_data=DeclineMeetingCB(meeting_id=meeting_id).pack(),
+            text="🔗 Ссылка",
+            callback_data=EditMeetingFieldCB(field="link").pack(),
         )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text="📋 Тип встречи",
+            callback_data=EditMeetingFieldCB(field="type").pack(),
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(
+            text="👤 Ученик",
+            callback_data=EditMeetingFieldCB(field="student").pack(),
+        )
+    )
+    kb.row(
+        InlineKeyboardButton(text="❌ Отмена", callback_data="meeting_create_cancel")
     )
     return kb.as_markup()
 
@@ -135,8 +151,8 @@ def mentor_meetings_keyboard(
             )
             row.append(
                 InlineKeyboardButton(
-                    text="Перенести",
-                    callback_data=RequestRescheduleCB(meeting_id=meeting.id).pack(),
+                    text="✏️",
+                    callback_data=EditMeetingCB(meeting_id=meeting.id).pack(),
                 )
             )
         row.append(
@@ -154,6 +170,11 @@ def mentor_meetings_keyboard(
         )
     )
     kb.row(InlineKeyboardButton(text="Заполнить фидбек", callback_data="my_surveys"))
+    kb.row(
+        InlineKeyboardButton(
+            text="📋 Завершённые созвоны", callback_data="past_meetings_mentor"
+        )
+    )
     kb.row(InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu"))
     return kb.as_markup()
 
@@ -212,6 +233,11 @@ def student_meetings_keyboard(
                     ),
                 )
 
+    kb.row(
+        InlineKeyboardButton(
+            text="📋 Завершённые созвоны", callback_data="past_meetings_student"
+        )
+    )
     kb.row(InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu"))
     return kb.as_markup()
 
@@ -223,9 +249,8 @@ def meeting_cancel_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def meeting_skip_cancel_keyboard() -> InlineKeyboardMarkup:
+def meeting_link_cancel_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    kb.button(text="⏩ Пропустить", callback_data="meeting_skip_link")
     kb.button(text="❌ Отмена", callback_data="meeting_create_cancel")
     kb.adjust(1)
     return kb.as_markup()
@@ -375,3 +400,61 @@ def meeting_time_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="❌ Отмена", callback_data="meeting_create_cancel")
     )
     return builder.as_markup()
+
+
+def mentor_past_meetings_keyboard(
+    meetings: list[Meeting] | None = None,
+    page: int = 0,
+    viewer_id: int | None = None,
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+
+    page_size = MEETINGS_PAGE_SIZE
+    all_meetings = meetings or []
+    total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
+    page = max(0, min(page, total_pages - 1))
+    start = page * page_size
+    page_meetings = all_meetings[start : start + page_size]
+
+    nav = paginate_buttons("past_meetings", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    for local_idx, meeting in enumerate(page_meetings):
+        global_idx = start + local_idx + 1
+        kb.row(
+            InlineKeyboardButton(
+                text=f"Удалить #{global_idx}",
+                callback_data=DeleteMeetingCB(meeting_id=meeting.id).pack(),
+            )
+        )
+
+    kb.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад к созвонам", callback_data="mentor_meetings_list"
+        )
+    )
+    return kb.as_markup()
+
+
+def student_past_meetings_keyboard(
+    meetings: list[Meeting] | None = None,
+    page: int = 0,
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+
+    page_size = MEETINGS_PAGE_SIZE
+    all_meetings = meetings or []
+    total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
+    page = max(0, min(page, total_pages - 1))
+
+    nav = paginate_buttons("past_meetings", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    kb.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад к созвонам", callback_data="student_meetings"
+        )
+    )
+    return kb.as_markup()
