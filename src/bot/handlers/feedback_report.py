@@ -13,7 +13,6 @@ from src.bot.callbacks.feedback_report import (
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.states.feedback_report import FeedbackReportFSM
 from src.bot.utils import safe_edit_text
-from src.core.config import settings
 from src.dao.user import UserDAO
 from src.services.ui_text import UiTextService
 
@@ -150,14 +149,17 @@ async def _send_bug_report(
     full_name = sender_data.get("full_name", "")
     outgoing = f"🐛 Баг-репорт от {username} ({full_name}):\n{text}"
 
-    for admin_id in settings.admin_ids:
+    admins = await UserDAO.get_all(role_name="admin")
+    for admin in admins:
         try:
             if photo_file_id:
-                await bot.send_photo(admin_id, photo_file_id, caption=outgoing)
+                await bot.send_photo(admin.telegram_id, photo_file_id, caption=outgoing)
             else:
-                await bot.send_message(admin_id, outgoing)
+                await bot.send_message(admin.telegram_id, outgoing)
         except Exception:
-            logger.warning("Failed to send bug report to %s", admin_id, exc_info=True)
+            logger.warning(
+                "Failed to send bug report to %s", admin.telegram_id, exc_info=True
+            )
 
     confirmation = await UiTextService.get("feedback.bug_sent")
     if edit:
