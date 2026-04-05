@@ -203,51 +203,36 @@ def _to_uuid(raw: str) -> str:
 
 
 async def _resolve_collection_id(
-    client: httpx.AsyncClient, database_id: str, data_source_id: str | None
+    client: httpx.AsyncClient, database_id: str
 ) -> str | None:
-    """Try multiple ID candidates to resolve real collection_id."""
+    """Resolve real collection_id via loadCachedPageChunk.
+
+    The database_id from official API is a collection_view_page block.
+    loadCachedPageChunk returns recordMap.collection with the real collection_id as key.
+    """
     db_uuid = _to_uuid(database_id)
-    ds_uuid = data_source_id  # already has dashes
-
-    # Try each candidate as both block and collection
-    candidates = [
-        (db_uuid, "block"),
-        (db_uuid, "collection"),
-    ]
-    if ds_uuid:
-        candidates.append((ds_uuid, "block"))
-        candidates.append((ds_uuid, "collection"))
-
     resp = await client.post(
-        "/api/v3/getRecordValues",
-        json={"requests": [{"id": cid, "table": tbl} for cid, tbl in candidates]},
+        "/api/v3/loadCachedPageChunk",
+        json={
+            "page": {"id": db_uuid},
+            "limit": 10,
+            "cursor": {"stack": []},
+            "chunkNumber": 0,
+            "verticalColumns": False,
+        },
     )
     if resp.status_code != 200:
-        logger.error("getRecordValues failed: %d %s", resp.status_code, resp.text[:300])
-        return None
-
-    raw = resp.json()
-    logger.info("getRecordValues raw response: %s", str(raw)[:800])
-    results = raw.get("results", [])
-    for i, result in enumerate(results):
-        value = result.get("value", {})
-        cand_id, cand_table = candidates[i]
-        if not value:
-            continue
-        logger.info(
-            "Candidate %s/%s: type=%s, keys=%s",
-            cand_table,
-            cand_id,
-            value.get("type"),
-            list(value.keys())[:10],
+        logger.error(
+            "loadCachedPageChunk failed: %d %s", resp.status_code, resp.text[:300]
         )
-        # If it's a block with collection_id → return that
-        if cand_table == "block" and value.get("collection_id"):
-            return value["collection_id"]
-        # If it's a collection with schema → it IS the collection_id
-        if cand_table == "collection" and value.get("schema"):
-            return cand_id
-
+        return None
+    data = resp.json()
+    collection_map = data.get("recordMap", {}).get("collection", {})
+    if collection_map:
+        collection_id = next(iter(collection_map))
+        logger.info("Resolved collection_id: %s", collection_id)
+        return collection_id
+    logger.error("No collection found in recordMap for database %s", database_id)
     return None
 
 
@@ -256,17 +241,23 @@ async def _fetch_status_prop_id(
 ) -> str | None:
     """Fetch collection schema to find the property ID for Status."""
     resp = await client.post(
-        "/api/v3/getRecordValues",
-        json={"requests": [{"id": collection_id, "table": "collection"}]},
+        "/api/v3/syncRecordValues",
+        json={
+            "requests": [
+                {"pointer": {"table": "collection", "id": collection_id}, "version": -1}
+            ]
+        },
     )
     if resp.status_code != 200:
-        logger.error("getRecordValues failed: %d %s", resp.status_code, resp.text[:300])
+        logger.error(
+            "syncRecordValues failed: %d %s", resp.status_code, resp.text[:300]
+        )
         return None
     data = resp.json()
-    results = data.get("results", [])
-    if not results:
-        return None
-    schema = results[0].get("value", {}).get("schema", {})
+    collection_value = (
+        data.get("recordMap", {}).get("collection", {}).get(collection_id, {})
+    )
+    schema = collection_value.get("value", {}).get("schema", {})
     for prop_id, prop_def in schema.items():
         if prop_def.get("name") == "Status" and prop_def.get("type") == "status":
             return prop_id
@@ -364,10 +355,7 @@ async def main(dry_run: bool = False) -> None:
         ) as http_client:
             # Resolve real collection_id from Notion database block
             database_id = mentee_repo._client.database_id
-            data_source_id = mentee_repo._client.data_source_id
-            collection_id = await _resolve_collection_id(
-                http_client, database_id, data_source_id
-            )
+            collection_id = await _resolve_collection_id(http_client, database_id)
             if not collection_id:
                 logger.error(
                     "Cannot resolve collection_id for database %s", database_id
