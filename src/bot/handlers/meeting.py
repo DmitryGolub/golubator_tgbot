@@ -24,6 +24,7 @@ from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.meeting import (
     mentor_meetings_keyboard,
+    student_meetings_keyboard,
     meeting_cancel_keyboard,
     meeting_skip_cancel_keyboard,
     meeting_students_keyboard,
@@ -262,7 +263,11 @@ async def cb_student_meetings(callback: CallbackQuery):
     text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids)
     try:
         await safe_edit_text(
-            callback, text, reply_markup=await _menu_kb(callback.from_user.id)
+            callback,
+            text,
+            reply_markup=student_meetings_keyboard(
+                visible, page=0, viewer_id=callback.from_user.id
+            ),
         )
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():

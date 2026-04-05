@@ -185,10 +185,8 @@ async def test_setup_all_celery_conditions(
     )
 
     # Роли для получателей эскалации
-    await asyncio.gather(
-        bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "Study"),
-        bot_setup.set_user_role(ACCOUNT_1_TG_ID, "education_lead"),
-    )
+    await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "Study")
+    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "education_lead")
 
     _module_state["escalation_session_id"] = s_reminder
     _module_state["mentor_session_id"] = s_mentor

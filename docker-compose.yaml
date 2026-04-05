@@ -225,6 +225,14 @@ services:
       DB_PORT: 5432
       REDIS_HOST: redis_test
       REDIS_PORT: 6379
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       migrations_test:
         condition: service_completed_successfully

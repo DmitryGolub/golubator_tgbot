@@ -158,6 +158,64 @@ def mentor_meetings_keyboard(
     return kb.as_markup()
 
 
+def student_meetings_keyboard(
+    meetings: list[Meeting] | None = None,
+    page: int = 0,
+    viewer_id: int | None = None,
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+
+    page_size = MEETINGS_PAGE_SIZE
+    all_meetings = meetings or []
+    total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
+    page = max(0, min(page, total_pages - 1))
+    start = page * page_size
+    page_meetings = all_meetings[start : start + page_size]
+
+    nav = paginate_buttons("meetings", page, total_pages)
+    if nav:
+        kb.row(*nav)
+
+    for local_idx, meeting in enumerate(page_meetings):
+        global_idx = start + local_idx + 1
+
+        is_pending = meeting.proposal_status == ProposalStatus.pending_confirmation
+        viewer_is_not_proposer = (
+            viewer_id is not None and meeting.proposed_by != viewer_id
+        )
+
+        if is_pending and viewer_is_not_proposer:
+            if meeting.original_scheduled_at:
+                kb.row(
+                    InlineKeyboardButton(
+                        text=f"📋 Перенос #{global_idx}",
+                        callback_data=ConfirmMeetingCB(meeting_id=meeting.id).pack(),
+                    ),
+                    InlineKeyboardButton(
+                        text="❌",
+                        callback_data=DeclineMeetingCB(meeting_id=meeting.id).pack(),
+                    ),
+                )
+            else:
+                kb.row(
+                    InlineKeyboardButton(
+                        text=f"✅ #{global_idx}",
+                        callback_data=ConfirmMeetingCB(meeting_id=meeting.id).pack(),
+                    ),
+                    InlineKeyboardButton(
+                        text="🔄",
+                        callback_data=ProposeNewTimeCB(meeting_id=meeting.id).pack(),
+                    ),
+                    InlineKeyboardButton(
+                        text="❌",
+                        callback_data=DeclineMeetingCB(meeting_id=meeting.id).pack(),
+                    ),
+                )
+
+    kb.row(InlineKeyboardButton(text="⬅️ Назад к меню", callback_data="back_to_menu"))
+    return kb.as_markup()
+
+
 def meeting_cancel_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="❌ Отмена", callback_data="meeting_create_cancel")
