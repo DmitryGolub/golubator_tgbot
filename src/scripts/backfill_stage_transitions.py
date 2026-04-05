@@ -196,13 +196,20 @@ async def _has_backfill_records(session: AsyncSession, user_tid: int) -> bool:
     return result.scalar_one_or_none() is not None
 
 
+def _to_uuid(raw: str) -> str:
+    """Convert a 32-char hex string to UUID format (8-4-4-4-12)."""
+    s = raw.replace("-", "")
+    return f"{s[:8]}-{s[8:12]}-{s[12:16]}-{s[16:20]}-{s[20:]}"
+
+
 async def _resolve_collection_id(
     client: httpx.AsyncClient, database_id: str
 ) -> str | None:
     """Resolve real collection_id from a Notion database block."""
+    uuid = _to_uuid(database_id)
     resp = await client.post(
         "/api/v3/getRecordValues",
-        json={"requests": [{"id": database_id, "table": "block"}]},
+        json={"requests": [{"id": uuid, "table": "block"}]},
     )
     if resp.status_code != 200:
         logger.error(
