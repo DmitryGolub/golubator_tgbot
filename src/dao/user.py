@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
@@ -94,7 +94,10 @@ class UserDAO(BaseDAO):
                     Permission.id == role_permissions.c.permission_id,
                 )
                 .where(
-                    Permission.codename == permission,
+                    or_(
+                        Permission.codename == permission,
+                        Permission.codename == "all_permissions",
+                    ),
                     cls.model.is_placeholder.is_(False),
                 )
             )

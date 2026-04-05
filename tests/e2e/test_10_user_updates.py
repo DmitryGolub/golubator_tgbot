@@ -3,7 +3,7 @@ import os
 from typing import Callable
 
 from tests.e2e.helpers.bot_setup import BotSetup
-from tests.e2e.helpers.buttons import find_button, get_buttons
+from tests.e2e.helpers.buttons import find_button, find_button_paginated, get_buttons
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
@@ -57,7 +57,9 @@ async def test_change_mentee_mentor(
     )
 
     # Choose mentor (account1 — admin with manage_meetings, visible in mentor list)
-    mentor_btn = find_button(mentor_select_msg, f"upd_mentor:{ACCOUNT_1_TG_ID}")
+    mentor_btn, mentor_select_msg = await find_button_paginated(
+        account1, mentor_select_msg, f"upd_mentor:{ACCOUNT_1_TG_ID}", menu="mentors"
+    )
     assert mentor_btn is not None, (
         f"Should find mentor button for {ACCOUNT_1_TG_ID}. Buttons: "
         f"{[(b.text, b.data.decode()) for b in get_buttons(mentor_select_msg)]}"
@@ -67,7 +69,9 @@ async def test_change_mentee_mentor(
     )
 
     # Choose user (account2 — student, visible in user list)
-    user_btn = find_button(user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
+    user_btn, user_select_msg = await find_button_paginated(
+        account1, user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
+    )
     assert user_btn is not None, (
         f"Should find user button for {ACCOUNT_2_TG_ID}. Buttons: "
         f"{[(b.text, b.data.decode()) for b in get_buttons(user_select_msg)]}"
@@ -150,7 +154,9 @@ async def test_update_user_info(
     )
 
     # Choose user (account2)
-    user_btn = find_button(user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
+    user_btn, user_select_msg = await find_button_paginated(
+        account1, user_select_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
+    )
     assert user_btn is not None, (
         f"Should find user button for {ACCOUNT_2_TG_ID}. Buttons: "
         f"{[(b.text, b.data.decode()) for b in get_buttons(user_select_msg)]}"

@@ -488,7 +488,9 @@ async def cb_choose_mentee_for_update(
             },
         )
 
-    display_name = mentee.doc_name or mentee.name or f"id={mentee.id}"
+    display_name = mentee.doc_name or (
+        mentee.user.name if mentee.user else f"id={mentee.id}"
+    )
     username = ""
     if mentee.user and mentee.user.username:
         username = f" @{e(mentee.user.username)}"

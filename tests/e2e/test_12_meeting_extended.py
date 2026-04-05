@@ -95,6 +95,9 @@ async def test_student_views_meetings(
         description=f"[E2E-{test_run_id}] student view test",
     )
 
+    # Drain stale messages from create_meeting flow before navigating menu
+    await account2.drain_messages()
+
     # Student navigates: /menu -> student_meetings
     menu_msg = await account2.send_command("/menu")
     student_meetings_btn = find_button(menu_msg, "student_meetings")

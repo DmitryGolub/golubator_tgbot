@@ -119,6 +119,7 @@ PERMISSIONS = [
     ("view_education_feedback", "Просмотр обратной связи об обучении"),
     ("export_job_search", "Экспорт отчётов по поиску работы"),
     ("export_education_feedback", "Экспорт обратной связи об обучении"),
+    ("update_student_status", "Обновление статуса ученика (ментором)"),
     ("mentor_role", "Marker: user has mentor capabilities"),
 ]
 
@@ -139,6 +140,7 @@ MENTOR_PERMS = [
     "end_call",
     "fill_survey",
     "fill_self_review",
+    "update_student_status",
     "mentor_role",
 ]
 

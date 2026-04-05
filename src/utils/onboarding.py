@@ -67,6 +67,8 @@ async def _ensure_onboarding_meeting(
             meeting = Meeting(
                 description="Первый созвон с ментором (онбординг)",
                 scheduled_at=scheduled_at,
+                mentor_telegram_id=mentor_id,
+                student_telegram_id=student_id,
             )
             session.add(meeting)
             await session.flush()

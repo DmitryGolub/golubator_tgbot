@@ -4,7 +4,7 @@ import os
 import pytest
 
 from tests.e2e.helpers.bot_setup import BotSetup
-from tests.e2e.helpers.buttons import find_button, get_buttons
+from tests.e2e.helpers.buttons import find_button, find_button_paginated, get_buttons
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
@@ -491,6 +491,11 @@ async def test_cohort_changed_auto_fires(
     bot_setup: BotSetup,
 ):
     """Cohort change through bot should fire cohort_changed trigger."""
+    # Ensure users exist in DB (needed for isolated test runs)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
 
@@ -513,7 +518,9 @@ async def test_cohort_changed_auto_fires(
     assert any_status_btn is not None, "Should find status value button"
     user_msg = await account1.click_button(value_msg, text=any_status_btn.text)
 
-    user_btn = find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
+    user_btn, user_msg = await find_button_paginated(
+        account1, user_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
+    )
     assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
     await account1.click_button(user_msg, data=user_btn.data.decode())
 

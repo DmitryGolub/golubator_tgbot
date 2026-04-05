@@ -176,7 +176,9 @@ def mentees_keyboard(mentees: Sequence, page: int = 0) -> InlineKeyboardMarkup:
         kb.row(*nav)
 
     for mentee in page_items:
-        display_name = getattr(mentee, "doc_name", None) or mentee.name
+        display_name = mentee.doc_name or (
+            mentee.user.name if mentee.user else str(mentee.telegram_id or mentee.id)
+        )
         username = None
         if hasattr(mentee, "user") and mentee.user:
             username = mentee.user.username

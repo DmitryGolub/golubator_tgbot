@@ -6,6 +6,13 @@ from telethon.errors import FloodWaitError, MessageIdInvalidError
 from telethon.tl.custom import Message
 
 
+def _markup_signature(markup) -> tuple:
+    """Extract button data as a hashable tuple for comparison."""
+    if not markup or not hasattr(markup, "rows"):
+        return ()
+    return tuple((btn.text, btn.data) for row in markup.rows for btn in row.buttons)
+
+
 async def _send_with_flood_guard(conv, text: str):
     """Send message with FloodWait retry (raises AssertionError if wait > 120s)."""
     try:
@@ -134,14 +141,24 @@ class TelegramTestClient:
             for m in new_messages:
                 if m.id == clicked_id and m.id in old_snapshots:
                     old_text, old_edit_date, old_markup = old_snapshots[m.id]
-                    if m.text != old_text or m.edit_date != old_edit_date:
+                    if (
+                        m.text != old_text
+                        or m.edit_date != old_edit_date
+                        or _markup_signature(m.reply_markup)
+                        != _markup_signature(old_markup)
+                    ):
                         return m
 
             # Priority 2: edit of any other known message
             for m in new_messages:
                 if m.id in old_snapshots and m.id != clicked_id:
                     old_text, old_edit_date, old_markup = old_snapshots[m.id]
-                    if m.text != old_text or m.edit_date != old_edit_date:
+                    if (
+                        m.text != old_text
+                        or m.edit_date != old_edit_date
+                        or _markup_signature(m.reply_markup)
+                        != _markup_signature(old_markup)
+                    ):
                         return m
 
             # Priority 3: new message (fallback for .answer() handlers)
@@ -277,6 +294,15 @@ class TelegramTestClient:
     async def get_last_messages(self, limit: int = 5) -> list[Message]:
         """Get last messages from the bot chat."""
         return await self._client.get_messages(self._bot, limit=limit)
+
+    async def drain_messages(self, settle_time: float = 1.5) -> None:
+        """Wait for pending messages to arrive, then discard them.
+
+        Useful after multi-step flows (e.g. create_meeting) where Telethon
+        may have stale messages queued that interfere with the next command.
+        """
+        await asyncio.sleep(settle_time)
+        await self._client.get_messages(self._bot, limit=10)
 
     @property
     def raw(self) -> TelegramClient:

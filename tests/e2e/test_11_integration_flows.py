@@ -2,7 +2,7 @@ import asyncio
 import os
 
 from tests.e2e.helpers.bot_setup import BotSetup
-from tests.e2e.helpers.buttons import find_button
+from tests.e2e.helpers.buttons import find_button, find_button_paginated
 from tests.e2e.helpers.db_assertions import DBAssertions
 from tests.e2e.helpers.setup import E2ESetup
 from tests.e2e.helpers.telegram_client import TelegramTestClient
@@ -137,7 +137,9 @@ async def test_cohort_change_triggers_notification(
     assert any_btn is not None, "Should find job_search status value button"
     user_msg = await account1.click_button(value_msg, data=any_btn.data.decode())
 
-    user_btn = find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
+    user_btn, user_msg = await find_button_paginated(
+        account1, user_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
+    )
     assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
 
     # Snapshot before the action that triggers notification
@@ -165,6 +167,11 @@ async def test_onboarding_meeting_on_mentor_assign(
     wait_for_sync,
 ):
     """Assigning a mentor to a mentee in Greetings status creates an onboarding meeting."""
+    # Ensure users exist in DB (needed for isolated test runs)
+    await asyncio.gather(
+        account1.send_command_multi("/start", count=2),
+        account2.send_command_multi("/start", count=2),
+    )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
@@ -188,13 +195,17 @@ async def test_onboarding_meeting_on_mentor_assign(
     assert mentor_btn is not None, "Should find mentor param button"
     mentor_msg = await account1.click_button(param_msg, text=mentor_btn.text)
 
-    mentor_select_btn = find_button(mentor_msg, f"upd_mentor:{ACCOUNT_1_TG_ID}")
+    mentor_select_btn, mentor_msg = await find_button_paginated(
+        account1, mentor_msg, f"upd_mentor:{ACCOUNT_1_TG_ID}", menu="mentors"
+    )
     assert mentor_select_btn is not None, "Should find mentor select button"
     user_msg = await account1.click_button(
         mentor_msg, data=mentor_select_btn.data.decode()
     )
 
-    user_btn = find_button(user_msg, f"upd_user:{ACCOUNT_2_TG_ID}")
+    user_btn, user_msg = await find_button_paginated(
+        account1, user_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
+    )
     assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
     result_msg = await account1.click_button(user_msg, data=user_btn.data.decode())
     assert "обновлено" in result_msg.text.lower()
