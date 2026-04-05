@@ -29,7 +29,7 @@ async def test_change_mentee_mentor(
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     # Add manage_meetings to admin role so account1 appears in get_all_with_permission
-    await bot_setup.ensure_role_permission("admin", "manage_meetings")
+    await setup.ensure_role_permission("admin", "manage_meetings")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
     # /menu -> Users

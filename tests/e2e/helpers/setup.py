@@ -54,34 +54,20 @@ class E2ESetup:
         if mentor_telegram_id:
             await self.ensure_user_record(mentor_telegram_id)
             await self.ensure_mentor_record(mentor_telegram_id)
-        existing = await self._pool.fetchrow(
-            "SELECT id FROM iam.mentees WHERE telegram_id = $1", telegram_id
-        )
-        if not existing:
-            mentor_id = None
-            if mentor_telegram_id:
-                row = await self._pool.fetchrow(
-                    "SELECT id FROM iam.mentors WHERE telegram_id = $1",
-                    mentor_telegram_id,
-                )
-                mentor_id = row["id"] if row else None
-            await self._pool.execute(
-                "INSERT INTO iam.mentees (telegram_id, mentor_id) VALUES ($1, $2)",
-                telegram_id,
-                mentor_id,
+        mentor_id = None
+        if mentor_telegram_id:
+            row = await self._pool.fetchrow(
+                "SELECT id FROM iam.mentors WHERE telegram_id = $1",
+                mentor_telegram_id,
             )
-        else:
-            if mentor_telegram_id:
-                row = await self._pool.fetchrow(
-                    "SELECT id FROM iam.mentors WHERE telegram_id = $1",
-                    mentor_telegram_id,
-                )
-                if row:
-                    await self._pool.execute(
-                        "UPDATE iam.mentees SET mentor_id = $1 WHERE telegram_id = $2",
-                        row["id"],
-                        telegram_id,
-                    )
+            mentor_id = row["id"] if row else None
+        # ON CONFLICT: update mentor_id but preserve notion_page_id set by background task
+        await self._pool.execute(
+            """INSERT INTO iam.mentees (telegram_id, mentor_id) VALUES ($1, $2)
+               ON CONFLICT (telegram_id) DO UPDATE SET mentor_id = COALESCE($2, iam.mentees.mentor_id)""",
+            telegram_id,
+            mentor_id,
+        )
 
     # Tables preserved between test modules (seed data from migrations)
     _PRESERVE_TABLES = {

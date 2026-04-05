@@ -140,13 +140,24 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                         )
                     elif mentor_record:
                         await MentorDAO.update(
-                            mentor_record.id, telegram_id=telegram_id
-                        )
-                    else:
-                        await MentorDAO.add(
+                            mentor_record.id,
                             telegram_id=telegram_id,
                             notion_page_id=notion_mentor.page_id,
                         )
+                    else:
+                        try:
+                            await MentorDAO.add(
+                                telegram_id=telegram_id,
+                                notion_page_id=notion_mentor.page_id,
+                            )
+                        except Exception:
+                            # Race: record created between check and insert
+                            refetched = await MentorDAO.find_by_telegram_id(telegram_id)
+                            if refetched:
+                                await MentorDAO.update(
+                                    refetched.id,
+                                    notion_page_id=notion_mentor.page_id,
+                                )
                     await mentor_repo.update_telegram_id(
                         notion_mentor.page_id, telegram_id
                     )
@@ -189,14 +200,24 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                         )
                     elif mentee_record:
                         await MenteeDAO.update(
-                            mentee_record.id, telegram_id=telegram_id
-                        )
-                    else:
-                        await MenteeDAO.add(
+                            mentee_record.id,
                             telegram_id=telegram_id,
                             notion_page_id=notion_mentee.page_id,
-                            doc_name=f"@{username}" if username else None,
                         )
+                    else:
+                        try:
+                            await MenteeDAO.add(
+                                telegram_id=telegram_id,
+                                notion_page_id=notion_mentee.page_id,
+                                doc_name=f"@{username}" if username else None,
+                            )
+                        except Exception:
+                            refetched = await MenteeDAO.find_by_telegram_id(telegram_id)
+                            if refetched:
+                                await MenteeDAO.update(
+                                    refetched.id,
+                                    notion_page_id=notion_mentee.page_id,
+                                )
                     await mentee_repo.update_telegram_id(
                         notion_mentee.page_id, telegram_id
                     )
@@ -211,11 +232,19 @@ async def _link_notion_page(telegram_id: int, username: str) -> None:
                 if username:
                     page_id = await mentee_repo.create_page(username, telegram_id)
                     if page_id:
-                        await MenteeDAO.add(
-                            telegram_id=telegram_id,
-                            notion_page_id=page_id,
-                            doc_name=f"@{username}",
-                        )
+                        try:
+                            await MenteeDAO.add(
+                                telegram_id=telegram_id,
+                                notion_page_id=page_id,
+                                doc_name=f"@{username}",
+                            )
+                        except Exception:
+                            refetched = await MenteeDAO.find_by_telegram_id(telegram_id)
+                            if refetched:
+                                await MenteeDAO.update(
+                                    refetched.id,
+                                    notion_page_id=page_id,
+                                )
                         logger.info(
                             "Notion mentee created: user=%s page=%s",
                             telegram_id,

@@ -66,7 +66,16 @@ async def test_push_mentees_status_and_mentor(
     await account2.send_command_multi("/start", count=2)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
-    mentee = await db.get_mentee(ACCOUNT_2_TG_ID)
+    # Wait for background _link_notion_page task to set notion_page_id
+    import asyncio
+
+    mentee = None
+    for _ in range(10):
+        mentee = await db.get_mentee(ACCOUNT_2_TG_ID)
+        if mentee and mentee.get("notion_page_id"):
+            break
+        await asyncio.sleep(0.5)
+
     assert mentee is not None and mentee.get("notion_page_id") is not None, (
         "Mentee should have notion_page_id — Notion must be configured"
     )
