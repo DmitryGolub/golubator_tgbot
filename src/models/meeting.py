@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 from typing import TYPE_CHECKING, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import (
     Boolean,
     Enum,
@@ -46,6 +46,9 @@ class Meeting(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    call_started_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     is_cancelled: Mapped[bool] = mapped_column(
@@ -130,6 +133,17 @@ class Meeting(Base):
         lazy="selectin",
         overlaps="student",
     )
+
+    @property
+    def call_duration(self) -> timedelta | None:
+        if self.call_started_at and self.completed_at:
+            return self.completed_at - self.call_started_at
+        return None
+
+    @property
+    def call_duration_minutes(self) -> int | None:
+        d = self.call_duration
+        return round(d.total_seconds() / 60) if d else None
 
     @property
     def other_participants(self) -> list["User"]:

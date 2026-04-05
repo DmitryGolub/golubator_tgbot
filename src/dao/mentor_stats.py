@@ -12,9 +12,9 @@ from src.models.survey_template import SurveyQuestion, SurveyTemplate
 _POST_CALL_STUDENT_SLUG = "post_call_student"
 # sort_order values in SurveyQuestion for the post_call_student template:
 #   2 = mentor_style, 3 = knowledge_depth, 4 = understanding
-_MENTOR_STYLE_SORT_ORDER = 2
-_KNOWLEDGE_DEPTH_SORT_ORDER = 3
-_UNDERSTANDING_SORT_ORDER = 4
+_MENTOR_STYLE_SORT_ORDER = 1
+_KNOWLEDGE_DEPTH_SORT_ORDER = 2
+_UNDERSTANDING_SORT_ORDER = 3
 
 
 class MentorStatsDAO:

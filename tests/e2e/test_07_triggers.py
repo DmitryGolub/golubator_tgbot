@@ -163,7 +163,6 @@ async def test_create_call_ended_survey_trigger(
     # Need a survey template
     template_id = await bot_setup.create_survey_template(
         title="E2E Post-Call Survey",
-        slug="e2e_post_call",
         questions=[
             {
                 "title": "How was the call?",

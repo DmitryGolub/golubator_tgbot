@@ -70,6 +70,7 @@ def make_meeting(
     description: str = "Test meeting",
     scheduled_at: datetime | None = None,
     completed_at: datetime | None = None,
+    call_started_at: datetime | None = None,
     participants: list | None = None,
     call_status=None,
     student_telegram_id: int | None = None,
@@ -85,6 +86,7 @@ def make_meeting(
         meeting_link=None,
         created_at=datetime.now(timezone.utc),
         completed_at=completed_at,
+        call_started_at=call_started_at,
         notion_page_id=None,
         event_type=None,
         topic=None,
@@ -106,6 +108,16 @@ def make_meeting(
     # Add computed properties matching Meeting model
     ns.other_participants = [p for p in p_list if p.telegram_id != mentor_telegram_id]
     ns.participant_ids = {p.telegram_id for p in p_list}
+
+    # Computed duration properties matching Meeting model
+    if ns.call_started_at and ns.completed_at:
+        _duration = ns.completed_at - ns.call_started_at
+        ns.call_duration = _duration
+        ns.call_duration_minutes = round(_duration.total_seconds() / 60)
+    else:
+        ns.call_duration = None
+        ns.call_duration_minutes = None
+
     return ns
 
 

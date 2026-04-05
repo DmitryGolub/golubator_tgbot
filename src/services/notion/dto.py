@@ -28,6 +28,7 @@ class MentorData:
     email: str | None = None
     about: str | None = None
     membership_type: str | None = None
+    channel_id: int | None = None
     last_edited_time: datetime | None = None
 
 

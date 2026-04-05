@@ -165,7 +165,10 @@ class MeetingDAO(BaseDAO):
                     Meeting.id == meeting_id,
                     Meeting.call_status.is_(None),
                 )
-                .values(call_status=CallStatus.ongoing)
+                .values(
+                    call_status=CallStatus.ongoing,
+                    call_started_at=datetime.now(timezone.utc),
+                )
                 .returning(Meeting.id)
             )
             result = await session.execute(stmt)

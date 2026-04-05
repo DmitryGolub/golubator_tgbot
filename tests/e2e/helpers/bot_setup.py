@@ -283,18 +283,23 @@ class BotSetup:
             meetings_msg, text=create_btn.text
         )
 
-        # Step 1: Choose student — prefer exact match, fall back to first available
-        student_data = f"meeting_student:{student_telegram_id}"
-        if self._has_button_data(create_msg, student_data):
-            type_msg = await mentor_client.click_button(create_msg, data=student_data)
+        # Step 1: Choose student(s) via multi-select toggle + confirm
+        toggle_data = f"mtg_toggle:{student_telegram_id}"
+        if self._has_button_data(create_msg, toggle_data):
+            toggled_msg = await mentor_client.click_button(create_msg, data=toggle_data)
         else:
-            student_btn = find_button(create_msg, "meeting_student:")
-            assert student_btn is not None, (
-                f"Should find student button for {student_telegram_id}"
+            toggle_btn = find_button(create_msg, "mtg_toggle:")
+            assert toggle_btn is not None, (
+                f"Should find student toggle button for {student_telegram_id}"
             )
-            type_msg = await mentor_client.click_button(
-                create_msg, data=student_btn.data.decode()
+            toggled_msg = await mentor_client.click_button(
+                create_msg, data=toggle_btn.data.decode()
             )
+        confirm_btn = find_button(toggled_msg, "mtg_confirm_sel:")
+        assert confirm_btn is not None, "Should find confirm selection button"
+        type_msg = await mentor_client.click_button(
+            toggled_msg, data=confirm_btn.data.decode()
+        )
 
         # Step 2: Skip meeting type (or pick first available)
         skip_type_btn = find_button(type_msg, "meeting_skip_type")

@@ -38,6 +38,9 @@ class NotionMentorRepo:
         membership_sel = props.get("Membership Type", {}).get("select")
         membership_type = membership_sel.get("name") if membership_sel else None
 
+        channel_id_raw = props.get("Channel ID", {}).get("number")
+        channel_id = int(channel_id_raw) if channel_id_raw is not None else None
+
         return MentorData(
             page_id=page["id"],
             name=name,
@@ -46,6 +49,7 @@ class NotionMentorRepo:
             email=email,
             about=about,
             membership_type=membership_type,
+            channel_id=channel_id,
             last_edited_time=_parse_iso(page.get("last_edited_time")),
         )
 

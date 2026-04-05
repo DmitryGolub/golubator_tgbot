@@ -536,6 +536,9 @@ class NotionSyncServiceV2:
             mentor.membership_type = (
                 getattr(data, "membership_type", None) or mentor.membership_type
             )
+            channel_id = getattr(data, "channel_id", None)
+            if channel_id is not None:
+                mentor.channel_id = channel_id
             mentor.synced_at = now
 
             current_ph = (
@@ -558,6 +561,7 @@ class NotionSyncServiceV2:
                 email=getattr(data, "email", None),
                 about=getattr(data, "about", None),
                 membership_type=getattr(data, "membership_type", None),
+                channel_id=getattr(data, "channel_id", None),
                 synced_at=now,
             )
             session.add(new_mentor)

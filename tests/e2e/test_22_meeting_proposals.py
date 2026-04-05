@@ -68,12 +68,15 @@ async def _create_pending_meeting_via_ui(
     )
     create_msg = await account1.click_button(meetings_msg, text=create_btn.text)
 
-    student_btn = find_button(create_msg, "meeting_student:")
-    assert student_btn is not None, (
-        f"Should find student button. "
+    toggle_btn = find_button(create_msg, "mtg_toggle:")
+    assert toggle_btn is not None, (
+        f"Should find student toggle button. "
         f"Buttons: {[(b.text, b.data.decode() if b.data else '') for b in get_buttons(create_msg)]}"
     )
-    type_msg = await account1.click_button(create_msg, data=student_btn.data.decode())
+    toggled_msg = await account1.click_button(create_msg, data=toggle_btn.data.decode())
+    confirm_btn = find_button(toggled_msg, "mtg_confirm_sel:")
+    assert confirm_btn is not None, "Should find confirm selection button"
+    type_msg = await account1.click_button(toggled_msg, data=confirm_btn.data.decode())
 
     skip_type_btn = find_button(type_msg, "meeting_skip_type")
     if skip_type_btn:

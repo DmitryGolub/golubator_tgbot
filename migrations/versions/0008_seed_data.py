@@ -163,19 +163,6 @@ TEMPLATES = [
         "questions": [
             {
                 "sort_order": 1,
-                "title": "Длительность созвона",
-                "question_type": "single_choice",
-                "is_required": True,
-                "config": None,
-                "options": [
-                    {"value": "lt_30", "label": "<30 минут"},
-                    {"value": "30_45", "label": "30-45 минут"},
-                    {"value": "45_60", "label": "45-60 минут"},
-                    {"value": "gt_60", "label": ">60 минут"},
-                ],
-            },
-            {
-                "sort_order": 2,
                 "title": "Стиль общения ментора",
                 "question_type": "rating",
                 "is_required": True,
@@ -183,7 +170,7 @@ TEMPLATES = [
                 "options": [],
             },
             {
-                "sort_order": 3,
+                "sort_order": 2,
                 "title": "Глубина проверки знаний",
                 "question_type": "rating",
                 "is_required": True,
@@ -191,7 +178,7 @@ TEMPLATES = [
                 "options": [],
             },
             {
-                "sort_order": 4,
+                "sort_order": 3,
                 "title": "Насколько менти усвоил(а) материал",
                 "question_type": "rating",
                 "is_required": True,
@@ -199,7 +186,7 @@ TEMPLATES = [
                 "options": [],
             },
             {
-                "sort_order": 5,
+                "sort_order": 4,
                 "title": "Комментарий",
                 "question_type": "text",
                 "is_required": False,
@@ -228,19 +215,6 @@ TEMPLATES = [
             },
             {
                 "sort_order": 2,
-                "title": "Длительность созвона",
-                "question_type": "single_choice",
-                "is_required": True,
-                "config": None,
-                "options": [
-                    {"value": "lt_30", "label": "До 30 минут"},
-                    {"value": "min_30_60", "label": "30-60 минут"},
-                    {"value": "min_60_90", "label": "60-90 минут"},
-                    {"value": "ge_90", "label": "90+ минут"},
-                ],
-            },
-            {
-                "sort_order": 3,
                 "title": "Мотивация менти",
                 "question_type": "rating",
                 "is_required": True,
@@ -248,7 +222,7 @@ TEMPLATES = [
                 "options": [],
             },
             {
-                "sort_order": 4,
+                "sort_order": 3,
                 "title": "Стадия нейромутации",
                 "question_type": "rating",
                 "is_required": True,
@@ -256,7 +230,7 @@ TEMPLATES = [
                 "options": [],
             },
             {
-                "sort_order": 5,
+                "sort_order": 4,
                 "title": "Комментарий",
                 "question_type": "text",
                 "is_required": False,
@@ -758,73 +732,13 @@ TEMPLATES = [
 NOTIFY_TEXT = "<b>Вам назначен созвон.</b>\nПодробности можно узнать в меню бота."
 REMINDER_TEXT = "<b>Напоминание о созвоне через ~5 минут.</b>\nПодготовьтесь к встрече."
 
-LEAD_TO_STUDY_RULES = [
-    {
-        "name": "Lead→Study: Backend",
-        "require_category": "Backend",
-        "text": (
-            "Добро пожаловать в Голубятню! 🎉\n\n"
-            "Ты зачислен(а) на направление Backend.\n\n"
-            "Вступай в чаты:\n"
-            "— Общий чат: [ССЫЛКА]\n"
-            "— Backend: [ССЫЛКА]"
-        ),
-    },
-    {
-        "name": "Lead→Study: Frontend",
-        "require_category": "Frontend",
-        "text": (
-            "Добро пожаловать в Голубятню! 🎉\n\n"
-            "Ты зачислен(а) на направление Frontend.\n\n"
-            "Вступай в чаты:\n"
-            "— Общий чат: [ССЫЛКА]\n"
-            "— Frontend: [ССЫЛКА]"
-        ),
-    },
-    {
-        "name": "Lead→Study: Design",
-        "require_category": "Design",
-        "text": (
-            "Добро пожаловать в Голубятню! 🎉\n\n"
-            "Ты зачислен(а) на направление Design.\n\n"
-            "Вступай в чаты:\n"
-            "— Общий чат: [ССЫЛКА]\n"
-            "— Design: [ССЫЛКА]"
-        ),
-    },
-    {
-        "name": "Lead→Study: QA",
-        "require_category": "QA",
-        "text": (
-            "Добро пожаловать в Голубятню! 🎉\n\n"
-            "Ты зачислен(а) на направление QA.\n\n"
-            "Вступай в чаты:\n"
-            "— Общий чат: [ССЫЛКА]\n"
-            "— QA: [ССЫЛКА]"
-        ),
-    },
-    {
-        "name": "Lead→Study: Analytics",
-        "require_category": "Analytics",
-        "text": (
-            "Добро пожаловать в Голубятню! 🎉\n\n"
-            "Ты зачислен(а) на направление Analytics.\n\n"
-            "Вступай в чаты:\n"
-            "— Общий чат: [ССЫЛКА]\n"
-            "— Analytics: [ССЫЛКА]"
-        ),
-    },
-    {
-        "name": "Lead→Study: Fallback (no category)",
-        "require_category": "__none__",
-        "text": (
-            "Добро пожаловать в Голубятню! 🎉\n\n"
-            "Ты подключён(а) к программе сопровождения.\n\n"
-            "Вступай в общий чат: [ССЫЛКА]\n\n"
-            "Направление пока не указано — обратись к куратору."
-        ),
-    },
-]
+LEAD_TO_STUDY_TEXT = (
+    "Добро пожаловать в Голубятню! 🎉\n\n"
+    "Ты подключён(а) к программе сопровождения.\n\n"
+    "Вступай в чаты:\n"
+    "— Общий чат: $general_chat_link\n"
+    "— Канал ментора: $mentor_channel_link"
+)
 
 UI_TEXTS = [
     # ── Menu ──
@@ -902,7 +816,7 @@ UI_TEXTS = [
     ),
     (
         "menu.call_ended.with_meeting",
-        "✅ Созвон по встрече #$id завершён.\nНачало: $start\nКонец: $end\n\nТеперь можно заполнить фидбек.",
+        "✅ Созвон по встрече #$id завершён.\nНачало: $start\nКонец: $end\nДлительность: $duration\n\nТеперь можно заполнить фидбек.",
         "Call ended (with meeting)",
     ),
     # ── Profile ──
@@ -1386,27 +1300,25 @@ def upgrade() -> None:
     for rule in seed_rules:
         conn.execute(rules_t.insert().values(**rule))
 
-    # ── Lead→Study welcome rules ──
-    for rule in LEAD_TO_STUDY_RULES:
-        conn.execute(
-            rules_t.insert().values(
-                name=rule["name"],
-                trigger_type="cohort_changed",
-                action_type="send_notification",
-                is_active=True,
-                delay_seconds=0,
-                delay_mode="after_trigger",
-                recipient_type="event_user",
-                recipient_config=None,
-                action_config={"text": rule["text"]},
-                trigger_config={
-                    "cohort_type": "Status",
-                    "from_value": "Lead",
-                    "to_value": "Study",
-                    "require_category": rule["require_category"],
-                },
-            )
+    # ── Lead→Study welcome rule ──
+    conn.execute(
+        rules_t.insert().values(
+            name="Lead→Study: Welcome",
+            trigger_type="cohort_changed",
+            action_type="send_notification",
+            is_active=True,
+            delay_seconds=0,
+            delay_mode="after_trigger",
+            recipient_type="event_user",
+            recipient_config=None,
+            action_config={"text": LEAD_TO_STUDY_TEXT},
+            trigger_config={
+                "cohort_type": "Status",
+                "from_value": "Lead",
+                "to_value": "Study",
+            },
         )
+    )
 
     # ── UI texts ──
     for key, value, description in UI_TEXTS:

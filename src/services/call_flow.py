@@ -202,6 +202,7 @@ class CallFlowService:
                         "participant_ids": participant_ids,
                         "is_first_call": is_first_call,
                         "student_stage": student_stage,
+                        "call_duration_minutes": finished_meeting.call_duration_minutes,
                     },
                 )
             except Exception:

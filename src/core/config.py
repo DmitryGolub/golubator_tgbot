@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "dev"  # "dev" | "json"
 
+    GENERAL_CHAT_ID: int | None = None
+
     TEST_MODE: bool = False
 
     @property

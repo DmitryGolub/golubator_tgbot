@@ -141,6 +141,13 @@ async def _finish_active_call_text(mentor_id: int) -> str:
     except ActiveCallNotFoundError:
         return await UiTextService.get("menu.no_active_call")
 
+    duration_minutes = result.meeting.call_duration_minutes
+    if duration_minutes is not None:
+        hours, mins = divmod(duration_minutes, 60)
+        duration_str = f"{hours}ч {mins}мин" if hours else f"{mins} мин"
+    else:
+        duration_str = "—"
+
     return await UiTextService.get(
         "menu.call_ended.with_meeting",
         id=str(result.meeting.id),
@@ -150,6 +157,7 @@ async def _finish_active_call_text(mentor_id: int) -> str:
         end=f"{result.meeting.completed_at:%d.%m.%Y %H:%M}"
         if result.meeting.completed_at
         else "—",
+        duration=duration_str,
     )
 
 

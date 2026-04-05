@@ -31,6 +31,7 @@ class Mentor(Base):
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     about: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     membership_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    channel_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     synced_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

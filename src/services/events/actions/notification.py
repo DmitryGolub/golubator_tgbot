@@ -28,6 +28,14 @@ class SendNotificationAction(BaseAction):
             logger.warning("TriggerRule %s has empty notification text", rule.id)
             return
 
+        if "$general_chat_link" in text or "$mentor_channel_link" in text:
+            from src.services.invite_link import InviteLinkService
+
+            invite_links = await InviteLinkService.generate_links_for_mentee(
+                bot, recipient_id
+            )
+            context = {**context, **invite_links}
+
         safe_context = {k: e(v) for k, v in context.items()}
         try:
             text = Template(text).safe_substitute(safe_context)

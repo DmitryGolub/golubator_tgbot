@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -131,8 +132,6 @@ class TestStartCall:
             await CallFlowService().start_call(mentor_id=999, meeting_id=MEETING_ID)
 
     async def test_meeting_already_completed(self, mock_meeting_dao):
-        from datetime import datetime, timezone
-
         meeting = _meeting(completed_at=datetime.now(timezone.utc))
         mock_meeting_dao.get_with_participants = AsyncMock(return_value=meeting)
         with pytest.raises(MeetingAlreadyCompletedError):
@@ -176,15 +175,16 @@ class TestStartCall:
 @patch("src.services.call_flow.MeetingDAO")
 class TestEndActiveCall:
     async def test_happy_path(self, mock_meeting_dao):
-        from datetime import datetime, timezone
-
+        started_at = datetime.now(timezone.utc) - timedelta(minutes=45)
         active = _meeting(
             call_status="ongoing",
+            call_started_at=started_at,
             mentor_telegram_id=MENTOR_ID,
             student_telegram_id=STUDENT_ID,
         )
         finished = _meeting(
             call_status="finished",
+            call_started_at=started_at,
             completed_at=datetime.now(timezone.utc),
             mentor_telegram_id=MENTOR_ID,
             student_telegram_id=STUDENT_ID,
@@ -201,9 +201,63 @@ class TestEndActiveCall:
         with pytest.raises(ActiveCallNotFoundError):
             await CallFlowService().end_active_call(mentor_id=MENTOR_ID)
 
+    async def test_happy_path_has_duration(self, mock_meeting_dao):
+        started_at = datetime.now(timezone.utc) - timedelta(minutes=45)
+        active = _meeting(
+            call_status="ongoing",
+            call_started_at=started_at,
+            mentor_telegram_id=MENTOR_ID,
+            student_telegram_id=STUDENT_ID,
+        )
+        finished = _meeting(
+            call_status="finished",
+            call_started_at=started_at,
+            completed_at=datetime.now(timezone.utc),
+            mentor_telegram_id=MENTOR_ID,
+            student_telegram_id=STUDENT_ID,
+        )
+        mock_meeting_dao.get_active_call_for_user = AsyncMock(return_value=active)
+        mock_meeting_dao.finish_call = AsyncMock(return_value=finished)
+
+        result = await CallFlowService().end_active_call(mentor_id=MENTOR_ID)
+        assert result.meeting.call_duration_minutes == 45
+
     async def test_finish_returns_none(self, mock_meeting_dao):
         active = _meeting(call_status="ongoing")
         mock_meeting_dao.get_active_call_for_user = AsyncMock(return_value=active)
         mock_meeting_dao.finish_call = AsyncMock(return_value=None)
         with pytest.raises(ActiveCallNotFoundError):
             await CallFlowService().end_active_call(mentor_id=MENTOR_ID)
+
+
+class TestCallDuration:
+    def test_duration_with_both_timestamps(self):
+        started = datetime(2026, 4, 5, 10, 0, tzinfo=timezone.utc)
+        ended = datetime(2026, 4, 5, 11, 30, tzinfo=timezone.utc)
+        meeting = make_meeting(call_started_at=started, completed_at=ended)
+        assert meeting.call_duration == timedelta(hours=1, minutes=30)
+        assert meeting.call_duration_minutes == 90
+
+    def test_duration_without_completed_at(self):
+        started = datetime(2026, 4, 5, 10, 0, tzinfo=timezone.utc)
+        meeting = make_meeting(call_started_at=started)
+        assert meeting.call_duration is None
+        assert meeting.call_duration_minutes is None
+
+    def test_duration_without_started_at(self):
+        ended = datetime(2026, 4, 5, 11, 0, tzinfo=timezone.utc)
+        meeting = make_meeting(completed_at=ended)
+        assert meeting.call_duration is None
+        assert meeting.call_duration_minutes is None
+
+    def test_duration_short_call(self):
+        started = datetime(2026, 4, 5, 10, 0, tzinfo=timezone.utc)
+        ended = started + timedelta(minutes=7, seconds=29)
+        meeting = make_meeting(call_started_at=started, completed_at=ended)
+        assert meeting.call_duration_minutes == 7
+
+    def test_duration_rounding(self):
+        started = datetime(2026, 4, 5, 10, 0, tzinfo=timezone.utc)
+        ended = started + timedelta(minutes=30, seconds=31)
+        meeting = make_meeting(call_started_at=started, completed_at=ended)
+        assert meeting.call_duration_minutes == 31
