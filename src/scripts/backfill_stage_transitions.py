@@ -144,7 +144,7 @@ def _parse_status_transitions(
     transitions: list[dict] = []
 
     for activity in activities:
-        logger.debug(
+        logger.info(
             "Activity type=%s, edits=%d",
             activity.get("type"),
             len(activity.get("edits", [])),
@@ -153,7 +153,7 @@ def _parse_status_transitions(
         for edit in edits:
             block_data = edit.get("block_data")
             if not block_data:
-                logger.debug("  Edit has no block_data, keys: %s", list(edit.keys()))
+                logger.info("  Edit has no block_data, keys: %s", list(edit.keys()))
                 continue
 
             before_props = (
@@ -219,17 +219,17 @@ async def _resolve_collection_id(
     data = resp.json()
     results = data.get("results", [])
     if not results:
-        logger.debug("_resolve_collection_id: no results for %s", uuid)
+        logger.info("_resolve_collection_id: no results for %s", uuid)
         return None
     value = results[0].get("value", {})
-    logger.debug(
+    logger.info(
         "_resolve_collection_id: block type=%s, keys=%s",
         value.get("type"),
         list(value.keys())[:15],
     )
     cid = value.get("collection_id")
     if not cid:
-        logger.debug("_resolve_collection_id: full value=%s", str(value)[:500])
+        logger.info("_resolve_collection_id: full value=%s", str(value)[:500])
     return cid
 
 
@@ -265,17 +265,17 @@ async def _backfill_user(
 ) -> int:
     """Backfill transitions for a single user. Returns number of transitions added."""
     if await _has_backfill_records(session, user_tid):
-        logger.debug("User %d already has backfill records, skipping", user_tid)
+        logger.info("User %d already has backfill records, skipping", user_tid)
         return 0
 
     activities = await _fetch_all_activities(client, page_id)
     if not activities:
-        logger.debug("No activity log for page %s (user %d)", page_id, user_tid)
+        logger.info("No activity log for page %s (user %d)", page_id, user_tid)
         return 0
 
     transitions = _parse_status_transitions(activities, status_prop_id)
     if not transitions:
-        logger.debug("No status transitions found for user %d", user_tid)
+        logger.info("No status transitions found for user %d", user_tid)
         return 0
 
     if dry_run:
@@ -376,7 +376,7 @@ async def main(dry_run: bool = False) -> None:
                         )
                         user_tid = result.scalar_one_or_none()
                         if user_tid is None:
-                            logger.debug(
+                            logger.info(
                                 "Mentee page %s not in DB, skipping",
                                 mentee_data.page_id,
                             )
