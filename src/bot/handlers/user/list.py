@@ -15,7 +15,9 @@ router.callback_query.filter(PermissionFilter("manage_users"))
 
 
 async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarkup]:
-    page_users, total_pages = await UserDAO.get_paginated(page=page)
+    page_users, total_pages = await UserDAO.get_paginated(
+        page=page, include_placeholders=True
+    )
 
     if not page_users:
         return "<b>Список пользователей пуст.</b>", await user_list_paginated_keyboard(

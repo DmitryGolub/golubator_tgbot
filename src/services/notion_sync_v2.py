@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
@@ -235,25 +235,35 @@ async def _ensure_user_exists(
     return placeholder_id
 
 
+async def _safe_scalar_one_or_none(result, label: str, value: str):
+    try:
+        return result.scalar_one_or_none()
+    except MultipleResultsFound:
+        logger.warning("Multiple results for %s='%s', using first", label, value)
+        return result.scalars().first()
+
+
 async def _resolve_mentor_id(
     session: AsyncSession, mentor_name: str | None, mentor_email: str | None = None
 ) -> int | None:
     if not mentor_name and not mentor_email:
         return None
+    if mentor_email:
+        result = await session.execute(
+            select(Mentor.id).where(Mentor.email == mentor_email)
+        )
+        mid = await _safe_scalar_one_or_none(result, "mentor.email", mentor_email)
+        if mid:
+            return mid
     if mentor_name:
         clean = _clean_name(mentor_name)
         if clean:
             result = await session.execute(
                 select(Mentor.id).where(func.ltrim(Mentor.name, "@") == clean)
             )
-            mid = result.scalar_one_or_none()
+            mid = await _safe_scalar_one_or_none(result, "mentor.name", clean)
             if mid:
                 return mid
-    if mentor_email:
-        result = await session.execute(
-            select(Mentor.id).where(Mentor.email == mentor_email)
-        )
-        return result.scalar_one_or_none()
     return None
 
 
@@ -262,20 +272,22 @@ async def _resolve_mentor_telegram_id(
 ) -> int | None:
     if not mentor_name and not mentor_email:
         return None
+    if mentor_email:
+        result = await session.execute(
+            select(Mentor.telegram_id).where(Mentor.email == mentor_email)
+        )
+        tid = await _safe_scalar_one_or_none(result, "mentor.email", mentor_email)
+        if tid:
+            return tid
     if mentor_name:
         clean = _clean_name(mentor_name)
         if clean:
             result = await session.execute(
                 select(Mentor.telegram_id).where(func.ltrim(Mentor.name, "@") == clean)
             )
-            tid = result.scalar_one_or_none()
+            tid = await _safe_scalar_one_or_none(result, "mentor.name", clean)
             if tid:
                 return tid
-    if mentor_email:
-        result = await session.execute(
-            select(Mentor.telegram_id).where(Mentor.email == mentor_email)
-        )
-        return result.scalar_one_or_none()
     return None
 
 
@@ -286,7 +298,7 @@ async def _resolve_mentee_id(session: AsyncSession, tg_tag: str | None) -> int |
     result = await session.execute(
         select(User.telegram_id).where(User.username == clean)
     )
-    tid = result.scalar_one_or_none()
+    tid = await _safe_scalar_one_or_none(result, "user.username", clean)
     if tid is not None:
         return tid
     # Fallback: look up by doc_name in mentees (covers unregistered students)
@@ -294,7 +306,7 @@ async def _resolve_mentee_id(session: AsyncSession, tg_tag: str | None) -> int |
         result = await session.execute(
             select(Mentee.telegram_id).where(Mentee.doc_name == pattern)
         )
-        tid = result.scalar_one_or_none()
+        tid = await _safe_scalar_one_or_none(result, "mentee.doc_name", pattern)
         if tid is not None:
             return tid
     return None
@@ -787,6 +799,7 @@ class NotionSyncServiceV2:
 
         mentees_data = await self.mentee_repo.get_all()
         count = 0
+        skipped = 0
         all_diffs: list[dict] = []
         engine, factory = _make_session_factory()
         try:
@@ -799,6 +812,7 @@ class NotionSyncServiceV2:
                             )
                             mentee = result.scalar_one_or_none()
                             if not mentee or mentee.telegram_id is None:
+                                skipped += 1
                                 continue
 
                             now = datetime.now(timezone.utc)
@@ -821,7 +835,7 @@ class NotionSyncServiceV2:
         finally:
             await engine.dispose()
 
-        logger.info("Backup pull cohorts: %d synced", count)
+        logger.info("Backup pull cohorts: %d synced, %d skipped", count, skipped)
         return count
 
     async def _resolve_mentor_notion_ids(

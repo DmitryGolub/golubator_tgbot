@@ -20,16 +20,15 @@ class UserDAO(BaseDAO):
         role_name: str | None = None,
         registered_from: datetime | None = None,
         registered_to: datetime | None = None,
+        include_placeholders: bool = False,
         **filter_by,
     ):
         async with async_session_maker() as session:
-            query = (
-                select(cls.model)
-                .options(
-                    joinedload(cls.model.role_rel),
-                )
-                .where(cls.model.is_placeholder.is_(False))
+            query = select(cls.model).options(
+                joinedload(cls.model.role_rel),
             )
+            if not include_placeholders:
+                query = query.where(cls.model.is_placeholder.is_(False))
             if filter_by:
                 query = query.filter_by(**filter_by)
             if role_name is not None:
@@ -51,14 +50,13 @@ class UserDAO(BaseDAO):
         page: int = 0,
         page_size: int = 6,
         role_name: str | None = None,
+        include_placeholders: bool = False,
         **filter_by,
     ) -> tuple[list[User], int]:
         async with async_session_maker() as session:
-            base = (
-                select(cls.model)
-                .options(joinedload(cls.model.role_rel))
-                .where(cls.model.is_placeholder.is_(False))
-            )
+            base = select(cls.model).options(joinedload(cls.model.role_rel))
+            if not include_placeholders:
+                base = base.where(cls.model.is_placeholder.is_(False))
             if filter_by:
                 base = base.filter_by(**filter_by)
             if role_name is not None:

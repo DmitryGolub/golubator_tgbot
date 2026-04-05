@@ -86,22 +86,25 @@ async def main():
 
 
 async def _initial_sync(**kwargs) -> None:
-    from src.celery_app import celery_app
+    from celery import chain
 
-    task_names = [
-        "notion.backup_pull_users",
-        "notion.backup_pull_events",
-        "notion.backup_pull_cohorts",
-    ]
-    results = await asyncio.gather(
-        *(asyncio.to_thread(celery_app.send_task, name) for name in task_names),
-        return_exceptions=True,
+    from src.tasks.notion_sync import (
+        backup_pull_cohorts,
+        backup_pull_events,
+        backup_pull_users,
     )
-    for i, result in enumerate(results):
-        if isinstance(result, Exception):
-            logger.warning("Initial sync task %s failed: %s", task_names[i], result)
 
-    logger.info("Initial sync tasks dispatched to Celery")
+    try:
+        await asyncio.to_thread(
+            chain(
+                backup_pull_users.si(),
+                backup_pull_events.si(),
+                backup_pull_cohorts.si(),
+            ).apply_async,
+        )
+        logger.info("Initial sync chain dispatched to Celery")
+    except Exception as exc:
+        logger.warning("Initial sync dispatch failed: %s", exc)
 
 
 async def _set_bot_commands(bot: Bot) -> None:
