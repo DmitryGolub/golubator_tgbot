@@ -299,15 +299,18 @@ class BotSetup:
         # Click toggle — ignore returned message, it may be a background notification
         try:
             await mentor_client.click_button(create_msg, data=toggle_data)
-        except TimeoutError:
+        except (TimeoutError, ConnectionError, OSError):
             pass  # click was sent, handler may still process
 
         # Poll original message for confirm button (toggle handler edits it in-place)
         toggled_msg = None
         confirm_btn = None
-        for _ in range(6):
-            await asyncio.sleep(1.0)
-            refreshed = await mentor_client.get_message_by_id(create_msg.id)
+        for _ in range(15):
+            await asyncio.sleep(2.0)
+            try:
+                refreshed = await mentor_client.get_message_by_id(create_msg.id)
+            except (ConnectionError, OSError):
+                continue
             if refreshed:
                 confirm_btn = find_button(refreshed, "mtg_confirm_sel:")
                 if confirm_btn:

@@ -714,7 +714,7 @@ async def test_periodic_cron_fires(
         notif = await account2.wait_for_message_after(snap, timeout=90)
         assert notif.text is not None
         assert len(notif.text) > 0, "Periodic notification should have content"
-    except asyncio.TimeoutError:
+    except (asyncio.TimeoutError, ConnectionError, OSError):
         # Fall back to DB check — execution may have been created even if delivery failed
         count = await db.count_trigger_executions(rule_id)
         if count == 0:

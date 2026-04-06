@@ -27,8 +27,8 @@ _limiter = _RateLimiter(min_interval=0.5)  # 2 req/s
 
 
 async def _guarded_call(coro_fn, *args, **kwargs):
-    """Rate-limited wrapper with FloodWait retry for any Telethon API call."""
-    for attempt in range(3):
+    """Rate-limited wrapper with FloodWait and network error retry for any Telethon API call."""
+    for attempt in range(5):
         await _limiter.acquire()
         try:
             return await coro_fn(*args, **kwargs)
@@ -38,6 +38,11 @@ async def _guarded_call(coro_fn, *args, **kwargs):
                     f"Telegram FloodWait {e.seconds}s — aborting"
                 ) from e
             await asyncio.sleep(min(e.seconds + 1, 120))
+        except (ConnectionError, OSError):
+            backoff = 2**attempt  # 1, 2, 4, 8, 16
+            if attempt >= 4:
+                raise
+            await asyncio.sleep(backoff)
     await _limiter.acquire()
     return await coro_fn(*args, **kwargs)
 
