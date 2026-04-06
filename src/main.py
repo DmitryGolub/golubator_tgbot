@@ -26,6 +26,7 @@ from src.bot.handlers.education_feedback import router as education_feedback_rou
 from src.bot.handlers.feedback_report import router as feedback_report_router
 from src.bot.handlers.lead_source import router as lead_source_router
 from src.bot.middlewares.logging_middleware import LoggingMiddleware
+from src.bot.middlewares.survey_block_middleware import SurveyBlockMiddleware
 from src.bot.middlewares.user_sync_middleware import UserSyncMiddleware
 from src.core.config import settings
 from src.core.healthcheck import start_health_server
@@ -50,6 +51,10 @@ async def main():
     dp = Dispatcher(storage=storage)
     dp.update.outer_middleware(LoggingMiddleware())
     dp.update.outer_middleware(UserSyncMiddleware())
+
+    survey_block = SurveyBlockMiddleware()
+    dp.message.outer_middleware(survey_block)
+    dp.callback_query.outer_middleware(survey_block)
 
     dp.include_routers(
         start_router,

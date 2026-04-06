@@ -280,7 +280,7 @@ async def msg_rating_min(message: Message, state: FSMContext):
     await state.update_data(rating_min=min_val)
     await state.set_state(SurveyBuilderFSM.configuring_rating_max)
     await message.answer(
-        "Введите максимальное значение рейтинга (обычно 5 или 10):",
+        "Введите максимальное значение рейтинга (по умолчанию 10):",
         reply_markup=cancel_keyboard(),
     )
 
@@ -363,7 +363,7 @@ async def _save_question(message: Message, state: FSMContext):
     if qtype == "rating":
         question["config"] = {
             "min": data.get("rating_min", 1),
-            "max": data.get("rating_max", 5),
+            "max": data.get("rating_max", 10),
         }
     elif qtype in ("single_choice", "multiple_choice"):
         question["options"] = data.get("current_options", [])

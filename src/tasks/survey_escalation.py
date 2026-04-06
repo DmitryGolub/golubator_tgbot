@@ -61,10 +61,11 @@ async def _check_survey_escalations_async() -> None:
                     try:
                         await bot.send_message(
                             respondent_id,
-                            f"<b>Напоминание</b>\n\n"
-                            f"Вы ещё не заполнили опрос "
-                            f"«{e(template_title)}».\n"
-                            f"Пожалуйста, уделите пару минут.",
+                            f"⚠️ <b>Незаполненный опрос</b>\n\n"
+                            f"Опрос «{e(template_title)}» ожидает вашего ответа.\n"
+                            f"Заполнение опроса — обязательная часть программы.\n\n"
+                            f"Если опрос не будет заполнен в ближайшее время, "
+                            f"информация будет передана вашему ментору.",
                             reply_markup=kb.as_markup(),
                             parse_mode="HTML",
                         )

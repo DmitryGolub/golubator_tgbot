@@ -8,6 +8,7 @@ from src.bot.callbacks.dynamic_survey import DynamicSurveyAnswerCB, StartDynamic
 from src.bot.keyboards.dynamic_survey import my_surveys_keyboard
 from src.bot.states.dynamic_survey import DynamicSurveyFSM
 from src.bot.utils import safe_edit_text
+from src.bot.middlewares.survey_block_middleware import invalidate_pending_cache
 from src.services.survey_session import (
     SessionAlreadyCompletedError,
     SessionNotFoundError,
@@ -89,6 +90,7 @@ async def cb_start_survey(
 
     await state.update_data(
         session_id=session.id,
+        respondent_id=callback.from_user.id,
         current_index=0,
         questions=questions_data,
         multi_selected=[],
@@ -201,7 +203,7 @@ def _build_keyboard_from_dict(question: dict, selected: list[str] | None = None)
     if qtype == "rating":
         config = question.get("config") or {}
         min_val = config.get("min", 1)
-        max_val = config.get("max", 5)
+        max_val = config.get("max", 10)
         for i in range(min_val, max_val + 1):
             builder.button(
                 text=str(i), callback_data=DynamicSurveyAnswerCB(value=str(i))
@@ -273,6 +275,10 @@ async def _advance(message, state: FSMContext, data: dict):
         service = SurveySessionService()
         await service.complete_session(data["session_id"])
         logger.info("Survey completed: session=%s", data["session_id"])
+
+        respondent_id = data.get("respondent_id")
+        if respondent_id:
+            invalidate_pending_cache(respondent_id)
 
         await state.clear()
         await message.answer("Спасибо! Опрос завершён.")

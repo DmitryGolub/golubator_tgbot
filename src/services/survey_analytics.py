@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # slug -> low_score threshold (inclusive: score <= threshold triggers alert)
 THRESHOLDS: dict[str, int] = {
-    "mentor_self_review": 5,
+    "mentor_self_review": 6,
 }
 DEFAULT_THRESHOLD = 4
 
