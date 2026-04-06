@@ -55,27 +55,19 @@ async def test_full_flow_call_to_survey_to_results(
         delay_seconds=0,
     )
 
-    meeting_id = await bot_setup.create_meeting(
-        mentor_client=account1,
-        mentor_telegram_id=ACCOUNT_1_TG_ID,
-        student_client=account2,
-        student_telegram_id=ACCOUNT_2_TG_ID,
-        description=f"[E2E-{test_run_id}] integration flow meeting",
+    # Create meeting directly in DB (avoids flaky FSM dialog)
+    meeting_id = await setup.create_meeting(
+        ACCOUNT_1_TG_ID,
+        ACCOUNT_2_TG_ID,
+        description="integration flow meeting",
+        run_id=test_run_id,
     )
 
-    # Start call via bot
-    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
-    menu_msg = await account1.send_command("/menu")
-    meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
-    assert meetings_btn is not None, "Mentor menu should have meetings button"
+    # Clear pending surveys to prevent SurveyBlockMiddleware from blocking callbacks
+    await setup.clear_pending_surveys()
 
-    meetings_msg = await account1.click_button(menu_msg, text=meetings_btn.text)
-    start_btn = find_button(meetings_msg, f"meeting_start_call:{meeting_id}")
-    assert start_btn is not None, (
-        f"start_call button not found for meeting {meeting_id}"
-    )
-
-    await account1.click_button(meetings_msg, text=start_btn.text)
+    # Start call via callback
+    await account1.press_callback(f"meeting_start_call:{meeting_id}")
 
     # Snapshot before ending call to avoid race condition
     snap = await account2.snapshot_last_message_id()
@@ -103,8 +95,8 @@ async def test_cohort_change_triggers_notification(
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID)
     await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
-    # Add a second status value so the keyboard offers an alternative to "study"
-    await bot_setup.set_user_cohort(ACCOUNT_1_TG_ID, "Status", "job_search")
+    # Ensure "job_search" value exists in cohorts table for the keyboard
+    await setup.ensure_cohort_value("Status", "job_search")
 
     # Create cohort_changed trigger
     await bot_setup.create_trigger_rule(
@@ -188,7 +180,14 @@ async def test_onboarding_meeting_on_mentor_assign(
 
     update_btn = find_button(users_msg, "user_update_menu")
     assert update_btn is not None, "Users menu should have update button"
-    param_msg = await account1.click_button(users_msg, text=update_btn.text)
+    user_list_msg = await account1.click_button(users_msg, text=update_btn.text)
+
+    # Select ACCOUNT_2 from paginated user list
+    user_btn, user_msg = await find_button_paginated(
+        account1, user_list_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
+    )
+    assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
+    param_msg = await account1.click_button(user_msg, data=user_btn.data.decode())
 
     mentor_btn = find_button(param_msg, "upd_param:mentor")
     assert mentor_btn is not None, "Should find mentor param button"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError, MessageIdInvalidError
+from telethon.errors.rpcerrorlist import DataInvalidError
 from telethon.tl.custom import Message
 
 
@@ -38,6 +39,12 @@ async def _guarded_call(coro_fn, *args, **kwargs):
                     f"Telegram FloodWait {e.seconds}s — aborting"
                 ) from e
             await asyncio.sleep(min(e.seconds + 1, 120))
+        except DataInvalidError:
+            # MTProto "Encrypted data invalid" — transient session issue, retry
+            backoff = 2**attempt
+            if attempt >= 4:
+                raise
+            await asyncio.sleep(backoff)
         except (ConnectionError, OSError):
             backoff = 2**attempt  # 1, 2, 4, 8, 16
             if attempt >= 4:

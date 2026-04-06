@@ -296,26 +296,52 @@ class BotSetup:
             )
             toggle_data = toggle_btn.data.decode()
 
-        # Click toggle — ignore returned message, it may be a background notification
+        # Click toggle and use return value (like test_05_meetings does).
+        # Fall back to polling by message ID if click_button returns a
+        # background notification or times out.
+        toggled_msg = None
+        confirm_btn = None
         try:
-            await mentor_client.click_button(create_msg, data=toggle_data)
+            result = await mentor_client.click_button(create_msg, data=toggle_data)
+            confirm_btn = find_button(result, "mtg_confirm_sel:")
+            if confirm_btn:
+                toggled_msg = result
         except (TimeoutError, ConnectionError, OSError):
             pass  # click was sent, handler may still process
 
-        # Poll original message for confirm button (toggle handler edits it in-place)
-        toggled_msg = None
-        confirm_btn = None
-        for _ in range(15):
-            await asyncio.sleep(2.0)
-            try:
-                refreshed = await mentor_client.get_message_by_id(create_msg.id)
-            except (ConnectionError, OSError):
-                continue
-            if refreshed:
-                confirm_btn = find_button(refreshed, "mtg_confirm_sel:")
-                if confirm_btn:
-                    toggled_msg = refreshed
-                    break
+        if confirm_btn is None:
+            for _ in range(15):
+                await asyncio.sleep(2.0)
+                try:
+                    refreshed = await mentor_client.get_message_by_id(create_msg.id)
+                except (ConnectionError, OSError):
+                    continue
+                if refreshed:
+                    confirm_btn = find_button(refreshed, "mtg_confirm_sel:")
+                    if confirm_btn:
+                        toggled_msg = refreshed
+                        break
+
+        # Retry: toggle twice (deselect + reselect) to force keyboard refresh
+        if confirm_btn is None:
+            for _retry in range(2):
+                try:
+                    await mentor_client.click_button(create_msg, data=toggle_data)
+                    await asyncio.sleep(1.0)
+                except (TimeoutError, ConnectionError, OSError):
+                    await asyncio.sleep(2.0)
+            for _ in range(10):
+                await asyncio.sleep(2.0)
+                try:
+                    refreshed = await mentor_client.get_message_by_id(create_msg.id)
+                except (ConnectionError, OSError):
+                    continue
+                if refreshed:
+                    confirm_btn = find_button(refreshed, "mtg_confirm_sel:")
+                    if confirm_btn:
+                        toggled_msg = refreshed
+                        break
+
         assert confirm_btn is not None, "Should find confirm selection button"
         type_msg = await mentor_client.click_button(
             toggled_msg, data=confirm_btn.data.decode()

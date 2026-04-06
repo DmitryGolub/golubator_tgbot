@@ -111,6 +111,20 @@ class E2ESetup:
 
     # --- Surveys ---
 
+    async def clear_pending_surveys(self, telegram_id: int | None = None):
+        """Clear pending survey sessions to prevent SurveyBlockMiddleware interference."""
+        if telegram_id:
+            await self._pool.execute(
+                "UPDATE surveys.survey_sessions SET status = 'completed', completed_at = NOW() "
+                "WHERE respondent_id = $1 AND status IN ('pending', 'in_progress')",
+                telegram_id,
+            )
+        else:
+            await self._pool.execute(
+                "UPDATE surveys.survey_sessions SET status = 'completed', completed_at = NOW() "
+                "WHERE status IN ('pending', 'in_progress')"
+            )
+
     async def create_survey_template(
         self, title: str, slug: str, questions: list[dict[str, Any]]
     ) -> int:
@@ -222,6 +236,21 @@ class E2ESetup:
         )
 
     # --- Cohorts ---
+
+    async def ensure_cohort_value(self, cohort_type: str, cohort_value: str) -> int:
+        """Ensure a cohort value exists in DB without assigning it to any user. Returns cohort_id."""
+        cohort_id = await self._pool.fetchval(
+            "SELECT id FROM integrations.cohorts WHERE type = $1 AND value = $2",
+            cohort_type,
+            cohort_value,
+        )
+        if cohort_id is None:
+            cohort_id = await self._pool.fetchval(
+                "INSERT INTO integrations.cohorts (type, value) VALUES ($1, $2) RETURNING id",
+                cohort_type,
+                cohort_value,
+            )
+        return cohort_id
 
     async def ensure_user_cohort(
         self, telegram_id: int, cohort_type: str, cohort_value: str

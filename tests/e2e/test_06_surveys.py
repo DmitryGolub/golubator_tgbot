@@ -62,7 +62,7 @@ async def _create_template_via_bot(bot_setup: BotSetup, db: DBAssertions) -> int
                 "is_required": True,
             },
             {
-                "title": "Rate 1-5",
+                "title": "Rate 1-5 (explicit config)",
                 "type": "rating",
                 "config": {"min": 1, "max": 5},
             },
@@ -259,6 +259,9 @@ async def test_rating_buttons_range(
     rating_texts = [
         b.text for b in buttons if b.data and b"ds_ans:" in b.data and b.text.isdigit()
     ]
+    assert len(rating_texts) == 5, (
+        f"Expected 5 rating buttons for max=5 config, got {len(rating_texts)}: {rating_texts}"
+    )
     assert "1" in rating_texts, f"Should have button '1', got: {rating_texts}"
     assert "5" in rating_texts, f"Should have button '5', got: {rating_texts}"
 

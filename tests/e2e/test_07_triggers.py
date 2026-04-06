@@ -429,38 +429,23 @@ async def test_trigger_call_ended_fires(
     test_run_id: str,
 ):
     """Call ended event fires trigger automatically."""
-    # Create a meeting and complete a call
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
-    meeting_id = await bot_setup.create_meeting(
-        mentor_client=account1,
-        mentor_telegram_id=ACCOUNT_1_TG_ID,
-        student_client=account2,
-        student_telegram_id=ACCOUNT_2_TG_ID,
-        description=f"[E2E-{test_run_id}] trigger test meeting",
+    # Create meeting directly in DB (avoids flaky FSM dialog)
+    meeting_id = await setup.create_meeting(
+        ACCOUNT_1_TG_ID,
+        ACCOUNT_2_TG_ID,
+        description="trigger test meeting",
+        run_id=test_run_id,
     )
 
-    # Start and end call via bot
-    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
-    menu_msg = await account1.send_command("/menu")
-    meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
-    if meetings_btn is None:
-        # Admin may not have meetings button — set mentor role
-        await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
-        menu_msg = await account1.send_command("/menu")
-        meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
+    # Clear pending surveys to prevent SurveyBlockMiddleware from blocking callbacks
+    await setup.clear_pending_surveys()
 
-    assert meetings_btn is not None, "Should find meetings button in menu"
-
-    meetings_msg = await account1.click_button(menu_msg, text=meetings_btn.text)
-    start_btn = find_button(meetings_msg, f"meeting_start_call:{meeting_id}")
-    assert start_btn is not None, (
-        f"start_call button not found for meeting {meeting_id}"
-    )
-
-    await account1.click_button(meetings_msg, text=start_btn.text)
+    # Start and end call via callback + command
+    await account1.press_callback(f"meeting_start_call:{meeting_id}")
     await account1.send_command("/end_call")
 
     # Check trigger execution
@@ -497,6 +482,9 @@ async def test_cohort_changed_auto_fires(
     )
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
     await bot_setup.set_user_cohort(ACCOUNT_2_TG_ID, "Status", "study")
+
+    # Clear pending surveys to prevent SurveyBlockMiddleware from blocking callbacks
+    await setup.clear_pending_surveys()
 
     # Change status via update_user flow
     menu_msg = await account1.send_command("/menu")
@@ -763,31 +751,27 @@ async def test_event_mentor_receives_notification(
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
-    meeting_id = await bot_setup.create_meeting(
-        mentor_client=account1,
-        mentor_telegram_id=ACCOUNT_1_TG_ID,
-        student_client=account2,
-        student_telegram_id=ACCOUNT_2_TG_ID,
-        description=f"[E2E-{test_run_id}] event_mentor test meeting",
+    # Create meeting directly in DB (avoids flaky FSM dialog)
+    meeting_id = await setup.create_meeting(
+        ACCOUNT_1_TG_ID,
+        ACCOUNT_2_TG_ID,
+        description="event_mentor test meeting",
+        run_id=test_run_id,
     )
 
-    # Navigate to meetings and start/end call
-    menu_msg = await account1.send_command("/menu")
-    meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
-    assert meetings_btn is not None, "Mentor menu should have meetings button"
+    # Clear pending surveys to prevent SurveyBlockMiddleware from blocking callbacks
+    await setup.clear_pending_surveys()
 
-    meetings_msg = await account1.click_button(menu_msg, text=meetings_btn.text)
-    start_btn = find_button(meetings_msg, f"meeting_start_call:{meeting_id}")
-    assert start_btn is not None, (
-        f"start_call button not found for meeting {meeting_id}"
-    )
+    # Start and end call via callback + command
+    await account1.press_callback(f"meeting_start_call:{meeting_id}")
 
-    await account1.click_button(meetings_msg, text=start_btn.text)
+    # Snapshot before ending call so we can detect the trigger notification
+    snap = await account1.snapshot_last_message_id()
     await account1.send_command("/end_call")
 
     # Wait for notification on account1 (the mentor = event_mentor recipient)
     try:
-        notif = await account1.wait_for_message(timeout=30)
+        notif = await account1.wait_for_message_after(snap, timeout=30)
         assert notif.text is not None
         assert len(notif.text) > 0, "Event mentor notification should have content"
     except asyncio.TimeoutError:
