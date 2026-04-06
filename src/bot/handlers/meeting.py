@@ -1,5 +1,6 @@
 from aiogram import Router, F
 from aiogram.filters import StateFilter
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from datetime import datetime, timedelta, date, timezone
@@ -392,11 +393,15 @@ async def cb_toggle_participant(
         users = await UserDAO.get_all()
     else:
         users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
-    await callback.message.edit_reply_markup(
-        reply_markup=meeting_participants_multiselect_keyboard(
-            users, selected_ids=set(selected), show_all_button=not showing_all
-        ),
-    )
+    try:
+        await callback.message.edit_reply_markup(
+            reply_markup=meeting_participants_multiselect_keyboard(
+                users, selected_ids=set(selected), show_all_button=not showing_all
+            ),
+        )
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 @router.callback_query(
@@ -1113,11 +1118,15 @@ async def cb_edit_toggle_participant(
         users = await UserDAO.get_all()
     else:
         users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
-    await callback.message.edit_reply_markup(
-        reply_markup=meeting_participants_multiselect_keyboard(
-            users, selected_ids=set(selected), show_all_button=not showing_all
-        ),
-    )
+    try:
+        await callback.message.edit_reply_markup(
+            reply_markup=meeting_participants_multiselect_keyboard(
+                users, selected_ids=set(selected), show_all_button=not showing_all
+            ),
+        )
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 @router.callback_query(

@@ -225,7 +225,7 @@ class BotSetup:
                 await self._admin.click_button(type_msg, data="sq_type:rating")
                 config = q.get("config", {})
                 min_val = config.get("min", 1)
-                max_val = config.get("max", 5)
+                max_val = config.get("max", 10)
                 await self._admin.send_text_in_fsm(str(min_val))
                 # last send returns "Question added" message
                 after_q_msg = await self._admin.send_text_in_fsm(str(max_val))
@@ -285,28 +285,34 @@ class BotSetup:
         )
 
         # Step 1: Choose student(s) via multi-select toggle + confirm
+        # Drain background notifications that may interfere with click_button
+        await mentor_client.drain_messages()
+
         toggle_data = f"mtg_toggle:{student_telegram_id}"
-        if self._has_button_data(create_msg, toggle_data):
-            toggled_msg = await mentor_client.click_button(create_msg, data=toggle_data)
-        else:
+        if not self._has_button_data(create_msg, toggle_data):
             toggle_btn = find_button(create_msg, "mtg_toggle:")
             assert toggle_btn is not None, (
                 f"Should find student toggle button for {student_telegram_id}"
             )
-            toggled_msg = await mentor_client.click_button(
-                create_msg, data=toggle_btn.data.decode()
-            )
-        confirm_btn = find_button(toggled_msg, "mtg_confirm_sel:")
-        if confirm_btn is None:
-            # Retry: re-fetch the original message that toggle handler edits in-place
-            for _ in range(3):
-                await asyncio.sleep(1.0)
-                refreshed = await mentor_client.get_message_by_id(create_msg.id)
-                if refreshed:
-                    confirm_btn = find_button(refreshed, "mtg_confirm_sel:")
-                    if confirm_btn:
-                        toggled_msg = refreshed
-                        break
+            toggle_data = toggle_btn.data.decode()
+
+        # Click toggle — ignore returned message, it may be a background notification
+        try:
+            await mentor_client.click_button(create_msg, data=toggle_data)
+        except TimeoutError:
+            pass  # click was sent, handler may still process
+
+        # Poll original message for confirm button (toggle handler edits it in-place)
+        toggled_msg = None
+        confirm_btn = None
+        for _ in range(6):
+            await asyncio.sleep(1.0)
+            refreshed = await mentor_client.get_message_by_id(create_msg.id)
+            if refreshed:
+                confirm_btn = find_button(refreshed, "mtg_confirm_sel:")
+                if confirm_btn:
+                    toggled_msg = refreshed
+                    break
         assert confirm_btn is not None, "Should find confirm selection button"
         type_msg = await mentor_client.click_button(
             toggled_msg, data=confirm_btn.data.decode()

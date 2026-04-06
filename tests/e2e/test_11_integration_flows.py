@@ -33,7 +33,6 @@ async def test_full_flow_call_to_survey_to_results(
     # Create survey template
     template_id = await bot_setup.create_survey_template(
         title="Integration Flow Survey",
-        slug="e2e_integration_flow",
         questions=[
             {
                 "title": "Rate your experience",
