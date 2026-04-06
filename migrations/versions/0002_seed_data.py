@@ -1,97 +1,26 @@
-"""Seed data: roles, permissions, role_permissions, surveys, triggers, ui_texts.
+"""Seed data: permissions, roles, role_permissions, surveys, triggers, ui_texts.
 
-Revision ID: 0008_seed
-Revises: 0007_public
-Create Date: 2026-03-22 00:00:07.000000
+All INSERTs are idempotent (ON CONFLICT DO NOTHING / WHERE NOT EXISTS).
+
+Revision ID: 0002_seed
+Revises: 0001_baseline
+Create Date: 2026-04-06 00:00:01.000000
 """
 
+import json
 from datetime import time
 from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0008_seed"
-down_revision: Union[str, None] = "0007_public"
+revision: str = "0002_seed"
+down_revision: Union[str, None] = "0001_baseline"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-# ── Table references for bulk operations ─────────────────────────────────
 
-permissions_t = sa.table(
-    "permissions",
-    sa.column("codename", sa.String),
-    sa.column("description", sa.String),
-    schema="iam",
-)
-roles_t = sa.table(
-    "roles",
-    sa.column("id", sa.Integer),
-    sa.column("name", sa.String),
-    sa.column("display_name", sa.String),
-    schema="iam",
-)
-role_perms_t = sa.table(
-    "role_permissions",
-    sa.column("role_id", sa.Integer),
-    sa.column("permission_id", sa.Integer),
-    schema="iam",
-)
-templates_t = sa.table(
-    "survey_templates",
-    sa.column("id", sa.Integer),
-    sa.column("title", sa.String),
-    sa.column("slug", sa.String),
-    sa.column("description", sa.Text),
-    sa.column("is_active", sa.Boolean),
-    schema="surveys",
-)
-questions_t = sa.table(
-    "survey_questions",
-    sa.column("id", sa.Integer),
-    sa.column("template_id", sa.Integer),
-    sa.column("sort_order", sa.Integer),
-    sa.column("title", sa.String),
-    sa.column("question_type", sa.String),
-    sa.column("is_required", sa.Boolean),
-    sa.column("config", sa.JSON),
-    schema="surveys",
-)
-options_t = sa.table(
-    "survey_question_options",
-    sa.column("id", sa.Integer),
-    sa.column("question_id", sa.Integer),
-    sa.column("sort_order", sa.Integer),
-    sa.column("value", sa.String),
-    sa.column("label", sa.String),
-    schema="surveys",
-)
-ui_texts_t = sa.table(
-    "ui_texts",
-    sa.column("key", sa.String),
-    sa.column("value", sa.Text),
-    sa.column("description", sa.String),
-)
-rules_t = sa.table(
-    "trigger_rules",
-    sa.column("name", sa.String),
-    sa.column("trigger_type", sa.String),
-    sa.column("action_type", sa.String),
-    sa.column("is_active", sa.Boolean),
-    sa.column("cron_expression", sa.String),
-    sa.column("delay_seconds", sa.Integer),
-    sa.column("delay_mode", sa.String),
-    sa.column("recipient_type", sa.String),
-    sa.column("recipient_config", sa.JSON),
-    sa.column("action_config", sa.JSON),
-    sa.column("trigger_config", sa.JSON),
-    sa.column("regularity", sa.String),
-    sa.column("time_of_day", sa.Time),
-    schema="triggers",
-)
-
-
-# ── Seed data ────────────────────────────────────────────────────────────
+# ── Seed data ───────────────────────────────────────────────────────────
 
 PERMISSIONS = [
     ("all_permissions", "Полный доступ ко всем функциям"),
@@ -123,6 +52,7 @@ PERMISSIONS = [
     ("mentor_role", "Marker: user has mentor capabilities"),
     ("view_referral_link", "Просмотр реферальной ссылки"),
     ("manage_channel_links", "Управление канальными ссылками"),
+    ("propose_meetings", "Предложить встречу ментору"),
 ]
 
 ROLES = [
@@ -154,6 +84,7 @@ ROLE_PERMISSIONS_MAP = {
         "view_own_info",
         "fill_survey",
         "view_referral_link",
+        "propose_meetings",
     ],
     "direction_lead": MENTOR_PERMS
     + [
@@ -167,6 +98,7 @@ ROLE_PERMISSIONS_MAP = {
     + ["view_education_feedback", "export_education_feedback", "view_referral_link"],
 }
 
+# All rating questions use max=10 (final state after 0015)
 TEMPLATES = [
     {
         "slug": "post_call_student",
@@ -178,7 +110,7 @@ TEMPLATES = [
                 "title": "Стиль общения ментора",
                 "question_type": "rating",
                 "is_required": True,
-                "config": {"min": 1, "max": 5},
+                "config": {"min": 1, "max": 10},
                 "options": [],
             },
             {
@@ -186,7 +118,7 @@ TEMPLATES = [
                 "title": "Глубина проверки знаний",
                 "question_type": "rating",
                 "is_required": True,
-                "config": {"min": 1, "max": 5},
+                "config": {"min": 1, "max": 10},
                 "options": [],
             },
             {
@@ -194,7 +126,7 @@ TEMPLATES = [
                 "title": "Насколько менти усвоил(а) материал",
                 "question_type": "rating",
                 "is_required": True,
-                "config": {"min": 1, "max": 5},
+                "config": {"min": 1, "max": 10},
                 "options": [],
             },
             {
@@ -230,7 +162,7 @@ TEMPLATES = [
                 "title": "Мотивация менти",
                 "question_type": "rating",
                 "is_required": True,
-                "config": {"min": 1, "max": 5},
+                "config": {"min": 1, "max": 10},
                 "options": [],
             },
             {
@@ -780,6 +712,11 @@ UI_TEXTS = [
         "Menu button: my info (student)",
     ),
     ("menu.back", "⬅️ Назад к меню", "Back to menu button"),
+    (
+        "menu.btn.propose_meeting",
+        "📅 Предложить созвон",
+        "Menu: student propose meeting btn",
+    ),
     # ── Submenu titles ──
     ("menu.users.title", "👥 Меню Пользователей", "Users submenu title"),
     ("menu.cohorts.title", "📂 Меню Когорт", "Cohorts submenu title"),
@@ -1135,89 +1072,174 @@ UI_TEXTS = [
 ]
 
 
-def _get_perm_id(conn, codename: str) -> int:
+# ── Helpers ─────────────────────────────────────────────────────────────
+
+
+def _get_template_id(conn, slug: str) -> int:
     return conn.execute(
-        sa.text("SELECT id FROM iam.permissions WHERE codename = :c"),
-        {"c": codename},
+        sa.text("SELECT id FROM surveys.survey_templates WHERE slug = :s"),
+        {"s": slug},
     ).scalar_one()
 
 
-def _get_role_id(conn, name: str) -> int:
-    return conn.execute(
-        sa.text("SELECT id FROM iam.roles WHERE name = :n"),
-        {"n": name},
-    ).scalar_one()
+def _insert_rule(conn, rule: dict) -> None:
+    conn.execute(
+        sa.text(
+            "INSERT INTO triggers.trigger_rules "
+            "(name, trigger_type, action_type, is_active, "
+            " cron_expression, regularity, time_of_day, "
+            " delay_seconds, delay_mode, "
+            " recipient_type, recipient_config, action_config, trigger_config) "
+            "SELECT "
+            " :name, :trigger_type, :action_type, :is_active, "
+            " :cron_expression, CAST(:regularity AS trigger_regularity_enum), :time_of_day, "
+            " :delay_seconds, :delay_mode, "
+            " :recipient_type, CAST(:recipient_config AS jsonb), CAST(:action_config AS jsonb), CAST(:trigger_config AS jsonb) "
+            "WHERE NOT EXISTS ("
+            "  SELECT 1 FROM triggers.trigger_rules WHERE name = :name"
+            ")"
+        ),
+        {
+            "name": rule["name"],
+            "trigger_type": rule["trigger_type"],
+            "action_type": rule["action_type"],
+            "is_active": rule.get("is_active", True),
+            "cron_expression": rule.get("cron_expression"),
+            "regularity": rule.get("regularity"),
+            "time_of_day": str(rule["time_of_day"])
+            if rule.get("time_of_day")
+            else None,
+            "delay_seconds": rule.get("delay_seconds", 0),
+            "delay_mode": rule.get("delay_mode", "after_trigger"),
+            "recipient_type": rule["recipient_type"],
+            "recipient_config": json.dumps(rule["recipient_config"])
+            if rule.get("recipient_config")
+            else None,
+            "action_config": json.dumps(rule["action_config"]),
+            "trigger_config": json.dumps(rule["trigger_config"])
+            if rule.get("trigger_config")
+            else None,
+        },
+    )
+
+
+# ── upgrade / downgrade ────────────────────────────────────────────────
 
 
 def upgrade() -> None:
     conn = op.get_bind()
 
-    # ── Permissions ──
-    conn.execute(
-        permissions_t.insert().values(
-            [{"codename": c, "description": d} for c, d in PERMISSIONS]
+    # ── 1. Permissions ──────────────────────────────────────────────────
+    for codename, description in PERMISSIONS:
+        conn.execute(
+            sa.text(
+                "INSERT INTO iam.permissions (codename, description) "
+                "VALUES (:codename, :description) "
+                "ON CONFLICT (codename) DO NOTHING"
+            ),
+            {"codename": codename, "description": description},
         )
-    )
 
-    # ── Roles ──
+    # ── 2. Roles ────────────────────────────────────────────────────────
     for role in ROLES:
-        conn.execute(roles_t.insert().values(**role))
-
-    # ── Role → Permission mappings ──
-    for role_name, perm_codenames in ROLE_PERMISSIONS_MAP.items():
-        role_id = _get_role_id(conn, role_name)
-        for codename in perm_codenames:
-            perm_id = _get_perm_id(conn, codename)
-            conn.execute(
-                role_perms_t.insert().values(role_id=role_id, permission_id=perm_id)
-            )
-
-    # ── Survey templates with questions and options ──
-    template_ids = {}
-    for tmpl in TEMPLATES:
-        r = conn.execute(
-            templates_t.insert()
-            .values(
-                title=tmpl["title"],
-                slug=tmpl["slug"],
-                description=tmpl["description"],
-                is_active=True,
-            )
-            .returning(templates_t.c.id)
+        conn.execute(
+            sa.text(
+                "INSERT INTO iam.roles (name, display_name) "
+                "VALUES (:name, :display_name) "
+                "ON CONFLICT (name) DO NOTHING"
+            ),
+            role,
         )
-        tid = r.scalar_one()
-        template_ids[tmpl["slug"]] = tid
-        for q in tmpl["questions"]:
-            qr = conn.execute(
-                questions_t.insert()
-                .values(
-                    template_id=tid,
-                    sort_order=q["sort_order"],
-                    title=q["title"],
-                    question_type=q["question_type"],
-                    is_required=q["is_required"],
-                    config=q["config"],
-                )
-                .returning(questions_t.c.id)
-            )
-            qid = qr.scalar_one()
-            for i, opt in enumerate(q["options"]):
-                conn.execute(
-                    options_t.insert().values(
-                        question_id=qid,
-                        sort_order=i + 1,
-                        value=opt["value"],
-                        label=opt["label"],
-                    )
-                )
 
-    # ── Trigger rules ──
+    # ── 3. Role → Permission mappings ───────────────────────────────────
+    for role_name, perm_codenames in ROLE_PERMISSIONS_MAP.items():
+        role_id = conn.execute(
+            sa.text("SELECT id FROM iam.roles WHERE name = :n"), {"n": role_name}
+        ).scalar_one()
+        for codename in perm_codenames:
+            perm_id = conn.execute(
+                sa.text("SELECT id FROM iam.permissions WHERE codename = :c"),
+                {"c": codename},
+            ).scalar_one()
+            conn.execute(
+                sa.text(
+                    "INSERT INTO iam.role_permissions (role_id, permission_id) "
+                    "VALUES (:rid, :pid) "
+                    "ON CONFLICT DO NOTHING"
+                ),
+                {"rid": role_id, "pid": perm_id},
+            )
+
+    # ── 4. Survey templates, questions, options ─────────────────────────
+    for tmpl in TEMPLATES:
+        conn.execute(
+            sa.text(
+                "INSERT INTO surveys.survey_templates (title, slug, description, is_active) "
+                "VALUES (:title, :slug, :description, true) "
+                "ON CONFLICT (slug) DO NOTHING"
+            ),
+            {
+                "title": tmpl["title"],
+                "slug": tmpl["slug"],
+                "description": tmpl["description"],
+            },
+        )
+
+        tid = _get_template_id(conn, tmpl["slug"])
+
+        for q in tmpl["questions"]:
+            conn.execute(
+                sa.text(
+                    "INSERT INTO surveys.survey_questions "
+                    "(template_id, sort_order, title, question_type, is_required, config) "
+                    "VALUES (:tid, :sort_order, :title, :qtype, :is_required, CAST(:config AS jsonb)) "
+                    "ON CONFLICT ON CONSTRAINT uq_survey_question_order DO NOTHING"
+                ),
+                {
+                    "tid": tid,
+                    "sort_order": q["sort_order"],
+                    "title": q["title"],
+                    "qtype": q["question_type"],
+                    "is_required": q["is_required"],
+                    "config": json.dumps(q["config"]) if q["config"] else None,
+                },
+            )
+
+            if q["options"]:
+                qid = conn.execute(
+                    sa.text(
+                        "SELECT id FROM surveys.survey_questions "
+                        "WHERE template_id = :tid AND sort_order = :so"
+                    ),
+                    {"tid": tid, "so": q["sort_order"]},
+                ).scalar_one()
+
+                for i, opt in enumerate(q["options"]):
+                    conn.execute(
+                        sa.text(
+                            "INSERT INTO surveys.survey_question_options "
+                            "(question_id, sort_order, value, label) "
+                            "VALUES (:qid, :so, :val, :lbl) "
+                            "ON CONFLICT ON CONSTRAINT uq_survey_option_order DO NOTHING"
+                        ),
+                        {
+                            "qid": qid,
+                            "so": i + 1,
+                            "val": opt["value"],
+                            "lbl": opt["label"],
+                        },
+                    )
+
+    # ── 5. Trigger rules ────────────────────────────────────────────────
+    template_ids = {
+        tmpl["slug"]: _get_template_id(conn, tmpl["slug"]) for tmpl in TEMPLATES
+    }
+
     seed_rules = [
         {
             "name": "Уведомление о созвоне",
             "trigger_type": "meeting_created",
             "action_type": "send_notification",
-            "is_active": True,
             "delay_seconds": 0,
             "delay_mode": "after_trigger",
             "recipient_type": "event_student",
@@ -1227,7 +1249,6 @@ def upgrade() -> None:
             "name": "Напоминание за 5 минут",
             "trigger_type": "meeting_created",
             "action_type": "send_notification",
-            "is_active": True,
             "delay_seconds": 300,
             "delay_mode": "before_scheduled",
             "recipient_type": "event_student",
@@ -1237,7 +1258,6 @@ def upgrade() -> None:
             "name": "Опрос менти после созвона",
             "trigger_type": "call_ended",
             "action_type": "send_survey",
-            "is_active": True,
             "delay_seconds": 0,
             "delay_mode": "after_trigger",
             "recipient_type": "event_student",
@@ -1250,7 +1270,6 @@ def upgrade() -> None:
             "name": "Фидбек ментора после созвона",
             "trigger_type": "call_ended",
             "action_type": "send_survey",
-            "is_active": True,
             "delay_seconds": 0,
             "delay_mode": "after_trigger",
             "recipient_type": "event_mentor",
@@ -1263,7 +1282,6 @@ def upgrade() -> None:
             "name": "Двухнедельный опрос ментора",
             "trigger_type": "periodic_cron",
             "action_type": "send_survey",
-            "is_active": True,
             "regularity": "fortnight",
             "time_of_day": time(12, 0),
             "delay_seconds": 0,
@@ -1279,7 +1297,6 @@ def upgrade() -> None:
             "name": "Опрос менти после первого созвона (greeting)",
             "trigger_type": "call_ended",
             "action_type": "send_survey",
-            "is_active": True,
             "delay_seconds": 86400,
             "delay_mode": "after_trigger",
             "recipient_type": "event_student",
@@ -1293,7 +1310,6 @@ def upgrade() -> None:
             "name": "Опрос ментора после первого созвона (greeting)",
             "trigger_type": "call_ended",
             "action_type": "send_survey",
-            "is_active": True,
             "delay_seconds": 86400,
             "delay_mode": "after_trigger",
             "recipient_type": "event_mentor",
@@ -1307,7 +1323,6 @@ def upgrade() -> None:
             "name": "Еженедельный опрос менти (Study)",
             "trigger_type": "periodic_cron",
             "action_type": "send_survey",
-            "is_active": True,
             "cron_expression": "0 12 * * 1",
             "delay_seconds": 0,
             "delay_mode": "after_trigger",
@@ -1322,7 +1337,6 @@ def upgrade() -> None:
             "name": "Еженедельный опрос менти (Search)",
             "trigger_type": "periodic_cron",
             "action_type": "send_survey",
-            "is_active": True,
             "cron_expression": "0 12 * * 1",
             "delay_seconds": 0,
             "delay_mode": "after_trigger",
@@ -1337,7 +1351,6 @@ def upgrade() -> None:
             "name": "Двухнедельный опрос менти (Search)",
             "trigger_type": "periodic_cron",
             "action_type": "send_survey",
-            "is_active": True,
             "regularity": "fortnight",
             "time_of_day": time(12, 0),
             "delay_seconds": 0,
@@ -1349,41 +1362,39 @@ def upgrade() -> None:
                 "survey_title": "Опрос по поиску работы",
             },
         },
-    ]
-    for rule in seed_rules:
-        conn.execute(rules_t.insert().values(**rule))
-
-    # ── Lead→Study welcome rule ──
-    conn.execute(
-        rules_t.insert().values(
-            name="Lead→Study: Welcome",
-            trigger_type="cohort_changed",
-            action_type="send_notification",
-            is_active=True,
-            delay_seconds=0,
-            delay_mode="after_trigger",
-            recipient_type="event_user",
-            recipient_config=None,
-            action_config={"text": LEAD_TO_STUDY_TEXT},
-            trigger_config={
+        {
+            "name": "Lead→Study: Welcome",
+            "trigger_type": "cohort_changed",
+            "action_type": "send_notification",
+            "delay_seconds": 0,
+            "delay_mode": "after_trigger",
+            "recipient_type": "event_user",
+            "action_config": {"text": LEAD_TO_STUDY_TEXT},
+            "trigger_config": {
                 "cohort_type": "Status",
                 "from_value": "Lead",
                 "to_value": "Study",
             },
-        )
-    )
+        },
+    ]
+    for rule in seed_rules:
+        _insert_rule(conn, rule)
 
-    # ── UI texts ──
+    # ── 6. UI texts ─────────────────────────────────────────────────────
     for key, value, description in UI_TEXTS:
         conn.execute(
-            ui_texts_t.insert().values(key=key, value=value, description=description)
+            sa.text(
+                "INSERT INTO public.ui_texts (key, value, description) "
+                "VALUES (:key, :value, :description) "
+                "ON CONFLICT (key) DO NOTHING"
+            ),
+            {"key": key, "value": value, "description": description},
         )
 
 
 def downgrade() -> None:
     conn = op.get_bind()
 
-    # Delete seed data in reverse order
     conn.execute(sa.text("DELETE FROM public.ui_texts"))
     conn.execute(sa.text("DELETE FROM triggers.trigger_rules"))
     conn.execute(sa.text("DELETE FROM surveys.survey_question_options"))
