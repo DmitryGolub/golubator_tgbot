@@ -108,27 +108,52 @@ class TelegramTestClient:
         """
         # Remember state before click
         old_messages = await _guarded_call(
-            self._client.get_messages, self._bot, limit=3
+            self._client.get_messages, self._bot, limit=5
         )
         old_snapshots = {
             m.id: (m.text, m.edit_date, m.reply_markup) for m in old_messages
         }
+        # Ensure the clicked message is always tracked — background notifications
+        # can push it out of the most recent N messages.
+        if message.id not in old_snapshots:
+            old_snapshots[message.id] = (
+                message.text,
+                message.edit_date,
+                message.reply_markup,
+            )
         max_old_id = max(m.id for m in old_messages) if old_messages else 0
 
         # Perform click with retry on stale message
         for attempt in range(3):
             try:
-                if data is not None:
-                    await _guarded_call(
-                        message.click,
-                        data=data.encode() if isinstance(data, str) else data,
-                    )
-                elif text is not None:
-                    await _guarded_call(message.click, text=text)
-                elif index is not None:
-                    await _guarded_call(message.click, index)
-                else:
-                    raise ValueError("Specify text, index, or data")
+                await _limiter.acquire()
+                try:
+                    if data is not None:
+                        await message.click(
+                            data=data.encode() if isinstance(data, str) else data,
+                        )
+                    elif text is not None:
+                        await message.click(text=text)
+                    elif index is not None:
+                        await message.click(index)
+                    else:
+                        raise ValueError("Specify text, index, or data")
+                except FloodWaitError as e:
+                    if e.seconds > 300:
+                        raise AssertionError(
+                            f"Telegram FloodWait {e.seconds}s — aborting"
+                        ) from e
+                    await asyncio.sleep(min(e.seconds + 1, 120))
+                    continue
+                except DataInvalidError:
+                    # Callback was likely delivered; MTProto response decryption failed.
+                    # Do NOT retry — a second click would double-toggle state.
+                    break
+                except (ConnectionError, OSError):
+                    if attempt == 2:
+                        raise
+                    await asyncio.sleep(2**attempt)
+                    continue
                 break
             except MessageIdInvalidError:
                 if attempt == 2:
@@ -178,6 +203,14 @@ class TelegramTestClient:
             new_messages = await _guarded_call(
                 self._client.get_messages, self._bot, limit=10
             )
+            # If the clicked message was pushed out of top-10 by background
+            # notifications, fetch it explicitly so Priority 1 can detect edits.
+            if not any(m.id == clicked_id for m in new_messages):
+                explicit = await _guarded_call(
+                    self._client.get_messages, self._bot, ids=clicked_id
+                )
+                if explicit:
+                    new_messages = list(new_messages) + [explicit]
 
             # Priority 1: edit of the CLICKED message (most reliable)
             for m in new_messages:

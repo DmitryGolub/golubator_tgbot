@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import asyncpg
 
-from tests.e2e.helpers.buttons import find_button
+from tests.e2e.helpers.buttons import find_button, get_buttons
 from tests.e2e.helpers.telegram_client import TelegramTestClient
 
 
@@ -294,6 +293,17 @@ class BotSetup:
         # Drain background notifications that may interfere with click_button
         await mentor_client.drain_messages()
 
+        # Clear pending surveys that Celery beat may have created during navigation.
+        # Also prevent new survey creation by removing pending trigger executions.
+        # No sleep: we rely on the cache being fresh from menu navigation above.
+        await self._pool.execute(
+            "UPDATE surveys.survey_sessions SET status = 'completed', completed_at = NOW() "
+            "WHERE status IN ('pending', 'in_progress')"
+        )
+        await self._pool.execute(
+            "DELETE FROM triggers.trigger_executions WHERE status = 'pending'"
+        )
+
         toggle_data = f"mtg_toggle:{student_telegram_id}"
         if not self._has_button_data(create_msg, toggle_data):
             toggle_btn = find_button(create_msg, "mtg_toggle:")
@@ -302,53 +312,13 @@ class BotSetup:
             )
             toggle_data = toggle_btn.data.decode()
 
-        # Click toggle and use return value (like test_05_meetings does).
-        # Fall back to polling by message ID if click_button returns a
-        # background notification or times out.
-        toggled_msg = None
-        confirm_btn = None
-        try:
-            result = await mentor_client.click_button(create_msg, data=toggle_data)
-            confirm_btn = find_button(result, "mtg_confirm_sel:")
-            if confirm_btn:
-                toggled_msg = result
-        except (TimeoutError, ConnectionError, OSError):
-            pass  # click was sent, handler may still process
-
-        if confirm_btn is None:
-            for _ in range(15):
-                await asyncio.sleep(2.0)
-                try:
-                    refreshed = await mentor_client.get_message_by_id(create_msg.id)
-                except (ConnectionError, OSError):
-                    continue
-                if refreshed:
-                    confirm_btn = find_button(refreshed, "mtg_confirm_sel:")
-                    if confirm_btn:
-                        toggled_msg = refreshed
-                        break
-
-        # Retry: toggle twice (deselect + reselect) to force keyboard refresh
-        if confirm_btn is None:
-            for _retry in range(2):
-                try:
-                    await mentor_client.click_button(create_msg, data=toggle_data)
-                    await asyncio.sleep(1.0)
-                except (TimeoutError, ConnectionError, OSError):
-                    await asyncio.sleep(2.0)
-            for _ in range(10):
-                await asyncio.sleep(2.0)
-                try:
-                    refreshed = await mentor_client.get_message_by_id(create_msg.id)
-                except (ConnectionError, OSError):
-                    continue
-                if refreshed:
-                    confirm_btn = find_button(refreshed, "mtg_confirm_sel:")
-                    if confirm_btn:
-                        toggled_msg = refreshed
-                        break
-
-        assert confirm_btn is not None, "Should find confirm selection button"
+        # Click toggle — bot edits the message with confirm button
+        toggled_msg = await mentor_client.click_button(create_msg, data=toggle_data)
+        confirm_btn = find_button(toggled_msg, "mtg_confirm_sel")
+        assert confirm_btn is not None, (
+            f"Should find confirm selection button after toggle. "
+            f"Buttons: {[(b.text, b.data.decode() if b.data else '') for b in get_buttons(toggled_msg)]}"
+        )
         type_msg = await mentor_client.click_button(
             toggled_msg, data=confirm_btn.data.decode()
         )
@@ -465,6 +435,12 @@ class BotSetup:
             msg = await self._admin.click_button(msg, data=f"tr_survey:{template_id}")
 
         # Step 6: click recipient type
+        # Clear surveys that Celery beat may have created during the long FSM flow.
+        # SurveyBlockMiddleware cache (5s TTL) has likely expired by now.
+        await self._pool.execute(
+            "UPDATE surveys.survey_sessions SET status = 'completed', completed_at = NOW() "
+            "WHERE status IN ('pending', 'in_progress')"
+        )
         await self._admin.click_button(msg, data=f"tr_rtype:{recipient_type}")
 
         # Step 7: recipient-specific config (if needed)

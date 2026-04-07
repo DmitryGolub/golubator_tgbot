@@ -54,6 +54,10 @@ async def test_delete_meeting(
     )
     meetings_msg = await account1.click_button(menu_msg, text=meetings_btn.text)
 
+    # Clear surveys that Celery beat tasks may have created during setup.
+    # SurveyBlockMiddleware would silently block the delete callback otherwise.
+    await setup.clear_pending_surveys()
+
     # Find delete button for our meeting
     del_btn = find_button(meetings_msg, f"meeting_del:{meeting_id}")
     assert del_btn is not None, (
