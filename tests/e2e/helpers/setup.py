@@ -98,11 +98,14 @@ class E2ESetup:
                     continue
                 to_truncate.append(f'{schema}."{table["tablename"]}"')
         if to_truncate:
-            # Disable FK checks to avoid CASCADE destroying preserved tables
+            # Use DELETE instead of TRUNCATE: TRUNCATE checks FK constraints
+            # at DDL level (ignores session_replication_role), while DELETE
+            # respects 'replica' mode which disables trigger-based FK checks.
             async with self._pool.acquire() as conn:
                 await conn.execute("SET session_replication_role = 'replica'")
-                await conn.execute(f"TRUNCATE TABLE {', '.join(to_truncate)}")
-                await conn.execute("SET session_replication_role = 'DEFAULT'")
+                for table in to_truncate:
+                    await conn.execute(f"DELETE FROM {table}")
+                await conn.execute("SET session_replication_role = 'origin'")
         # Clean up test-created cohorts while preserving seed data
         await self._pool.execute(
             "DELETE FROM integrations.cohorts WHERE type LIKE 'E2E_%'"

@@ -31,6 +31,7 @@ async def test_create_meeting_fsm(
     await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "mentor")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
+    await setup.clear_pending_surveys()
 
     # /menu -> Meetings
     menu_msg = await account1.send_command("/menu")
