@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -100,9 +100,21 @@ class MeetingDAO(BaseDAO):
                 .order_by(Meeting.created_at.desc())
             )
             if hide_past:
-                query = query.where(Meeting.completed_at.is_(None))
+                now = func.now()
+                query = query.where(
+                    Meeting.completed_at.is_(None),
+                    Meeting.scheduled_at.isnot(None),
+                    Meeting.scheduled_at >= now,
+                )
             if only_past:
-                query = query.where(Meeting.completed_at.isnot(None))
+                now = func.now()
+                query = query.where(
+                    or_(
+                        Meeting.completed_at.isnot(None),
+                        Meeting.scheduled_at.is_(None),
+                        Meeting.scheduled_at < now,
+                    )
+                )
             res = await session.execute(query)
             res = res.unique()
             return res.scalars().all()

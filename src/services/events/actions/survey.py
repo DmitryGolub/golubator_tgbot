@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.dynamic_survey import StartDynamicSurveyCB
@@ -83,4 +83,9 @@ class SendSurveyAction(BaseAction):
                 parse_mode="HTML",
             )
         except TelegramForbiddenError:
-            logger.warning("User %s blocked the bot, skipping survey", recipient_id)
+            logger.warning("User %s blocked the bot, skipping", recipient_id)
+        except TelegramBadRequest as exc:
+            if "chat not found" in str(exc).lower():
+                logger.warning("Chat not found for user %s, skipping", recipient_id)
+            else:
+                raise

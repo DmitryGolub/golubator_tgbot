@@ -1,7 +1,7 @@
 import logging
 from string import Template
 
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from src.models.trigger import TriggerRule
 from src.services.events.actions.base import BaseAction
@@ -45,6 +45,9 @@ class SendNotificationAction(BaseAction):
         try:
             await bot.send_message(recipient_id, text, parse_mode="HTML")
         except TelegramForbiddenError:
-            logger.warning(
-                "User %s blocked the bot, skipping notification", recipient_id
-            )
+            logger.warning("User %s blocked the bot, skipping", recipient_id)
+        except TelegramBadRequest as exc:
+            if "chat not found" in str(exc).lower():
+                logger.warning("Chat not found for user %s, skipping", recipient_id)
+            else:
+                raise

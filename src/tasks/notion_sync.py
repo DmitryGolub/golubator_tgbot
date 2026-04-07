@@ -42,7 +42,7 @@ def push_changes() -> None:
 
 
 @celery_app.task(name="notion.backup_pull_users")
-def backup_pull_users() -> None:
+def backup_pull_users(suppress_emit: bool = False) -> None:
     sync = _get_sync_v2()
     if not sync:
         return
@@ -50,7 +50,7 @@ def backup_pull_users() -> None:
     async def _pull():
         async with celery_db():
             mentors = await sync.backup_pull_mentors()
-            mentees = await sync.backup_pull_mentees()
+            mentees = await sync.backup_pull_mentees(suppress_emit=suppress_emit)
             if mentors or mentees:
                 logger.info(
                     "Backup pull complete: %d mentors, %d mentees", mentors, mentees
@@ -79,14 +79,14 @@ def backup_pull_events() -> None:
 
 
 @celery_app.task(name="notion.backup_pull_cohorts")
-def backup_pull_cohorts() -> None:
+def backup_pull_cohorts(suppress_emit: bool = False) -> None:
     sync = _get_sync_v2()
     if not sync:
         return
 
     async def _pull():
         async with celery_db():
-            await sync.backup_pull_cohorts()
+            await sync.backup_pull_cohorts(suppress_emit=suppress_emit)
 
     try:
         run_async(_pull())

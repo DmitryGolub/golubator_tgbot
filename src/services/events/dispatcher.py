@@ -62,16 +62,23 @@ class EventDispatcher:
         context: dict,
         bot=None,
     ) -> int:
-        """Execute a rule manually. Returns number of recipients."""
+        """Execute a rule manually. Returns number of successfully notified recipients."""
         rule = await TriggerRuleDAO.get_by_id(rule_id)
         if not rule:
             return 0
 
         recipients = await RecipientResolver.resolve(rule, context)
+        sent = 0
         for recipient_id in recipients:
-            await cls.execute_action(rule, recipient_id, context, bot)
+            try:
+                await cls.execute_action(rule, recipient_id, context, bot)
+                sent += 1
+            except Exception:
+                logger.exception(
+                    "Manual execute rule %s failed for user %s", rule_id, recipient_id
+                )
 
-        return len(recipients)
+        return sent
 
     @classmethod
     async def _process_rule(

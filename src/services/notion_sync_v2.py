@@ -637,7 +637,23 @@ class NotionSyncServiceV2:
                 role_name="student",
                 current_placeholder_id=current_ph,
             )
-            mentee.telegram_id = user_tid
+            if user_tid != mentee.telegram_id:
+                conflict = await session.execute(
+                    select(Mentee.id).where(
+                        Mentee.telegram_id == user_tid,
+                        Mentee.id != mentee.id,
+                    )
+                )
+                if conflict.scalar_one_or_none() is not None:
+                    logger.warning(
+                        "telegram_id %s already belongs to another mentee, "
+                        "skipping assignment for mentee id=%s (page %s)",
+                        user_tid,
+                        mentee.id,
+                        page_id,
+                    )
+                else:
+                    mentee.telegram_id = user_tid
         else:
             new_mentee = Mentee(
                 notion_page_id=page_id,
@@ -659,9 +675,31 @@ class NotionSyncServiceV2:
                 name=data.doc_name,
                 role_name="student",
             )
-            new_mentee.telegram_id = user_tid
+            conflict = await session.execute(
+                select(Mentee.id).where(
+                    Mentee.telegram_id == user_tid,
+                    Mentee.id != new_mentee.id,
+                )
+            )
+            if conflict.scalar_one_or_none() is not None:
+                logger.warning(
+                    "telegram_id %s already belongs to another mentee, "
+                    "skipping assignment for new mentee id=%s (page %s)",
+                    user_tid,
+                    new_mentee.id,
+                    page_id,
+                )
+            else:
+                new_mentee.telegram_id = user_tid
 
         mentee_record = mentee or new_mentee
+        if mentee_record.telegram_id is None:
+            logger.warning(
+                "Mentee id=%s (page %s) has no telegram_id, skipping cohort sync",
+                mentee_record.id,
+                page_id,
+            )
+            return []
         return await self._sync_cohorts(
             session,
             mentee_record.telegram_id,
@@ -819,7 +857,7 @@ class NotionSyncServiceV2:
         finally:
             await engine.dispose()
 
-    async def backup_pull_cohorts(self) -> int:
+    async def backup_pull_cohorts(self, suppress_emit: bool = False) -> int:
         if not self.mentee_repo:
             return 0
 
@@ -852,7 +890,7 @@ class NotionSyncServiceV2:
 
                 await session.commit()
 
-            if all_diffs:
+            if all_diffs and not suppress_emit:
                 from src.models.trigger import TriggerType
                 from src.services.events.dispatcher import EventDispatcher
 
@@ -1210,8 +1248,9 @@ class NotionSyncServiceV2:
             async with factory() as session:
                 for m in mentors_data:
                     try:
-                        await self._upsert_mentor(session, m, m.page_id)
-                        count += 1
+                        async with session.begin_nested():
+                            await self._upsert_mentor(session, m, m.page_id)
+                            count += 1
                     except Exception:
                         logger.exception("Error syncing mentor %s", m.page_id)
 
@@ -1222,7 +1261,7 @@ class NotionSyncServiceV2:
         logger.info("Backup pull: %d mentors synced", count)
         return count
 
-    async def backup_pull_mentees(self) -> int:
+    async def backup_pull_mentees(self, suppress_emit: bool = False) -> int:
         if not self.mentee_repo:
             return 0
 
@@ -1234,15 +1273,16 @@ class NotionSyncServiceV2:
             async with factory() as session:
                 for m in mentees_data:
                     try:
-                        diffs = await self._upsert_mentee(session, m, m.page_id)
-                        all_diffs.extend(diffs)
-                        count += 1
+                        async with session.begin_nested():
+                            diffs = await self._upsert_mentee(session, m, m.page_id)
+                            all_diffs.extend(diffs)
+                            count += 1
                     except Exception:
                         logger.exception("Error syncing mentee %s", m.page_id)
 
                 await session.commit()
 
-            if all_diffs:
+            if all_diffs and not suppress_emit:
                 from src.models.trigger import TriggerType
                 from src.services.events.dispatcher import EventDispatcher
 
@@ -1265,92 +1305,95 @@ class NotionSyncServiceV2:
             async with factory() as session:
                 for ev in events:
                     try:
-                        result = await session.execute(
-                            select(Meeting).where(Meeting.notion_page_id == ev.page_id)
-                        )
-                        meeting = result.scalar_one_or_none()
+                        async with session.begin_nested():
+                            result = await session.execute(
+                                select(Meeting).where(
+                                    Meeting.notion_page_id == ev.page_id
+                                )
+                            )
+                            meeting = result.scalar_one_or_none()
 
-                        now = datetime.now(timezone.utc)
-                        mentor_tid = await _resolve_mentor_telegram_id(
-                            session, ev.mentor_name
-                        )
-                        mentee_tids = await _resolve_mentee_ids(
-                            session, ev.mentee_tg_tag
-                        )
-                        all_user_ids = (
-                            [mentor_tid] if mentor_tid else []
-                        ) + mentee_tids
+                            now = datetime.now(timezone.utc)
+                            mentor_tid = await _resolve_mentor_telegram_id(
+                                session, ev.mentor_name
+                            )
+                            mentee_tids = await _resolve_mentee_ids(
+                                session, ev.mentee_tg_tag
+                            )
+                            all_user_ids = (
+                                [mentor_tid] if mentor_tid else []
+                            ) + mentee_tids
 
-                        if meeting:
-                            if (
-                                meeting.synced_at
-                                and ev.last_edited_time
-                                and meeting.synced_at >= ev.last_edited_time
-                            ):
+                            if meeting:
+                                if (
+                                    meeting.synced_at
+                                    and ev.last_edited_time
+                                    and meeting.synced_at >= ev.last_edited_time
+                                ):
+                                    await _ensure_meeting_users(
+                                        session, meeting.id, user_ids=all_user_ids
+                                    )
+                                    continue
+                                meeting.topic = ev.topic
+                                meeting.event_type = ev.event_type
+                                meeting.mentee_telegram_tag = ev.mentee_tg_tag
+                                meeting.recording_link = ev.recording
+                                meeting.summary = ev.summary
+                                meeting.action_items = ev.action_items
+                                meeting.project = ev.project
+                                if mentor_tid:
+                                    meeting.mentor_telegram_id = mentor_tid
+                                if ev.link:
+                                    meeting.meeting_link = ev.link
+                                if (
+                                    ev.status in ("Проведён", "Отменён")
+                                    and not meeting.completed_at
+                                ):
+                                    meeting.completed_at = now
+                                if ev.status == "Отменён":
+                                    meeting.is_cancelled = True
+                                elif ev.status == "Проведён":
+                                    meeting.is_cancelled = False
+                                meeting.synced_at = now
                                 await _ensure_meeting_users(
                                     session, meeting.id, user_ids=all_user_ids
                                 )
-                                continue
-                            meeting.topic = ev.topic
-                            meeting.event_type = ev.event_type
-                            meeting.mentee_telegram_tag = ev.mentee_tg_tag
-                            meeting.recording_link = ev.recording
-                            meeting.summary = ev.summary
-                            meeting.action_items = ev.action_items
-                            meeting.project = ev.project
-                            if mentor_tid:
-                                meeting.mentor_telegram_id = mentor_tid
-                            if ev.link:
-                                meeting.meeting_link = ev.link
-                            if (
-                                ev.status in ("Проведён", "Отменён")
-                                and not meeting.completed_at
-                            ):
-                                meeting.completed_at = now
-                            if ev.status == "Отменён":
-                                meeting.is_cancelled = True
-                            elif ev.status == "Проведён":
-                                meeting.is_cancelled = False
-                            meeting.synced_at = now
-                            await _ensure_meeting_users(
-                                session, meeting.id, user_ids=all_user_ids
-                            )
-                        else:
-                            scheduled_at = None
-                            if ev.date:
-                                from dateutil.parser import isoparse
+                            else:
+                                scheduled_at = None
+                                if ev.date:
+                                    from dateutil.parser import isoparse
 
-                                try:
-                                    scheduled_at = isoparse(ev.date)
-                                except (ValueError, TypeError):
-                                    pass
+                                    try:
+                                        scheduled_at = isoparse(ev.date)
+                                    except (ValueError, TypeError):
+                                        pass
 
-                            new_meeting = Meeting(
-                                notion_page_id=ev.page_id,
-                                topic=ev.topic,
-                                description=ev.topic,
-                                event_type=ev.event_type,
-                                scheduled_at=scheduled_at,
-                                meeting_link=ev.link,
-                                mentee_telegram_tag=ev.mentee_tg_tag,
-                                recording_link=ev.recording,
-                                summary=ev.summary,
-                                action_items=ev.action_items,
-                                project=ev.project,
-                                synced_at=now,
-                                mentor_telegram_id=mentor_tid,
-                            )
-                            if ev.status in ("Проведён", "Отменён"):
-                                new_meeting.completed_at = now
-                            if ev.status == "Отменён":
-                                new_meeting.is_cancelled = True
-                            session.add(new_meeting)
-                            await session.flush()
-                            await _ensure_meeting_users(
-                                session, new_meeting.id, user_ids=all_user_ids
-                            )
+                                new_meeting = Meeting(
+                                    notion_page_id=ev.page_id,
+                                    topic=ev.topic,
+                                    description=ev.topic,
+                                    event_type=ev.event_type,
+                                    scheduled_at=scheduled_at,
+                                    meeting_link=ev.link,
+                                    mentee_telegram_tag=ev.mentee_tg_tag,
+                                    recording_link=ev.recording,
+                                    summary=ev.summary,
+                                    action_items=ev.action_items,
+                                    project=ev.project,
+                                    synced_at=now,
+                                    mentor_telegram_id=mentor_tid,
+                                )
+                                if ev.status in ("Проведён", "Отменён"):
+                                    new_meeting.completed_at = now
+                                if ev.status == "Отменён":
+                                    new_meeting.is_cancelled = True
+                                session.add(new_meeting)
+                                await session.flush()
+                                await _ensure_meeting_users(
+                                    session, new_meeting.id, user_ids=all_user_ids
+                                )
 
-                        count += 1
+                            count += 1
                     except Exception:
                         logger.exception("Error syncing event %s", ev.page_id)
 

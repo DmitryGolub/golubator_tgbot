@@ -104,9 +104,9 @@ async def _initial_sync(**kwargs) -> None:
     try:
         await asyncio.to_thread(
             chain(
-                backup_pull_users.si(),
+                backup_pull_users.si(suppress_emit=True),
                 backup_pull_events.si(),
-                backup_pull_cohorts.si(),
+                backup_pull_cohorts.si(suppress_emit=True),
             ).apply_async,
         )
         logger.info("Initial sync chain dispatched to Celery")
