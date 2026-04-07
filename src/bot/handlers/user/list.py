@@ -8,6 +8,7 @@ from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.user import user_list_paginated_keyboard
 from src.bot.utils import safe_edit_text
+from src.utils.tz import MSK
 from src.dao.cohort import CohortDAO
 from src.dao.mentee import MenteeDAO
 from src.dao.user import UserDAO
@@ -62,7 +63,11 @@ async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarku
         if statuses:
             state_line = f"   • Состояние: <b>{e(', '.join(statuses))}</b>\n"
 
-        reg_date = f"{user.registered_at:%d.%m.%Y %H:%M}" if user.registered_at else "—"
+        reg_date = (
+            f"{user.registered_at.astimezone(MSK):%d.%m.%Y %H:%M}"
+            if user.registered_at
+            else "—"
+        )
 
         placeholder_badge = " [Нет Telegram]" if user.is_placeholder else ""
         username_display = f"@{e(user.username)}" if user.username else ""
