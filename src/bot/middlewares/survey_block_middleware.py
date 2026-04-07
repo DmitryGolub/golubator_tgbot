@@ -9,11 +9,12 @@ from aiogram.types import CallbackQuery, Message, TelegramObject
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.states.dynamic_survey import DynamicSurveyFSM
+from src.core.config import settings
 from src.dao.survey_session import SurveySessionDAO
 
 logger = logging.getLogger(__name__)
 
-_CACHE_TTL = 60
+_CACHE_TTL = 5 if settings.TEST_MODE else 60
 _MAX_CACHE = 10_000
 
 # user_id -> (has_pending, timestamp)
@@ -61,6 +62,7 @@ class SurveyBlockMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         # Block: send message with button to surveys
+        logger.info("Blocking user %s: has pending survey(s)", user_id)
         kb = InlineKeyboardBuilder()
         kb.button(text="Перейти к опросам", callback_data="my_surveys")
         text = (

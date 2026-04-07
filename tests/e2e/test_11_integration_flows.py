@@ -117,25 +117,26 @@ async def test_cohort_change_triggers_notification(
 
     update_btn = find_button(users_msg, "user_update_menu")
     assert update_btn is not None, "Users menu should have update button"
-    param_msg = await account1.click_button(users_msg, text=update_btn.text)
+    user_list_msg = await account1.click_button(users_msg, text=update_btn.text)
+
+    # Select ACCOUNT_2 from paginated user list
+    user_btn, user_msg = await find_button_paginated(
+        account1, user_list_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
+    )
+    assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
+    param_msg = await account1.click_button(user_msg, data=user_btn.data.decode())
 
     status_btn = find_button(param_msg, "upd_param:status")
     assert status_btn is not None, "Should find status param button"
     value_msg = await account1.click_button(param_msg, text=status_btn.text)
 
     # Pick job_search — differs from account2's current "study" to avoid no-op
-    any_btn = find_button(value_msg, "upd_enum:status:job_search")
-    assert any_btn is not None, "Should find job_search status value button"
-    user_msg = await account1.click_button(value_msg, data=any_btn.data.decode())
-
-    user_btn, user_msg = await find_button_paginated(
-        account1, user_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
-    )
-    assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
-
     # Snapshot before the action that triggers notification
     snap = await account2.snapshot_last_message_id()
-    await account1.click_button(user_msg, data=user_btn.data.decode())
+    any_btn = find_button(value_msg, "upd_enum:status:job_search")
+    assert any_btn is not None, "Should find job_search status value button"
+    result_msg = await account1.click_button(value_msg, data=any_btn.data.decode())
+    assert "обновлено" in result_msg.text.lower(), "Should see update confirmation"
 
     # Wait for notification on account2
     try:
@@ -197,15 +198,9 @@ async def test_onboarding_meeting_on_mentor_assign(
         account1, mentor_msg, f"upd_mentor:{ACCOUNT_1_TG_ID}", menu="mentors"
     )
     assert mentor_select_btn is not None, "Should find mentor select button"
-    user_msg = await account1.click_button(
+    result_msg = await account1.click_button(
         mentor_msg, data=mentor_select_btn.data.decode()
     )
-
-    user_btn, user_msg = await find_button_paginated(
-        account1, user_msg, f"upd_user:{ACCOUNT_2_TG_ID}", menu="users"
-    )
-    assert user_btn is not None, f"Should find user button for {ACCOUNT_2_TG_ID}"
-    result_msg = await account1.click_button(user_msg, data=user_btn.data.decode())
     assert "обновлено" in result_msg.text.lower()
 
     # Wait for onboarding meeting to be created (DB op inside handler)

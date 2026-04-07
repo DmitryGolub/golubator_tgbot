@@ -1,4 +1,7 @@
+from contextlib import suppress
+
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup
 
 from src.bot.callbacks.pagination import PageNavCB
@@ -79,9 +82,10 @@ async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarku
 
 @router.callback_query(F.data.in_({"user_list", "menu_users"}))
 async def cb_user_list(callback: CallbackQuery):
-    await callback.answer()
     text, markup = await _build_user_list_page(page=0)
     await safe_edit_text(callback, text, reply_markup=markup)
+    with suppress(TelegramBadRequest):
+        await callback.answer()
 
 
 @router.callback_query(
@@ -89,6 +93,7 @@ async def cb_user_list(callback: CallbackQuery):
     PageNavCB.filter(F.menu == "user_list"),
 )
 async def cb_user_list_page(callback: CallbackQuery, callback_data: PageNavCB):
-    await callback.answer()
     text, markup = await _build_user_list_page(page=callback_data.page)
     await safe_edit_text(callback, text, reply_markup=markup)
+    with suppress(TelegramBadRequest):
+        await callback.answer()

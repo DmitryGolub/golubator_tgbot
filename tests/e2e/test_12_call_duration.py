@@ -31,6 +31,10 @@ async def test_start_call_saves_timestamp(
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
+    # Clear pending surveys to prevent SurveyBlockMiddleware from blocking callbacks
+    await setup.clear_pending_surveys()
+    await asyncio.sleep(6)  # Wait for SurveyBlockMiddleware cache TTL (5s in TEST_MODE)
+
     # Create meeting via UI
     meeting_id = await bot_setup.create_meeting(
         mentor_client=account1,
@@ -120,6 +124,10 @@ async def test_post_call_survey_no_duration_question(
         action_config={"survey_template_id": template_id},
     )
     _module_state["trigger_rule_id"] = rule_id
+
+    # Clear pending surveys to prevent SurveyBlockMiddleware from blocking callbacks
+    await setup.clear_pending_surveys()
+    await asyncio.sleep(6)  # Wait for SurveyBlockMiddleware cache TTL (5s in TEST_MODE)
 
     # Create a new meeting via UI
     meeting_id = await bot_setup.create_meeting(

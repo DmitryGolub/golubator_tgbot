@@ -135,7 +135,7 @@ class TelegramTestClient:
                     raise
                 await asyncio.sleep(0.5)
                 fresh_messages = await _guarded_call(
-                    self._client.get_messages, self._bot, limit=5
+                    self._client.get_messages, self._bot, limit=10
                 )
                 matched = None
                 for m in fresh_messages:
@@ -176,7 +176,7 @@ class TelegramTestClient:
             await asyncio.sleep(interval)
             interval = min(interval * 2, 2.0)
             new_messages = await _guarded_call(
-                self._client.get_messages, self._bot, limit=5
+                self._client.get_messages, self._bot, limit=10
             )
 
             # Priority 1: edit of the CLICKED message (most reliable)
@@ -251,7 +251,7 @@ class TelegramTestClient:
             await asyncio.sleep(interval)
             interval = min(interval * 2, 2.0)
             new_messages = await _guarded_call(
-                self._client.get_messages, self._bot, limit=5
+                self._client.get_messages, self._bot, limit=10
             )
             for m in new_messages:
                 if m.id > after_id:
@@ -262,7 +262,7 @@ class TelegramTestClient:
 
     async def try_get_message_after(self, after_id: int) -> Message | None:
         """Non-blocking check for a message with id > after_id. Returns None if not found."""
-        messages = await _guarded_call(self._client.get_messages, self._bot, limit=5)
+        messages = await _guarded_call(self._client.get_messages, self._bot, limit=10)
         for m in messages:
             if m.id > after_id:
                 return m

@@ -76,6 +76,9 @@ class E2ESetup:
         ("iam", "role_permissions"),
         ("public", "ui_texts"),
         ("integrations", "cohorts"),
+        ("surveys", "survey_templates"),
+        ("surveys", "survey_questions"),
+        ("surveys", "survey_question_options"),
     }
 
     async def truncate_all(self):
@@ -95,7 +98,11 @@ class E2ESetup:
                     continue
                 to_truncate.append(f'{schema}."{table["tablename"]}"')
         if to_truncate:
-            await self._pool.execute(f"TRUNCATE TABLE {', '.join(to_truncate)} CASCADE")
+            # Disable FK checks to avoid CASCADE destroying preserved tables
+            async with self._pool.acquire() as conn:
+                await conn.execute("SET session_replication_role = 'replica'")
+                await conn.execute(f"TRUNCATE TABLE {', '.join(to_truncate)}")
+                await conn.execute("SET session_replication_role = 'DEFAULT'")
         # Clean up test-created cohorts while preserving seed data
         await self._pool.execute(
             "DELETE FROM integrations.cohorts WHERE type LIKE 'E2E_%'"

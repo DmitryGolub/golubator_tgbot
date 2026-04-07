@@ -33,6 +33,9 @@ async def test_delete_meeting(
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
 
+    # Clear pending surveys to prevent SurveyBlockMiddleware from blocking callbacks
+    await setup.clear_pending_surveys()
+
     meeting_id = await bot_setup.create_meeting(
         mentor_client=account1,
         mentor_telegram_id=ACCOUNT_1_TG_ID,
@@ -85,6 +88,9 @@ async def test_student_views_meetings(
     await bot_setup.ensure_role_permission("student", "view_own_meetings")
     await setup.ensure_mentor_record(ACCOUNT_1_TG_ID)
     await setup.ensure_mentee_record(ACCOUNT_2_TG_ID, ACCOUNT_1_TG_ID)
+
+    # Clear pending surveys to prevent SurveyBlockMiddleware from blocking callbacks
+    await setup.clear_pending_surveys()
 
     # Create a meeting so student has something to see
     await bot_setup.create_meeting(

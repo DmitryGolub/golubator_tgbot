@@ -271,6 +271,12 @@ class BotSetup:
         time_str: str = "18:00",
     ) -> int:
         """Create a meeting via FSM and have student confirm the proposal. Returns meeting_id."""
+        # Clear pending surveys to prevent SurveyBlockMiddleware from blocking callbacks
+        await self._pool.execute(
+            "UPDATE surveys.survey_sessions SET status = 'completed', completed_at = NOW() "
+            "WHERE respondent_id = $1 AND status IN ('pending', 'in_progress')",
+            mentor_telegram_id,
+        )
         menu_msg = await mentor_client.send_command("/menu")
         meetings_btn = find_button(menu_msg, "mentor_meetings_menu")
         assert meetings_btn is not None, "Mentor menu should have meetings button"
