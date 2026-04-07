@@ -195,6 +195,7 @@ class TelegramTestClient:
 
         # Poll for changes
         deadline = asyncio.get_event_loop().time() + timeout
+        poll_start = asyncio.get_event_loop().time()
         interval = 0.5
         clicked_id = message.id
         while asyncio.get_event_loop().time() < deadline:
@@ -237,14 +238,19 @@ class TelegramTestClient:
                         return m
 
             # Priority 3: new message (fallback for .answer() handlers)
-            new_msgs = [m for m in new_messages if m.id > max_old_id]
-            if new_msgs:
-                with_kb = [
-                    m
-                    for m in new_msgs
-                    if m.reply_markup and hasattr(m.reply_markup, "rows")
-                ]
-                return with_kb[0] if with_kb else new_msgs[0]
+            # Delay Priority 3 for 3s to let Priority 1 detect edits first.
+            # Background notifications from Celery triggers can arrive before the
+            # bot processes the callback, causing false-positive early returns.
+            elapsed = asyncio.get_event_loop().time() - poll_start
+            if elapsed >= 3.0:
+                new_msgs = [m for m in new_messages if m.id > max_old_id]
+                if new_msgs:
+                    with_kb = [
+                        m
+                        for m in new_msgs
+                        if m.reply_markup and hasattr(m.reply_markup, "rows")
+                    ]
+                    return with_kb[0] if with_kb else new_msgs[0]
 
         raise TimeoutError(
             f"No response from bot within {timeout}s after clicking button"
