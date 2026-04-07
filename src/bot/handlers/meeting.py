@@ -1249,7 +1249,7 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
 
     deleted, notion_page_id = await MeetingDAO.delete_for_mentor(
         meeting_id=callback_data.meeting_id,
-        mentor_id=callback.from_user.id,
+        user_id=callback.from_user.id,
     )
 
     if not deleted:

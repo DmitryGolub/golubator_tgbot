@@ -120,7 +120,7 @@ async def test_post_call_survey_no_duration_question(
         name=f"[E2E-{test_run_id}] call_ended_survey",
         trigger_type="call_ended",
         action_type="send_survey",
-        recipient_type="event_students",
+        recipient_type="event_student",
         action_config={"survey_template_id": template_id},
     )
     _module_state["trigger_rule_id"] = rule_id
