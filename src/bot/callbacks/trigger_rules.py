@@ -33,10 +33,6 @@ class TriggerRuleConfirmDeleteCB(CallbackData, prefix="tr_cdel"):
     rule_id: int
 
 
-class TriggerRuleSendCB(CallbackData, prefix="tr_send"):
-    rule_id: int
-
-
 class TriggerSurveyTemplateCB(CallbackData, prefix="tr_survey"):
     template_id: int
 

@@ -337,89 +337,6 @@ async def setup_disposable_rule(db: DBAssertions) -> int:
 # ── Execution tests ──
 
 
-async def test_manual_trigger_sends_notification(
-    account1: TelegramTestClient,
-    account2: TelegramTestClient,
-    db: DBAssertions,
-):
-    """Manual trigger sends notification to target user."""
-    rule_id = _module_state.get("manual_notify_rule_id")
-    assert rule_id is not None
-
-    triggers_msg = await _navigate_to_triggers(account1)
-
-    send_btn = find_button(triggers_msg, "tr_action:manual_send")
-    assert send_btn is not None, "Triggers menu should have 'Manual send' button"
-    send_msg = await account1.click_button(triggers_msg, text=send_btn.text)
-
-    rule_btn = find_button(send_msg, f"tr_send:{rule_id}")
-    assert rule_btn is not None, f"Should find send button for rule {rule_id}"
-
-    # Snapshot before triggering so we don't miss the notification
-    snap = await account2.snapshot_last_message_id()
-    await account1.click_button(send_msg, text=rule_btn.text)
-
-    # Wait for notification on account2
-    notif = await account2.wait_for_message_after(snap, timeout=30)
-    assert notif.text is not None
-    assert "Hello from E2E test" in notif.text, (
-        f"Expected trigger text, got: {notif.text[:200]}"
-    )
-
-
-async def test_notification_template_substitution(
-    db: DBAssertions,
-):
-    """Verify trigger execution was recorded in DB."""
-    rule_id = _module_state.get("manual_notify_rule_id")
-    assert rule_id is not None
-
-    executions = await db.get_trigger_executions(rule_id)
-    # May have executions from manual send
-    assert isinstance(executions, list)
-
-
-async def test_manual_trigger_sends_survey(
-    account1: TelegramTestClient,
-    account2: TelegramTestClient,
-    db: DBAssertions,
-    setup: E2ESetup,
-    bot_setup: BotSetup,
-):
-    """Manual trigger with send_survey creates a survey session."""
-    template_id = _module_state.get("survey_template_id")
-    assert template_id is not None
-
-    # Create a manual survey trigger via bot setup
-    rule_id = await bot_setup.create_trigger_rule(
-        name="E2E Manual Survey Send",
-        trigger_type="manual",
-        action_type="send_survey",
-        recipient_type="specific_users",
-        action_config={
-            "survey_template_id": template_id,
-            "survey_title": "E2E Post-Call Survey",
-        },
-        recipient_config={"user_ids": [ACCOUNT_2_TG_ID]},
-        delay_seconds=0,
-    )
-
-    triggers_msg = await _navigate_to_triggers(account1)
-    send_btn = find_button(triggers_msg, "tr_action:manual_send")
-    send_msg = await account1.click_button(triggers_msg, text=send_btn.text)
-
-    rule_btn = find_button(send_msg, f"tr_send:{rule_id}")
-    assert rule_btn is not None
-
-    # Snapshot before triggering
-    snap = await account2.snapshot_last_message_id()
-    await account1.click_button(send_msg, text=rule_btn.text)
-
-    # Wait for survey notification on account2
-    notif = await account2.wait_for_message_after(snap, timeout=30)
-    assert notif.text is not None
-
-
 async def test_trigger_call_ended_fires(
     account1: TelegramTestClient,
     account2: TelegramTestClient,
@@ -536,55 +453,6 @@ async def test_cohort_changed_auto_fires(
             )
 
 
-async def test_trigger_with_delay(
-    account1: TelegramTestClient,
-    account2: TelegramTestClient,
-    db: DBAssertions,
-    setup: E2ESetup,
-    bot_setup: BotSetup,
-):
-    """Trigger with 15s delay should fire after the delay."""
-    rule_id = await bot_setup.create_trigger_rule(
-        name="E2E Delayed Notify",
-        trigger_type="manual",
-        action_type="send_notification",
-        recipient_type="specific_users",
-        action_config={"text": "Delayed notification from E2E"},
-        recipient_config={"user_ids": [ACCOUNT_2_TG_ID]},
-        delay_seconds=15,
-    )
-
-    # Manually send
-    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
-    triggers_msg = await _navigate_to_triggers(account1)
-    send_btn = find_button(triggers_msg, "tr_action:manual_send")
-    send_msg = await account1.click_button(triggers_msg, text=send_btn.text)
-
-    rule_btn = find_button(send_msg, f"tr_send:{rule_id}")
-    assert rule_btn is not None, "Delayed rule should appear in manual send list"
-
-    # Snapshot before triggering delayed notification
-    snap = await account2.snapshot_last_message_id()
-    await account1.click_button(send_msg, text=rule_btn.text)
-
-    # Wait for delayed notification
-    notif = await account2.wait_for_message_after(snap, timeout=45)
-    assert notif.text is not None
-    assert "Delayed" in notif.text or len(notif.text) > 0
-
-
-async def test_trigger_deduplication(
-    db: DBAssertions,
-):
-    """Trigger executions should not duplicate for same event."""
-    rule_id = _module_state.get("manual_notify_rule_id")
-    assert rule_id is not None, "manual_notify_rule_id should be set by previous test"
-
-    count = await db.count_trigger_executions(rule_id)
-    # Just verify we can query; exact dedup logic depends on implementation
-    assert isinstance(count, int)
-
-
 async def test_trigger_by_cohort_recipients(
     db: DBAssertions,
     bot_setup: BotSetup,
@@ -623,41 +491,6 @@ async def test_trigger_by_state_recipients(
     rule = await db.get_trigger_rule(rule_id)
     assert rule is not None
     assert rule["recipient_type"] == "by_state"
-
-
-async def test_inactive_trigger_not_fired(
-    account1: TelegramTestClient,
-    account2: TelegramTestClient,
-    db: DBAssertions,
-    setup: E2ESetup,
-    bot_setup: BotSetup,
-):
-    """Deactivated trigger should not fire when manually sent."""
-    rule_id = await bot_setup.create_trigger_rule(
-        name="E2E Inactive Rule",
-        trigger_type="manual",
-        action_type="send_notification",
-        recipient_type="specific_users",
-        action_config={"text": "Should not receive this"},
-        recipient_config={"user_ids": [ACCOUNT_2_TG_ID]},
-        delay_seconds=0,
-    )
-
-    # Deactivate via DB
-    await db._pool.execute(
-        "UPDATE triggers.trigger_rules SET is_active = false WHERE id = $1",
-        rule_id,
-    )
-
-    # Try manual send — rule should not appear in active list
-    await bot_setup.set_user_role(ACCOUNT_1_TG_ID, "admin")
-    triggers_msg = await _navigate_to_triggers(account1)
-    send_btn = find_button(triggers_msg, "tr_action:manual_send")
-    send_msg = await account1.click_button(triggers_msg, text=send_btn.text)
-
-    rule_btn = find_button(send_msg, f"tr_send:{rule_id}")
-    # Inactive rule should not be in the manual send list
-    assert rule_btn is None, "Inactive rule should NOT appear in manual send list"
 
 
 # ── Periodic cron tests ──

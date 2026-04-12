@@ -11,7 +11,6 @@ from src.bot.callbacks.trigger_rules import (
     TriggerRuleConfirmDeleteCB,
     TriggerRuleDeleteCB,
     TriggerRuleDetailCB,
-    TriggerRuleSendCB,
     TriggerRuleToggleCB,
     TriggerScheduleModeCB,
     TriggerSurveyTemplateCB,
@@ -64,9 +63,6 @@ def trigger_menu_keyboard() -> InlineKeyboardMarkup:
         text="Создать правило", callback_data=TriggerActionCB(action="create")
     )
     builder.button(text="Список правил", callback_data=TriggerActionCB(action="list"))
-    builder.button(
-        text="Отправить вручную", callback_data=TriggerActionCB(action="manual_send")
-    )
     builder.button(text="⬅️ Назад", callback_data="back_to_menu")
     builder.adjust(1)
     return builder.as_markup()
@@ -128,8 +124,16 @@ def rules_list_keyboard(
         page=page,
         total_pages=total_pages,
         item_buttons=item_buttons,
-        columns=2,
+        columns=1,
         search_query=search_query,
+        extra_rows=[
+            [
+                InlineKeyboardButton(
+                    text="Создать правило",
+                    callback_data=TriggerActionCB(action="create").pack(),
+                )
+            ]
+        ],
         back_button=InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_triggers"),
     )
 
@@ -138,20 +142,8 @@ def rule_detail_keyboard(rule: TriggerRule) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     toggle_text = "Выключить" if rule.is_active else "Включить"
     builder.button(text=toggle_text, callback_data=TriggerRuleToggleCB(rule_id=rule.id))
-    builder.button(
-        text="Отправить сейчас", callback_data=TriggerRuleSendCB(rule_id=rule.id)
-    )
     builder.button(text="Удалить", callback_data=TriggerRuleDeleteCB(rule_id=rule.id))
     builder.button(text="⬅️ Назад", callback_data=TriggerActionCB(action="list"))
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-def manual_send_rules_keyboard(rules: list[TriggerRule]) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    for r in rules:
-        builder.button(text=r.name, callback_data=TriggerRuleSendCB(rule_id=r.id))
-    builder.button(text="⬅️ Назад", callback_data="menu_triggers")
     builder.adjust(1)
     return builder.as_markup()
 

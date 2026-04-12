@@ -16,7 +16,6 @@ from src.bot.callbacks.trigger_rules import (
     TriggerRuleConfirmDeleteCB,
     TriggerRuleDeleteCB,
     TriggerRuleDetailCB,
-    TriggerRuleSendCB,
     TriggerRuleToggleCB,
     TriggerScheduleModeCB,
     TriggerSurveyTemplateCB,
@@ -34,7 +33,6 @@ from src.bot.keyboards.trigger_rules import (
     cohort_value_keyboard,
     cohort_wildcard_keyboard,
     confirm_delete_rule_keyboard,
-    manual_send_rules_keyboard,
     recipient_type_keyboard,
     regularity_keyboard,
     rule_detail_keyboard,
@@ -48,7 +46,6 @@ from src.bot.pagination_search import filter_items
 from src.bot.states.trigger_rules import TriggerRuleBuilderFSM
 from src.bot.utils import safe_edit_text
 from src.dao.trigger_rule import TriggerRuleDAO
-from src.services.events.dispatcher import EventDispatcher
 from src.services.survey_template import SurveyTemplateService
 from src.services.ui_text import UiTextService
 from src.utils.escape import e
@@ -259,46 +256,6 @@ async def cb_delete_rule(
             await UiTextService.get("trigger.menu.title"),
             reply_markup=trigger_menu_keyboard(),
         )
-
-
-# --- Manual send ---
-
-
-@router.callback_query(TriggerActionCB.filter(F.action == "manual_send"))
-async def cb_manual_send_menu(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    rules = await TriggerRuleDAO.get_all_active()
-    if not rules:
-        await callback.answer(await UiTextService.get("trigger.no_rules"))
-        return
-    await callback.answer()
-    await safe_edit_text(
-        callback,
-        "Выберите правило для ручной отправки:",
-        reply_markup=manual_send_rules_keyboard(rules),
-    )
-
-
-@router.callback_query(TriggerRuleSendCB.filter())
-async def cb_send_now(callback: CallbackQuery, callback_data: TriggerRuleSendCB):
-    rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
-    if not rule:
-        await callback.answer(await UiTextService.get("trigger.rule_not_found"))
-        return
-
-    await callback.answer("Отправляю...")
-
-    count = await EventDispatcher.execute_rule_manually(
-        rule_id=rule.id,
-        context={"admin_id": callback.from_user.id},
-        bot=callback.bot,
-    )
-
-    await safe_edit_text(
-        callback,
-        f"Правило <b>{e(rule.name)}</b> выполнено.\nОтправлено: {count} получателям.",
-        reply_markup=trigger_menu_keyboard(),
-    )
 
 
 # --- Create rule FSM ---
