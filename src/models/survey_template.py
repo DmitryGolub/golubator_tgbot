@@ -33,9 +33,21 @@ class QuestionType(str, enum.Enum):
     multiple_choice = "multiple_choice"
 
 
+class TemplateKind(str, enum.Enum):
+    survey = "survey"
+    broadcast = "broadcast"
+
+
 question_type_enum = Enum(
     QuestionType,
     name="question_type_enum",
+    values_callable=lambda e: [m.value for m in e],
+)
+
+template_kind_enum = Enum(
+    TemplateKind,
+    name="template_kind_enum",
+    schema="surveys",
     values_callable=lambda e: [m.value for m in e],
 )
 
@@ -49,7 +61,14 @@ class SurveyTemplate(Base):
     slug: Mapped[str] = mapped_column(
         String(64), unique=True, nullable=False, index=True
     )
+    kind: Mapped[TemplateKind] = mapped_column(
+        template_kind_enum,
+        nullable=False,
+        default=TemplateKind.survey,
+        server_default=text("'survey'"),
+    )
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     target_role_id: Mapped[Optional[int]] = mapped_column(
         Integer,
         ForeignKey("iam.roles.id", ondelete="SET NULL"),

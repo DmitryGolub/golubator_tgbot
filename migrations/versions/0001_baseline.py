@@ -41,9 +41,7 @@ trigger_type_enum = pgEnum(
     name="trigger_type_enum",
     create_type=False,
 )
-action_type_enum = pgEnum(
-    "send_notification", "send_survey", name="action_type_enum", create_type=False
-)
+action_type_enum = pgEnum("send_survey", name="action_type_enum", create_type=False)
 delay_mode_enum = pgEnum(
     "after_trigger", "before_scheduled", name="delay_mode_enum", create_type=False
 )
@@ -147,6 +145,23 @@ def upgrade() -> None:
         "cross_mismatch",
         "mentor_not_recommend",
         name="alert_type_enum",
+        schema="surveys",
+        create_type=False,
+    )
+
+    op.execute(
+        sa.text(
+            "DO $$ BEGIN "
+            "CREATE TYPE surveys.template_kind_enum "
+            "AS ENUM ('survey', 'broadcast'); "
+            "EXCEPTION WHEN duplicate_object THEN NULL; "
+            "END $$"
+        )
+    )
+    template_kind_enum = pgEnum(
+        "survey",
+        "broadcast",
+        name="template_kind_enum",
         schema="surveys",
         create_type=False,
     )
@@ -430,7 +445,14 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("title", sa.String(255), nullable=False),
         sa.Column("slug", sa.String(64), nullable=False, unique=True, index=True),
+        sa.Column(
+            "kind",
+            template_kind_enum,
+            nullable=False,
+            server_default=sa.text("'survey'"),
+        ),
         sa.Column("description", sa.Text, nullable=True),
+        sa.Column("body", sa.Text, nullable=True),
         sa.Column(
             "target_role_id",
             sa.Integer,
@@ -876,6 +898,7 @@ def downgrade() -> None:
     op.execute(sa.text("DROP SEQUENCE IF EXISTS iam.placeholder_user_seq"))
 
     # Schema-qualified enums
+    op.execute(sa.text("DROP TYPE IF EXISTS surveys.template_kind_enum"))
     op.execute(sa.text("DROP TYPE IF EXISTS surveys.alert_type_enum"))
     op.execute(sa.text("DROP TYPE IF EXISTS meetings.proposal_status_enum"))
     op.execute(sa.text("DROP TYPE IF EXISTS iam.lead_source_type_enum"))

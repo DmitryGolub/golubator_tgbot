@@ -37,6 +37,7 @@ from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.pagination import get_page_slice
 from src.bot.keyboards.survey_builder import (
     QUESTION_TYPE_LABELS,
+    TEMPLATE_KIND_LABELS,
     add_option_keyboard,
     after_question_keyboard,
     cancel_keyboard,
@@ -50,8 +51,10 @@ from src.bot.keyboards.survey_builder import (
     survey_send_confirm_keyboard,
     survey_send_recipient_type_keyboard,
     template_detail_keyboard,
+    template_kind_choice_keyboard,
     templates_list_keyboard,
 )
+from src.models.survey_template import TemplateKind
 from src.bot.pagination_search import filter_items
 from src.bot.states.survey_builder import (
     SurveyBuilderFSM,
@@ -109,12 +112,22 @@ async def _build_surveys_list_page(
             [], page=0, total_pages=1
         )
 
-    lines = ["<b>Список опросов:</b>\n"]
+    lines = ["<b>Список опросов и рассылок:</b>\n"]
     for idx, t in enumerate(page_items):
         global_num = page * 6 + idx + 1
         status = "ON" if t.is_active else "OFF"
-        desc = t.description or "—"
-        lines.append(f"{global_num}. [{status}] {e(t.title)}\n   Описание: {e(desc)}")
+        kind_label = TEMPLATE_KIND_LABELS.get(
+            t.kind.value if hasattr(t.kind, "value") else t.kind, "Опрос"
+        )
+        if t.kind == TemplateKind.broadcast:
+            preview = (t.body or "—").split("\n", 1)[0][:60]
+            extra = f"Текст: {e(preview)}"
+        else:
+            desc = t.description or "—"
+            extra = f"Описание: {e(desc)}"
+        lines.append(
+            f"{global_num}. [{status}] [{kind_label}] {e(t.title)}\n   {extra}"
+        )
 
     text = "\n\n".join(lines)
     markup = templates_list_keyboard(
@@ -150,6 +163,22 @@ async def cb_surveys_list_page(
 
 
 def _format_template_detail(template) -> str:
+    status = "Активен" if template.is_active else "Отключен"
+    kind_label = TEMPLATE_KIND_LABELS.get(
+        template.kind.value if hasattr(template.kind, "value") else template.kind,
+        "Опрос",
+    )
+
+    if template.kind == TemplateKind.broadcast:
+        body = template.body or "—"
+        return (
+            f"<b>{e(template.title)}</b>\n"
+            f"Тип: {kind_label}\n"
+            f"Slug: <code>{e(template.slug)}</code>\n"
+            f"Статус: {status}\n\n"
+            f"<b>Текст рассылки:</b>\n{e(body)}"
+        )
+
     questions_text = ""
     for q in template.questions:
         type_label = QUESTION_TYPE_LABELS.get(
@@ -160,10 +189,10 @@ def _format_template_detail(template) -> str:
             for opt in q.options:
                 questions_text += f"\n     - {e(opt.label)} ({e(opt.value)})"
 
-    status = "Активен" if template.is_active else "Отключен"
     description = template.description or "—"
     return (
         f"<b>{e(template.title)}</b>\n"
+        f"Тип: {kind_label}\n"
         f"Slug: <code>{e(template.slug)}</code>\n"
         f"Описание: {e(description)}\n"
         f"Статус: {status}\n"
@@ -372,13 +401,38 @@ async def cb_delete_template(
 @router.callback_query(SurveyBuilderActionCB.filter(F.action == "create"))
 async def cb_start_create(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await state.set_state(SurveyBuilderFSM.entering_title)
+    await state.set_state(SurveyBuilderFSM.choosing_kind)
     await callback.answer()
     await safe_edit_text(
         callback,
-        "Введите название опроса:",
-        reply_markup=cancel_keyboard(),
+        "Что создаём?",
+        reply_markup=template_kind_choice_keyboard(),
     )
+
+
+@router.callback_query(
+    SurveyBuilderFSM.choosing_kind,
+    SurveyBuilderActionCB.filter(F.action.in_({"kind_survey", "kind_broadcast"})),
+)
+async def cb_choose_kind(
+    callback: CallbackQuery,
+    callback_data: SurveyBuilderActionCB,
+    state: FSMContext,
+):
+    kind = (
+        TemplateKind.broadcast
+        if callback_data.action == "kind_broadcast"
+        else TemplateKind.survey
+    )
+    await state.update_data(kind=kind.value)
+    await state.set_state(SurveyBuilderFSM.entering_title)
+    await callback.answer()
+    prompt = (
+        "Введите название рассылки:"
+        if kind == TemplateKind.broadcast
+        else "Введите название опроса:"
+    )
+    await safe_edit_text(callback, prompt, reply_markup=cancel_keyboard())
 
 
 @router.message(SurveyBuilderFSM.entering_title)
@@ -389,11 +443,52 @@ async def msg_title(message: Message, state: FSMContext):
         return
 
     slug = uuid.uuid4().hex[:12]
+    data = await state.get_data()
+    kind = data.get("kind", TemplateKind.survey.value)
     await state.update_data(title=title, slug=slug, questions=[])
+
+    if kind == TemplateKind.broadcast.value:
+        await state.set_state(SurveyBuilderFSM.entering_body)
+        await message.answer(
+            "Введите текст рассылки. Поддерживаются HTML-теги "
+            "и плейсхолдеры $general_chat_link, $mentor_channel_link.",
+            reply_markup=cancel_keyboard(),
+        )
+        return
+
     await state.set_state(SurveyBuilderFSM.entering_description)
     await message.answer(
         "Введите описание опроса (или отправьте «-» чтобы пропустить):",
         reply_markup=cancel_keyboard(),
+    )
+
+
+@router.message(SurveyBuilderFSM.entering_body)
+async def msg_broadcast_body(message: Message, state: FSMContext):
+    body = (message.text or "").strip()
+    if not body:
+        await message.answer("Текст рассылки не может быть пустым.")
+        return
+
+    data = await state.get_data()
+    service = SurveyTemplateService()
+    try:
+        template = await service.create(
+            title=data["title"],
+            slug=data["slug"],
+            kind=TemplateKind.broadcast,
+            body=body,
+            created_by=message.from_user.id,
+        )
+    except SlugAlreadyExistsError:
+        await message.answer("Не удалось создать рассылку. Попробуйте ещё раз.")
+        return
+
+    await state.clear()
+    text, markup = await _build_surveys_list_page(page=0)
+    await message.answer(
+        f"Рассылка <b>{e(template.title)}</b> создана.\n\n{text}",
+        reply_markup=markup,
     )
 
 
@@ -612,6 +707,7 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
         template = await service.create(
             title=data["title"],
             slug=data["slug"],
+            kind=TemplateKind.survey,
             description=data.get("description"),
             created_by=callback.from_user.id,
             questions=questions,
@@ -907,10 +1003,19 @@ async def cb_edit_template_menu(
     await callback.answer()
     await state.clear()
     await state.update_data(edit_template_id=callback_data.template_id)
+    service = SurveyTemplateService()
+    try:
+        template = await service.get(callback_data.template_id)
+    except TemplateNotFoundError:
+        await safe_edit_text(callback, "Опрос не найден.")
+        return
     await safe_edit_text(
         callback,
         "Что редактируем?",
-        reply_markup=edit_template_fields_keyboard(callback_data.template_id),
+        reply_markup=edit_template_fields_keyboard(
+            callback_data.template_id,
+            is_broadcast=template.kind == TemplateKind.broadcast,
+        ),
     )
 
 
@@ -924,19 +1029,40 @@ async def cb_edit_field_chosen(
     await state.update_data(edit_template_id=callback_data.template_id)
     field = callback_data.field
     prompts = {
-        "title": "Введите новое название опроса:",
+        "title": "Введите новое название:",
         "description": "Введите новое описание опроса (или «-» чтобы очистить):",
-        "slug": "Введите новый slug опроса:",
+        "slug": "Введите новый slug:",
+        "body": "Введите новый текст рассылки:",
     }
     states = {
         "title": SurveyEditFSM.editing_title,
         "description": SurveyEditFSM.editing_description,
         "slug": SurveyEditFSM.editing_slug,
+        "body": SurveyEditFSM.editing_body,
     }
     if field not in prompts:
         return
     await state.set_state(states[field])
     await safe_edit_text(callback, prompts[field], reply_markup=cancel_keyboard())
+
+
+@router.message(SurveyEditFSM.editing_body)
+async def msg_edit_template_body(message: Message, state: FSMContext):
+    body = (message.text or "").strip()
+    if not body:
+        await message.answer("Текст не может быть пустым.")
+        return
+    data = await state.get_data()
+    template_id = data["edit_template_id"]
+    service = SurveyTemplateService()
+    try:
+        await service.update_template(template_id, body=body)
+    except TemplateNotFoundError:
+        await message.answer("Шаблон не найден.")
+        await state.clear()
+        return
+    await state.clear()
+    await _show_template_detail_msg(message, template_id)
 
 
 @router.message(SurveyEditFSM.editing_title)

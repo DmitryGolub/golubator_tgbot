@@ -36,6 +36,28 @@ QUESTION_TYPE_LABELS = {
     "multiple_choice": "Множественный выбор",
 }
 
+TEMPLATE_KIND_LABELS = {
+    "survey": "Опрос",
+    "broadcast": "Рассылка",
+}
+
+
+def template_kind_choice_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="📝 Опрос (с вопросами)",
+        callback_data=SurveyBuilderActionCB(action="kind_survey"),
+    )
+    builder.button(
+        text="📢 Рассылка (только текст)",
+        callback_data=SurveyBuilderActionCB(action="kind_broadcast"),
+    )
+    builder.button(
+        text="❌ Отмена", callback_data=SurveyBuilderActionCB(action="cancel")
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
 
 def survey_builder_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -137,15 +159,19 @@ def templates_list_keyboard(
 
 
 def template_detail_keyboard(template: SurveyTemplate) -> InlineKeyboardMarkup:
+    from src.models.survey_template import TemplateKind
+
     builder = InlineKeyboardBuilder()
     builder.button(
         text="✏️ Редактировать",
         callback_data=SurveyEditTemplateMenuCB(template_id=template.id),
     )
-    builder.button(
-        text="📝 Вопросы",
-        callback_data=SurveyQuestionsListCB(template_id=template.id),
-    )
+    is_broadcast = template.kind == TemplateKind.broadcast
+    if not is_broadcast:
+        builder.button(
+            text="📝 Вопросы",
+            callback_data=SurveyQuestionsListCB(template_id=template.id),
+        )
     toggle_text = "Выключить" if template.is_active else "Включить"
     builder.button(
         text=toggle_text, callback_data=SurveyTemplateToggleCB(template_id=template.id)
@@ -154,20 +180,33 @@ def template_detail_keyboard(template: SurveyTemplate) -> InlineKeyboardMarkup:
         text="Удалить", callback_data=SurveyTemplateDeleteCB(template_id=template.id)
     )
     builder.button(text="⬅️ Назад", callback_data=SurveyBuilderActionCB(action="list"))
-    builder.adjust(2, 2, 1)
+    if is_broadcast:
+        builder.adjust(1, 2, 1)
+    else:
+        builder.adjust(2, 2, 1)
     return builder.as_markup()
 
 
-def edit_template_fields_keyboard(template_id: int) -> InlineKeyboardMarkup:
+def edit_template_fields_keyboard(
+    template_id: int, is_broadcast: bool = False
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
         text="Название",
         callback_data=SurveyEditFieldCB(template_id=template_id, field="title"),
     )
-    builder.button(
-        text="Описание",
-        callback_data=SurveyEditFieldCB(template_id=template_id, field="description"),
-    )
+    if is_broadcast:
+        builder.button(
+            text="Текст рассылки",
+            callback_data=SurveyEditFieldCB(template_id=template_id, field="body"),
+        )
+    else:
+        builder.button(
+            text="Описание",
+            callback_data=SurveyEditFieldCB(
+                template_id=template_id, field="description"
+            ),
+        )
     builder.button(
         text="Slug",
         callback_data=SurveyEditFieldCB(template_id=template_id, field="slug"),

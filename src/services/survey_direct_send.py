@@ -6,6 +6,10 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.dynamic_survey import StartDynamicSurveyCB
+from src.dao.survey_session import SurveySessionDAO
+from src.dao.survey_template import SurveyTemplateDAO
+from src.models.survey_template import TemplateKind
+from src.services.broadcast_sender import send_broadcast_message
 from src.services.survey_session import SurveySessionService
 from src.utils.escape import e
 
@@ -17,17 +21,26 @@ class SurveyDirectSendService:
     async def send_survey(
         *,
         template_id: int,
-        template_title: str,
+        template_title: str | None = None,
         recipient_type: str,
         recipient_config: dict,
         bot: Bot,
     ) -> int:
+        template = await SurveyTemplateDAO.get_by_id(template_id)
+        if not template:
+            logger.warning(
+                "SurveyDirectSendService: template %s not found", template_id
+            )
+            return 0
+
         recipient_ids = await _resolve_recipients(recipient_type, recipient_config)
         if not recipient_ids:
             return 0
 
         context_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         service = SurveySessionService()
+        title = template_title or template.title
+        is_broadcast = template.kind == TemplateKind.broadcast
         sent = 0
 
         for uid in recipient_ids:
@@ -43,6 +56,16 @@ class SurveyDirectSendService:
                 if already_existed:
                     continue
 
+                if is_broadcast:
+                    delivered = await send_broadcast_message(bot, uid, template, {})
+                    await SurveySessionDAO.update_escalation_field(
+                        session.id, "is_escalatable", False
+                    )
+                    await SurveySessionDAO.complete(session.id)
+                    if delivered:
+                        sent += 1
+                    continue
+
                 kb = InlineKeyboardBuilder()
                 kb.button(
                     text="Пройти опрос",
@@ -50,7 +73,7 @@ class SurveyDirectSendService:
                 )
                 await bot.send_message(
                     uid,
-                    f"<b>{e(template_title)}</b>\n\nВам доступен новый опрос.",
+                    f"<b>{e(title)}</b>\n\nВам доступен новый опрос.",
                     reply_markup=kb.as_markup(),
                     parse_mode="HTML",
                 )

@@ -39,8 +39,15 @@ class SurveyAnalytics:
     async def process_completed_session(
         self, session: SurveySession
     ) -> list[SurveyAlert]:
+        from src.models.survey_template import TemplateKind
+
         alerts: list[SurveyAlert] = []
-        slug = session.template.slug if session.template else None
+        template = session.template
+        if not template:
+            return alerts
+        if template.kind == TemplateKind.broadcast:
+            return alerts
+        slug = template.slug
         if not slug:
             return alerts
 

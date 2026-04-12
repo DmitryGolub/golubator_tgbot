@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 from src.dao.trigger_execution import TriggerExecutionDAO
 from src.dao.trigger_rule import TriggerRuleDAO
 from src.models.trigger import ActionType, DelayMode, TriggerRule, TriggerType
-from src.services.events.actions.notification import SendNotificationAction
 from src.services.events.actions.survey import SendSurveyAction
 from src.services.events.recipient_resolver import RecipientResolver
 
@@ -14,7 +13,6 @@ logger = logging.getLogger(__name__)
 # (no instance variables mutated during execute) — they run concurrently
 # in the bot's asyncio event loop for different recipients.
 ACTION_MAP = {
-    ActionType.send_notification: SendNotificationAction(),
     ActionType.send_survey: SendSurveyAction(),
 }
 
@@ -32,7 +30,7 @@ class EventDispatcher:
         if not rules:
             return
 
-        logger.info("Event %s: %d rule(s) matched", trigger_type.value, len(rules))
+        logger.info("Event %s: %d rule(s) fetched", trigger_type.value, len(rules))
 
         for rule in rules:
             if not await cls._matches_trigger_config(rule, trigger_type, context):
@@ -178,6 +176,9 @@ class EventDispatcher:
 
     @classmethod
     async def _matches_cohort_changed(cls, config: dict, context: dict) -> bool:
+        def _ci_eq(a, b) -> bool:
+            return (a or "").casefold() == (b or "").casefold()
+
         cfg_cohort_type = config.get("cohort_type", "*")
         cfg_from = config.get("from_value", "*")
         cfg_to = config.get("to_value", "*")
@@ -186,11 +187,11 @@ class EventDispatcher:
         ctx_old = context.get("old_value")
         ctx_new = context.get("new_value", "")
 
-        if cfg_cohort_type != "*" and cfg_cohort_type != ctx_cohort_type:
+        if cfg_cohort_type != "*" and not _ci_eq(cfg_cohort_type, ctx_cohort_type):
             return False
-        if cfg_from != "*" and cfg_from != ctx_old:
+        if cfg_from != "*" and not _ci_eq(cfg_from, ctx_old):
             return False
-        if cfg_to != "*" and cfg_to != ctx_new:
+        if cfg_to != "*" and not _ci_eq(cfg_to, ctx_new):
             return False
 
         require_category = config.get("require_category")
@@ -207,7 +208,8 @@ class EventDispatcher:
                 if categories:
                     return False
             else:
-                if require_category not in categories:
+                categories_cf = {(c or "").casefold() for c in categories}
+                if require_category.casefold() not in categories_cf:
                     return False
 
         return True

@@ -8,6 +8,7 @@ from src.models.survey_template import (
     SurveyQuestion,
     SurveyQuestionOption,
     SurveyTemplate,
+    TemplateKind,
 )
 
 
@@ -59,7 +60,9 @@ class SurveyTemplateDAO:
         *,
         title: str,
         slug: str,
+        kind: TemplateKind = TemplateKind.survey,
         description: str | None = None,
+        body: str | None = None,
         target_role_id: int | None = None,
         created_by: int | None = None,
     ) -> SurveyTemplate:
@@ -67,7 +70,9 @@ class SurveyTemplateDAO:
             template = SurveyTemplate(
                 title=title,
                 slug=slug,
+                kind=kind,
                 description=description,
+                body=body,
                 target_role_id=target_role_id,
                 created_by=created_by,
             )

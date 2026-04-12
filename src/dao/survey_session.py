@@ -203,16 +203,20 @@ class SurveySessionDAO:
     @classmethod
     async def get_overdue_sessions(cls, min_age_hours: int = 24) -> list[SurveySession]:
         """Get escalatable sessions older than min_age_hours that are not completed."""
+        from src.models.survey_template import SurveyTemplate, TemplateKind
+
         cutoff = datetime.now(timezone.utc) - timedelta(hours=min_age_hours)
         async with async_session_maker() as session:
             query = (
                 select(SurveySession)
+                .join(SurveyTemplate, SurveySession.template_id == SurveyTemplate.id)
                 .where(
                     SurveySession.status.in_(
                         [SessionStatus.pending, SessionStatus.in_progress]
                     ),
                     SurveySession.is_escalatable.is_(True),
                     SurveySession.created_at < cutoff,
+                    SurveyTemplate.kind != TemplateKind.broadcast,
                 )
                 .order_by(SurveySession.created_at)
             )

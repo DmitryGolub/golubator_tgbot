@@ -5,6 +5,7 @@ from src.models.survey_template import (
     SurveyQuestion,
     SurveyQuestionOption,
     SurveyTemplate,
+    TemplateKind,
 )
 
 
@@ -42,11 +43,16 @@ class SurveyTemplateService:
         *,
         title: str,
         slug: str,
+        kind: TemplateKind = TemplateKind.survey,
         description: str | None = None,
+        body: str | None = None,
         target_role_id: int | None = None,
         created_by: int | None = None,
         questions: list[dict] | None = None,
     ) -> SurveyTemplate:
+        if kind == TemplateKind.broadcast and not (body or "").strip():
+            raise ValueError("Broadcast template requires non-empty body")
+
         existing = await SurveyTemplateDAO.get_by_slug(slug)
         if existing:
             raise SlugAlreadyExistsError
@@ -54,12 +60,14 @@ class SurveyTemplateService:
         template = await SurveyTemplateDAO.create(
             title=title,
             slug=slug,
+            kind=kind,
             description=description,
+            body=body,
             target_role_id=target_role_id,
             created_by=created_by,
         )
 
-        if questions:
+        if questions and kind == TemplateKind.survey:
             await SurveyTemplateDAO.add_questions_batch(
                 template_id=template.id,
                 questions=questions,

@@ -35,7 +35,6 @@ class TriggerType(str, enum.Enum):
 
 
 class ActionType(str, enum.Enum):
-    send_notification = "send_notification"
     send_survey = "send_survey"
 
 

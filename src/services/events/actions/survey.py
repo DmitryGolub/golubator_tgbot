@@ -5,7 +5,11 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.dynamic_survey import StartDynamicSurveyCB
+from src.dao.survey_session import SurveySessionDAO
+from src.dao.survey_template import SurveyTemplateDAO
+from src.models.survey_template import TemplateKind
 from src.models.trigger import TriggerRule, TriggerType
+from src.services.broadcast_sender import send_broadcast_message
 from src.services.events.actions.base import BaseAction
 from src.services.survey_session import SurveySessionService
 from src.utils.escape import e
@@ -29,6 +33,15 @@ class SendSurveyAction(BaseAction):
         template_id = rule.action_config.get("survey_template_id")
         if not template_id:
             logger.warning("TriggerRule %s missing survey_template_id", rule.id)
+            return
+
+        template = await SurveyTemplateDAO.get_by_id(template_id)
+        if not template:
+            logger.warning(
+                "TriggerRule %s references unknown template_id=%s",
+                rule.id,
+                template_id,
+            )
             return
 
         context_type = context.get("context_type")
@@ -60,10 +73,17 @@ class SendSurveyAction(BaseAction):
             )
             return
 
+        # Broadcasts: send text, mark session complete+non-escalatable.
+        if template.kind == TemplateKind.broadcast:
+            await send_broadcast_message(bot, recipient_id, template, context)
+            await SurveySessionDAO.update_escalation_field(
+                session.id, "is_escalatable", False
+            )
+            await SurveySessionDAO.complete(session.id)
+            return
+
         # Mark non-escalatable if configured (e.g. one-off notifications)
         if rule.action_config.get("escalatable") is False:
-            from src.dao.survey_session import SurveySessionDAO
-
             await SurveySessionDAO.update_escalation_field(
                 session.id, "is_escalatable", False
             )
@@ -74,7 +94,7 @@ class SendSurveyAction(BaseAction):
             callback_data=StartDynamicSurveyCB(session_id=session.id),
         )
 
-        template_title = rule.action_config.get("survey_title", "Опрос")
+        template_title = rule.action_config.get("survey_title") or template.title
         try:
             await bot.send_message(
                 recipient_id,

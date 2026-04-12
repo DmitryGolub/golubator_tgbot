@@ -19,6 +19,7 @@ from src.models.survey_template import (
     SurveyTemplate as SurveyTemplate,
     SurveyQuestion as SurveyQuestion,
     SurveyQuestionOption as SurveyQuestionOption,
+    TemplateKind as TemplateKind,
 )
 from src.models.survey_session import (
     SessionStatus as SessionStatus,

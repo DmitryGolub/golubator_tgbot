@@ -52,6 +52,14 @@ async def cb_my_surveys(callback: CallbackQuery):
 async def cb_start_survey(
     callback: CallbackQuery, callback_data: StartDynamicSurveyCB, state: FSMContext
 ):
+    from src.dao.survey_session import SurveySessionDAO
+    from src.models.survey_template import TemplateKind
+
+    preview = await SurveySessionDAO.get_by_id(callback_data.session_id)
+    if preview and preview.template and preview.template.kind == TemplateKind.broadcast:
+        await callback.answer("Это рассылка, не опрос", show_alert=False)
+        return
+
     service = SurveySessionService()
 
     try:

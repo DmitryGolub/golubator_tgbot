@@ -9,10 +9,6 @@ class TriggerTypeCB(CallbackData, prefix="tr_type"):
     value: str
 
 
-class TriggerActionTypeCB(CallbackData, prefix="tr_atype"):
-    value: str
-
-
 class TriggerRecipientTypeCB(CallbackData, prefix="tr_rtype"):
     value: str
 

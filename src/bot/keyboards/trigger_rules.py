@@ -3,7 +3,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.trigger_rules import (
     TriggerActionCB,
-    TriggerActionTypeCB,
     TriggerCohortTypeCB,
     TriggerCohortValueCB,
     TriggerDelayModeCB,
@@ -44,8 +43,7 @@ REGULARITY_LABELS = {
 }
 
 ACTION_TYPE_LABELS = {
-    "send_notification": "Отправить уведомление",
-    "send_survey": "Отправить опрос",
+    "send_survey": "Отправить шаблон",
 }
 
 DELAY_MODE_LABELS = {
@@ -69,15 +67,6 @@ def trigger_type_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for value, label in TRIGGER_TYPE_LABELS.items():
         builder.button(text=label, callback_data=TriggerTypeCB(value=value))
-    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-def action_type_keyboard() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    for value, label in ACTION_TYPE_LABELS.items():
-        builder.button(text=label, callback_data=TriggerActionTypeCB(value=value))
     builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
@@ -165,10 +154,7 @@ def rule_edit_menu_keyboard(rule: TriggerRule) -> InlineKeyboardMarkup:
         text="Тип триггера", callback_data=TriggerRuleEditFieldCB(field="tt")
     )
     builder.button(
-        text="Тип действия", callback_data=TriggerRuleEditFieldCB(field="at")
-    )
-    builder.button(
-        text="Содержимое действия",
+        text="Шаблон (опрос/рассылка)",
         callback_data=TriggerRuleEditFieldCB(field="ac"),
     )
     builder.button(

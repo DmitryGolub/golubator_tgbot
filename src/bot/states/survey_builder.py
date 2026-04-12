@@ -2,8 +2,10 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class SurveyBuilderFSM(StatesGroup):
+    choosing_kind = State()
     entering_title = State()
     entering_description = State()
+    entering_body = State()
     adding_question_title = State()
     choosing_question_type = State()
     configuring_rating_min = State()
@@ -15,6 +17,7 @@ class SurveyEditFSM(StatesGroup):
     # Template fields
     editing_title = State()
     editing_description = State()
+    editing_body = State()
     editing_slug = State()
     # Question fields
     editing_question_title = State()

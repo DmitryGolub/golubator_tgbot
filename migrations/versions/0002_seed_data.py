@@ -684,6 +684,24 @@ LEAD_TO_STUDY_TEXT = (
     "— Канал ментора: $mentor_channel_link"
 )
 
+BROADCAST_TEMPLATES = [
+    {
+        "slug": "meeting_created_notify",
+        "title": "Уведомление о созвоне",
+        "body": NOTIFY_TEXT,
+    },
+    {
+        "slug": "meeting_reminder_5min",
+        "title": "Напоминание за 5 минут",
+        "body": REMINDER_TEXT,
+    },
+    {
+        "slug": "lead_to_study_welcome",
+        "title": "Lead→Study: Welcome",
+        "body": LEAD_TO_STUDY_TEXT,
+    },
+]
+
 UI_TEXTS = [
     # ── Menu ──
     ("menu.title", "Список доступных команд", "Main menu title"),
@@ -876,12 +894,7 @@ UI_TEXTS = [
         "Trigger type: user state changed",
     ),
     ("trigger.type.manual", "Ручной", "Trigger type: manual"),
-    (
-        "trigger.action.send_notification",
-        "Отправить уведомление",
-        "Action: send notification",
-    ),
-    ("trigger.action.send_survey", "Отправить опрос", "Action: send survey"),
+    ("trigger.action.send_survey", "Отправить шаблон", "Action: send template"),
     (
         "trigger.recipient.event_student",
         "Менти из события",
@@ -1174,8 +1187,8 @@ def upgrade() -> None:
     for tmpl in TEMPLATES:
         conn.execute(
             sa.text(
-                "INSERT INTO surveys.survey_templates (title, slug, description, is_active) "
-                "VALUES (:title, :slug, :description, true) "
+                "INSERT INTO surveys.survey_templates (title, slug, kind, description, is_active) "
+                "VALUES (:title, :slug, CAST('survey' AS surveys.template_kind_enum), :description, true) "
                 "ON CONFLICT (slug) DO NOTHING"
             ),
             {
@@ -1230,29 +1243,49 @@ def upgrade() -> None:
                         },
                     )
 
+    # ── 4b. Broadcast templates (surveys without questions) ─────────────
+    for b in BROADCAST_TEMPLATES:
+        conn.execute(
+            sa.text(
+                "INSERT INTO surveys.survey_templates (title, slug, kind, body, is_active) "
+                "VALUES (:title, :slug, CAST('broadcast' AS surveys.template_kind_enum), :body, true) "
+                "ON CONFLICT (slug) DO NOTHING"
+            ),
+            {"title": b["title"], "slug": b["slug"], "body": b["body"]},
+        )
+
     # ── 5. Trigger rules ────────────────────────────────────────────────
     template_ids = {
         tmpl["slug"]: _get_template_id(conn, tmpl["slug"]) for tmpl in TEMPLATES
+    }
+    broadcast_ids = {
+        b["slug"]: _get_template_id(conn, b["slug"]) for b in BROADCAST_TEMPLATES
     }
 
     seed_rules = [
         {
             "name": "Уведомление о созвоне",
             "trigger_type": "meeting_created",
-            "action_type": "send_notification",
+            "action_type": "send_survey",
             "delay_seconds": 0,
             "delay_mode": "after_trigger",
             "recipient_type": "event_student",
-            "action_config": {"text": NOTIFY_TEXT},
+            "action_config": {
+                "survey_template_id": broadcast_ids["meeting_created_notify"],
+                "escalatable": False,
+            },
         },
         {
             "name": "Напоминание за 5 минут",
             "trigger_type": "meeting_created",
-            "action_type": "send_notification",
+            "action_type": "send_survey",
             "delay_seconds": 300,
             "delay_mode": "before_scheduled",
             "recipient_type": "event_student",
-            "action_config": {"text": REMINDER_TEXT},
+            "action_config": {
+                "survey_template_id": broadcast_ids["meeting_reminder_5min"],
+                "escalatable": False,
+            },
         },
         {
             "name": "Опрос менти после созвона",
@@ -1365,11 +1398,14 @@ def upgrade() -> None:
         {
             "name": "Lead→Study: Welcome",
             "trigger_type": "cohort_changed",
-            "action_type": "send_notification",
+            "action_type": "send_survey",
             "delay_seconds": 0,
             "delay_mode": "after_trigger",
             "recipient_type": "event_user",
-            "action_config": {"text": LEAD_TO_STUDY_TEXT},
+            "action_config": {
+                "survey_template_id": broadcast_ids["lead_to_study_welcome"],
+                "escalatable": False,
+            },
             "trigger_config": {
                 "cohort_type": "Status",
                 "from_value": "Lead",

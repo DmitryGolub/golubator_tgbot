@@ -126,7 +126,7 @@ def make_trigger_rule(
     id: int = 1,
     name: str = "Test rule",
     trigger_type: str = "manual",
-    action_type: str = "send_notification",
+    action_type: str = "send_survey",
     is_active: bool = True,
     cron_expression: str | None = None,
     regularity=None,

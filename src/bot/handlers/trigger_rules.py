@@ -8,7 +8,6 @@ from aiogram.fsm.context import FSMContext
 from src.bot.callbacks.pagination import PageNavCB
 from src.bot.callbacks.trigger_rules import (
     TriggerActionCB,
-    TriggerActionTypeCB,
     TriggerCohortTypeCB,
     TriggerCohortValueCB,
     TriggerDelayModeCB,
@@ -30,7 +29,6 @@ from src.bot.keyboards.trigger_rules import (
     ACTION_TYPE_LABELS,
     RECIPIENT_TYPE_LABELS,
     TRIGGER_TYPE_LABELS,
-    action_type_keyboard,
     cancel_keyboard,
     cohort_type_keyboard,
     cohort_value_keyboard,
@@ -51,7 +49,6 @@ from src.bot.states.trigger_rules import TriggerRuleBuilderFSM, TriggerRuleEditF
 from src.bot.utils import safe_edit_text
 from src.dao.trigger_rule import TriggerRuleDAO
 from src.models.trigger import (
-    ActionType,
     DelayMode,
     RecipientType,
     TriggerRule,
@@ -321,10 +318,7 @@ async def cb_trigger_type(
             reply_markup=cohort_type_keyboard(types),
         )
     else:
-        await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
-        await safe_edit_text(
-            callback, "Выберите действие:", reply_markup=action_type_keyboard()
-        )
+        await _prompt_survey_templates(callback, state)
 
 
 @router.callback_query(
@@ -428,10 +422,7 @@ async def cb_cohort_to(
     await state.update_data(trigger_config=trigger_config)
     await callback.answer()
 
-    await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
-    await safe_edit_text(
-        callback, "Выберите действие:", reply_markup=action_type_keyboard()
-    )
+    await _prompt_survey_templates(callback, state)
 
 
 _CRON_RANGES = [
@@ -480,6 +471,22 @@ def _validate_cron(expr: str) -> str | None:
     return None
 
 
+async def _prompt_survey_templates_msg(message: Message, state: FSMContext) -> None:
+    service = SurveyTemplateService()
+    templates = await service.list_active()
+    if not templates:
+        await state.clear()
+        await message.answer(
+            "Нет активных шаблонов. Сначала создайте опрос или рассылку."
+        )
+        return
+    await state.set_state(TriggerRuleBuilderFSM.choosing_survey_template)
+    await message.answer(
+        "Выберите шаблон (опрос или рассылку):",
+        reply_markup=survey_templates_keyboard(templates),
+    )
+
+
 @router.message(TriggerRuleBuilderFSM.entering_cron_expression)
 async def msg_cron_expression(message: Message, state: FSMContext):
     expr = message.text.strip()
@@ -488,8 +495,7 @@ async def msg_cron_expression(message: Message, state: FSMContext):
         await message.answer(f"{error} Попробуйте снова:")
         return
     await state.update_data(cron_expression=expr)
-    await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
-    await message.answer("Выберите действие:", reply_markup=action_type_keyboard())
+    await _prompt_survey_templates_msg(message, state)
 
 
 @router.callback_query(
@@ -526,53 +532,24 @@ async def msg_time_of_day(message: Message, state: FSMContext):
         await message.answer(err)
         return
     await state.update_data(time_of_day=f"{t.hour:02d}:{t.minute:02d}")
-    await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
-    await message.answer("Выберите действие:", reply_markup=action_type_keyboard())
+    await _prompt_survey_templates_msg(message, state)
 
 
-@router.callback_query(
-    TriggerRuleBuilderFSM.choosing_action_type, TriggerActionTypeCB.filter()
-)
-async def cb_action_type(
-    callback: CallbackQuery, callback_data: TriggerActionTypeCB, state: FSMContext
-):
-    await state.update_data(action_type=callback_data.value)
-    await callback.answer()
-
-    if callback_data.value == "send_notification":
-        await state.set_state(TriggerRuleBuilderFSM.configuring_action_text)
+async def _prompt_survey_templates(callback: CallbackQuery, state: FSMContext) -> None:
+    service = SurveyTemplateService()
+    templates = await service.list_active()
+    if not templates:
         await safe_edit_text(
             callback,
-            "Введите текст уведомления (поддерживается HTML):",
-            reply_markup=cancel_keyboard(),
+            "Нет активных шаблонов. Сначала создайте опрос или рассылку.",
         )
-    elif callback_data.value == "send_survey":
-        service = SurveyTemplateService()
-        templates = await service.list_active()
-        if not templates:
-            await safe_edit_text(
-                callback, "Нет активных шаблонов опросов. Сначала создайте опрос."
-            )
-            await state.clear()
-            return
-        await state.set_state(TriggerRuleBuilderFSM.choosing_survey_template)
-        await safe_edit_text(
-            callback,
-            "Выберите шаблон опроса:",
-            reply_markup=survey_templates_keyboard(templates),
-        )
-
-
-@router.message(TriggerRuleBuilderFSM.configuring_action_text)
-async def msg_action_text(message: Message, state: FSMContext):
-    text = message.text.strip() if message.text else ""
-    if not text:
-        await message.answer("Текст не может быть пустым:")
+        await state.clear()
         return
-    await state.update_data(action_config={"text": text})
-    await state.set_state(TriggerRuleBuilderFSM.choosing_recipient_type)
-    await message.answer(
-        "Выберите тип получателей:", reply_markup=recipient_type_keyboard()
+    await state.set_state(TriggerRuleBuilderFSM.choosing_survey_template)
+    await safe_edit_text(
+        callback,
+        "Выберите шаблон (опрос или рассылку):",
+        reply_markup=survey_templates_keyboard(templates),
     )
 
 
@@ -584,11 +561,17 @@ async def cb_choose_template(
 ):
     service = SurveyTemplateService()
     template = await service.get(callback_data.template_id)
+    action_config = {
+        "survey_template_id": template.id,
+        "survey_title": template.title,
+    }
+    from src.models.survey_template import TemplateKind
+
+    if template.kind == TemplateKind.broadcast:
+        action_config["escalatable"] = False
     await state.update_data(
-        action_config={
-            "survey_template_id": template.id,
-            "survey_title": template.title,
-        }
+        action_type="send_survey",
+        action_config=action_config,
     )
     await state.set_state(TriggerRuleBuilderFSM.choosing_recipient_type)
     await callback.answer()
@@ -790,13 +773,6 @@ async def cb_edit_field(
             "Выберите новый тип триггера:",
             reply_markup=trigger_type_keyboard(),
         )
-    elif field == "at":
-        await state.set_state(TriggerRuleEditFSM.editing_action_type)
-        await safe_edit_text(
-            callback,
-            "Выберите новый тип действия:",
-            reply_markup=action_type_keyboard(),
-        )
     elif field == "rt":
         await state.set_state(TriggerRuleEditFSM.editing_recipient_type)
         await safe_edit_text(
@@ -841,29 +817,21 @@ async def cb_edit_field(
             reply_markup=delay_mode_keyboard(),
         )
     elif field == "ac":
-        if rule.action_type == ActionType.send_notification:
-            await state.set_state(TriggerRuleEditFSM.editing_action_text)
+        service = SurveyTemplateService()
+        templates = await service.list_active()
+        if not templates:
             await safe_edit_text(
                 callback,
-                "Введите новый текст уведомления (поддерживается HTML):",
-                reply_markup=cancel_keyboard(),
+                "Нет активных шаблонов. Сначала создайте опрос или рассылку.",
             )
-        else:
-            service = SurveyTemplateService()
-            templates = await service.list_active()
-            if not templates:
-                await safe_edit_text(
-                    callback,
-                    "Нет активных шаблонов опросов. Сначала создайте опрос.",
-                )
-                await state.clear()
-                return
-            await state.set_state(TriggerRuleEditFSM.editing_survey_template)
-            await safe_edit_text(
-                callback,
-                "Выберите новый шаблон опроса:",
-                reply_markup=survey_templates_keyboard(templates),
-            )
+            await state.clear()
+            return
+        await state.set_state(TriggerRuleEditFSM.editing_survey_template)
+        await safe_edit_text(
+            callback,
+            "Выберите новый шаблон (опрос или рассылку):",
+            reply_markup=survey_templates_keyboard(templates),
+        )
     elif field == "rc":
         rt = rule.recipient_type.value
         hints = {
@@ -905,21 +873,6 @@ async def cb_edit_trigger_type(
 ):
     await callback.answer()
     await _finish_edit(callback, state, trigger_type=TriggerType(callback_data.value))
-
-
-@router.callback_query(
-    TriggerRuleEditFSM.editing_action_type, TriggerActionTypeCB.filter()
-)
-async def cb_edit_action_type(
-    callback: CallbackQuery, callback_data: TriggerActionTypeCB, state: FSMContext
-):
-    await callback.answer()
-    await _finish_edit(
-        callback,
-        state,
-        action_type=ActionType(callback_data.value),
-        action_config=None,
-    )
 
 
 @router.callback_query(
@@ -991,15 +944,6 @@ async def cb_edit_delay_mode(
     await _finish_edit(callback, state, delay_mode=DelayMode(callback_data.value))
 
 
-@router.message(TriggerRuleEditFSM.editing_action_text)
-async def msg_edit_action_text(message: Message, state: FSMContext):
-    text = (message.text or "").strip()
-    if not text:
-        await message.answer("Текст не может быть пустым:")
-        return
-    await _finish_edit(message, state, action_config={"text": text})
-
-
 @router.callback_query(
     TriggerRuleEditFSM.editing_survey_template, TriggerSurveyTemplateCB.filter()
 )
@@ -1008,17 +952,18 @@ async def cb_edit_survey_template(
     callback_data: TriggerSurveyTemplateCB,
     state: FSMContext,
 ):
+    from src.models.survey_template import TemplateKind
+
     service = SurveyTemplateService()
     template = await service.get(callback_data.template_id)
     await callback.answer()
-    await _finish_edit(
-        callback,
-        state,
-        action_config={
-            "survey_template_id": template.id,
-            "survey_title": template.title,
-        },
-    )
+    action_config = {
+        "survey_template_id": template.id,
+        "survey_title": template.title,
+    }
+    if template.kind == TemplateKind.broadcast:
+        action_config["escalatable"] = False
+    await _finish_edit(callback, state, action_config=action_config)
 
 
 @router.message(TriggerRuleEditFSM.editing_recipient_config)

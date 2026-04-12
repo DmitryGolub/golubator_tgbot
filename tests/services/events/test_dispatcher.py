@@ -99,8 +99,8 @@ class TestEmit:
             id=1,
             trigger_type=TriggerType.manual,
             delay_seconds=0,
-            action_type=ActionType.send_notification,
-            action_config={"text": "hi"},
+            action_type=ActionType.send_survey,
+            action_config={"survey_template_id": 1},
         )
         mock_rule_dao.get_active_by_trigger = AsyncMock(return_value=[rule])
         mock_resolver.resolve = AsyncMock(return_value=[100])
