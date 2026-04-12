@@ -79,11 +79,10 @@ async def _build_user_list_page(
             else "—"
         )
 
-        placeholder_badge = " [Нет Telegram]" if user.telegram_id < 0 else ""
         username_display = format_username_display(user.username, prefix="@")
 
         answer += (
-            f"👤 <b>{e(user.name)}</b> {username_display}{placeholder_badge}\n"
+            f"👤 <b>{e(user.name)}</b> {username_display}\n"
             f"{mentor_line}"
             f"   • Направления: <b>{e(cohort_display)}</b>\n"
             f"   • Роль: <b>{e(role_display)}</b>\n"
