@@ -1335,22 +1335,42 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
 
         archive_notion_page.delay(notion_page_id)
 
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    visible = _filter_visible_meetings(
-        meetings,
-        callback.from_user.id,
-        viewer_is_mentor=True,
-        mentor_tg_ids=mentor_tg_ids,
-    )
-    text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=0)
-    await safe_edit_text(
-        callback,
-        f"Созвон удалён.\n\n{text}",
-        reply_markup=mentor_meetings_keyboard(
-            visible, page=0, viewer_id=callback.from_user.id
-        ),
-    )
+
+    if callback_data.source == "past":
+        meetings = await MeetingDAO.get_for_user(callback.from_user.id, only_past=True)
+        visible = _filter_visible_meetings(
+            meetings,
+            callback.from_user.id,
+            viewer_is_mentor=True,
+            mentor_tg_ids=mentor_tg_ids,
+        )
+        text = _format_meetings(
+            visible, mentor_tg_ids=mentor_tg_ids, page=0, title="Завершённые созвоны:"
+        )
+        await safe_edit_text(
+            callback,
+            f"Созвон удалён.\n\n{text}",
+            reply_markup=mentor_past_meetings_keyboard(
+                visible, page=0, viewer_id=callback.from_user.id
+            ),
+        )
+    else:
+        meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
+        visible = _filter_visible_meetings(
+            meetings,
+            callback.from_user.id,
+            viewer_is_mentor=True,
+            mentor_tg_ids=mentor_tg_ids,
+        )
+        text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=0)
+        await safe_edit_text(
+            callback,
+            f"Созвон удалён.\n\n{text}",
+            reply_markup=mentor_meetings_keyboard(
+                visible, page=0, viewer_id=callback.from_user.id
+            ),
+        )
 
 
 @router.callback_query(ConfirmMeetingCB.filter())

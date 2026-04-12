@@ -528,7 +528,9 @@ def mentor_past_meetings_keyboard(
         kb.row(
             InlineKeyboardButton(
                 text=f"Удалить #{global_idx}",
-                callback_data=DeleteMeetingCB(meeting_id=meeting.id).pack(),
+                callback_data=DeleteMeetingCB(
+                    meeting_id=meeting.id, source="past"
+                ).pack(),
             )
         )
 

@@ -7,6 +7,7 @@ class ChooseMeetingStudentCB(CallbackData, prefix="meeting_student"):
 
 class DeleteMeetingCB(CallbackData, prefix="meeting_del"):
     meeting_id: int
+    source: str = ""
 
 
 class StartMeetingCallCB(CallbackData, prefix="meeting_start_call"):

@@ -48,6 +48,7 @@ class RecipientType(str, enum.Enum):
     event_student = "event_student"
     event_mentor = "event_mentor"
     event_user = "event_user"
+    event_participants = "event_participants"
     by_role = "by_role"
     by_cohort = "by_cohort"
     by_state = "by_state"

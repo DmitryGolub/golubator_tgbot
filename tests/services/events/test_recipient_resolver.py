@@ -35,6 +35,21 @@ class TestEventBasedRecipients:
         assert result == []
 
 
+class TestEventParticipants:
+    async def test_returns_all_participant_ids(self):
+        result = await RecipientResolver.resolve(
+            _rule(RecipientType.event_participants),
+            {"participant_ids": [100, 200, 300]},
+        )
+        assert result == [100, 200, 300]
+
+    async def test_empty_context(self):
+        result = await RecipientResolver.resolve(
+            _rule(RecipientType.event_participants), {}
+        )
+        assert result == []
+
+
 class TestSpecificUsers:
     async def test_returns_user_ids(self):
         result = await RecipientResolver.resolve(
