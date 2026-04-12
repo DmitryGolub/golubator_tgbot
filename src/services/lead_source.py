@@ -44,9 +44,10 @@ class LeadSourceService:
 
     @staticmethod
     async def resolve_and_record(
-        telegram_id: int, payload: str, is_new_user: bool
+        telegram_id: int,
+        payload: str,
     ) -> LeadSource | None:
-        """Parse deep link payload, record lead_source_id for new users.
+        """Parse deep link payload, record lead_source_id if user doesn't have one yet.
 
         Returns the resolved LeadSource or None.
         """
@@ -64,7 +65,9 @@ class LeadSourceService:
         ):
             return None
 
-        if is_new_user:
+        # Record lead source only if user doesn't already have one
+        user = await UserDAO.find_one_or_none(telegram_id=telegram_id)
+        if user and user.lead_source_id is None:
             await UserDAO.update(telegram_id=telegram_id, lead_source_id=source.id)
             logger.info(
                 "Lead source recorded: user=%s source=%s type=%s",

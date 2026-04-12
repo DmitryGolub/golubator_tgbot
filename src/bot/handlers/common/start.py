@@ -55,9 +55,7 @@ async def _ensure_user(tg_user):
 async def cmd_start(message: Message, command: CommandObject):
     user = message.from_user
 
-    existing_before = await UserDAO.find_one_or_none(telegram_id=user.id)
     await _ensure_user(user)
-    is_new_user = existing_before is None
 
     username = (user.username or "").strip()
 
@@ -73,9 +71,7 @@ async def cmd_start(message: Message, command: CommandObject):
     # Resolve deep link payload
     lead_source = None
     if command.args:
-        lead_source = await LeadSourceService.resolve_and_record(
-            user.id, command.args, is_new_user
-        )
+        lead_source = await LeadSourceService.resolve_and_record(user.id, command.args)
 
     if lead_source and lead_source.source_type == LeadSourceType.referral:
         referrer = await UserDAO.find_one_or_none(telegram_id=lead_source.created_by)
