@@ -30,7 +30,6 @@ from src.bot.keyboards.survey_builder import (
     survey_builder_menu_keyboard,
     survey_send_confirm_keyboard,
     survey_send_recipient_type_keyboard,
-    survey_send_templates_keyboard,
     template_detail_keyboard,
     templates_list_keyboard,
 )
@@ -603,28 +602,6 @@ RECIPIENT_HINTS = {
     "by_cohort": "Введите значение когорты:",
     "specific_users": "Введите Telegram ID пользователей через запятую:",
 }
-
-
-@router.callback_query(SurveyBuilderActionCB.filter(F.action == "send"))
-async def cb_send_menu(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await state.clear()
-    service = SurveyTemplateService()
-    templates = await service.list_active()
-
-    if not templates:
-        await safe_edit_text(
-            callback,
-            "Нет активных опросов для отправки.",
-            reply_markup=survey_builder_menu_keyboard(),
-        )
-        return
-
-    await safe_edit_text(
-        callback,
-        "Выберите опрос для отправки:",
-        reply_markup=survey_send_templates_keyboard(templates),
-    )
 
 
 @router.callback_query(SurveySendSelectCB.filter())

@@ -14,7 +14,6 @@ from src.bot.callbacks.survey_builder import (
     SurveyTemplateToggleCB,
 )
 from src.bot.keyboards.pagination import DEFAULT_PAGE_SIZE, build_paginated_keyboard
-from src.bot.keyboards.utils import truncate_button_text
 from src.models.survey_session import SurveySession
 from src.models.survey_template import SurveyTemplate
 
@@ -37,9 +36,6 @@ def survey_builder_menu_keyboard() -> InlineKeyboardMarkup:
     )
     builder.button(
         text="Результаты", callback_data=SurveyBuilderActionCB(action="results")
-    )
-    builder.button(
-        text="Отправить вручную", callback_data=SurveyBuilderActionCB(action="send")
     )
     builder.button(text="⬅️ Назад", callback_data="back_to_menu")
     builder.adjust(1)
@@ -92,13 +88,21 @@ def templates_list_keyboard(
     total_pages: int = 1,
     search_query: str | None = None,
 ) -> InlineKeyboardMarkup:
-    item_buttons = [
-        InlineKeyboardButton(
-            text=f"Изменить #{page * DEFAULT_PAGE_SIZE + idx + 1}",
-            callback_data=SurveyTemplateDetailCB(template_id=t.id).pack(),
+    item_buttons = []
+    for idx, t in enumerate(templates):
+        num = page * DEFAULT_PAGE_SIZE + idx + 1
+        item_buttons.append(
+            InlineKeyboardButton(
+                text=f"Изменить #{num}",
+                callback_data=SurveyTemplateDetailCB(template_id=t.id).pack(),
+            )
         )
-        for idx, t in enumerate(templates)
-    ]
+        item_buttons.append(
+            InlineKeyboardButton(
+                text=f"Отправить #{num}",
+                callback_data=SurveySendSelectCB(template_id=t.id).pack(),
+            )
+        )
     return build_paginated_keyboard(
         menu="surveys_list",
         page=page,
@@ -147,20 +151,6 @@ def results_sessions_keyboard(sessions: list[SurveySession]) -> InlineKeyboardMa
     builder.button(
         text="⬅️ Назад", callback_data=SurveyBuilderActionCB(action="results")
     )
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-def survey_send_templates_keyboard(
-    templates: list[SurveyTemplate],
-) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    for t in templates:
-        builder.button(
-            text=truncate_button_text(t.title),
-            callback_data=SurveySendSelectCB(template_id=t.id),
-        )
-    builder.button(text="⬅️ Назад", callback_data="menu_surveys")
     builder.adjust(1)
     return builder.as_markup()
 

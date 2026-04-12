@@ -44,6 +44,7 @@ from src.bot.keyboards.meeting import (
     edit_meeting_fields_keyboard,
 )
 from src.bot.keyboards.menu import menu_keyboard
+from src.bot.keyboards.pagination import DEFAULT_PAGE_SIZE
 from src.bot.states.meeting import CreateMeetingFSM, EditMeetingFSM
 from src.dao.meeting import MeetingDAO
 from src.dao.mentor import MentorDAO
@@ -83,9 +84,6 @@ async def _menu_kb(user_id: int):
 
     has_mentor = await _check_has_mentor(user_id, perms)
     return await menu_keyboard(perms, has_mentor=has_mentor)
-
-
-MEETINGS_PAGE_SIZE = 5
 
 
 def _resolve_participants(meeting, mentor_tg_ids: set[int]):
@@ -132,7 +130,7 @@ def _format_meetings(
     meetings,
     mentor_tg_ids: set[int],
     page: int = 0,
-    page_size: int = MEETINGS_PAGE_SIZE,
+    page_size: int = DEFAULT_PAGE_SIZE,
     title: str = "Мои созвоны:",
 ) -> str:
     if not meetings:
