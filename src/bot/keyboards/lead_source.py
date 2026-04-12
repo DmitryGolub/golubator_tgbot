@@ -15,7 +15,10 @@ async def referral_link_keyboard() -> InlineKeyboardMarkup:
 
 
 async def channel_links_keyboard(
-    links: list[LeadSource], page: int, total_pages: int
+    links: list[LeadSource],
+    page: int,
+    total_pages: int,
+    search_query: str | None = None,
 ) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
@@ -26,7 +29,9 @@ async def channel_links_keyboard(
 
     kb.adjust(1)
 
-    nav = paginate_buttons("channel_links", page, total_pages)
+    nav = paginate_buttons(
+        "channel_links", page, total_pages, search_query=search_query
+    )
     if nav:
         kb.row(*nav)
 

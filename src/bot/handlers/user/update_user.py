@@ -489,10 +489,13 @@ async def cb_users_page(
 ):
     await callback.answer()
     data = await state.get_data()
+    search_query = (data.get("_pagination_search") or {}).get("users")
     users_filter = data.get("users_filter", "all")
     users = await _load_users_by_filter(users_filter)
     await _msg(callback).edit_reply_markup(
-        reply_markup=users_keyboard(users, page=callback_data.page)
+        reply_markup=users_keyboard(
+            users, page=callback_data.page, search_query=search_query
+        )
     )
 
 
@@ -504,9 +507,13 @@ async def cb_mentees_page(
     callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
 ):
     await callback.answer()
+    data = await state.get_data()
+    search_query = (data.get("_pagination_search") or {}).get("mentees")
     mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     await _msg(callback).edit_reply_markup(
-        reply_markup=mentees_keyboard(mentees, page=callback_data.page)
+        reply_markup=mentees_keyboard(
+            mentees, page=callback_data.page, search_query=search_query
+        )
     )
 
 
@@ -518,9 +525,13 @@ async def cb_mentors_page(
     callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
 ):
     await callback.answer()
+    data = await state.get_data()
+    search_query = (data.get("_pagination_search") or {}).get("mentors")
     mentors = await UserDAO.get_all_with_permission("manage_meetings")
     await _msg(callback).edit_reply_markup(
-        reply_markup=mentors_keyboard(mentors, page=callback_data.page)
+        reply_markup=mentors_keyboard(
+            mentors, page=callback_data.page, search_query=search_query
+        )
     )
 
 

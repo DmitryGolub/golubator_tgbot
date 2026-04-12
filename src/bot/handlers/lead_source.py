@@ -57,13 +57,23 @@ async def show_channel_links_menu(callback: CallbackQuery, state: FSMContext):
     PermissionFilter("manage_channel_links"),
     PageNavCB.filter(F.menu == "channel_links"),
 )
-async def channel_links_page_nav(callback: CallbackQuery, callback_data: PageNavCB):
+async def channel_links_page_nav(
+    callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
+):
     await callback.answer()
-    await _show_channel_links_page(callback, page=callback_data.page)
+    data = await state.get_data()
+    search_query = (data.get("_pagination_search") or {}).get("channel_links")
+    await _show_channel_links_page(
+        callback, page=callback_data.page, search_query=search_query
+    )
 
 
-async def _show_channel_links_page(callback: CallbackQuery, page: int):
-    links, total_pages = await LeadSourceDAO.get_channel_links(page=page)
+async def _show_channel_links_page(
+    callback: CallbackQuery, page: int, search_query: str | None = None
+):
+    links, total_pages = await LeadSourceDAO.get_channel_links(
+        page=page, search=search_query
+    )
     title = await UiTextService.get("lead_source.channel_list_title")
 
     if not links and page == 0:
@@ -81,7 +91,9 @@ async def _show_channel_links_page(callback: CallbackQuery, page: int):
     await safe_edit_text(
         callback,
         text,
-        reply_markup=await channel_links_keyboard(links, page, total_pages),
+        reply_markup=await channel_links_keyboard(
+            links, page, total_pages, search_query=search_query
+        ),
     )
 
 

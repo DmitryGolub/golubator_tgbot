@@ -209,6 +209,19 @@ async def _ensure_user_exists(
 
     # telegram_id is None — need a placeholder
     if current_placeholder_id is not None and current_placeholder_id < 0:
+        if clean:
+            result = await session.execute(
+                select(User).where(User.telegram_id == current_placeholder_id)
+            )
+            ph_user = result.scalar_one_or_none()
+            if ph_user and ph_user.name != clean:
+                logger.debug(
+                    "Updated placeholder user %s name: %r -> %r",
+                    current_placeholder_id,
+                    ph_user.name,
+                    clean,
+                )
+                ph_user.name = clean
         return current_placeholder_id
 
     # Create new placeholder

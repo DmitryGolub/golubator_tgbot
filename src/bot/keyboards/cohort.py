@@ -22,16 +22,24 @@ from src.services.notion_client import CohortTypeInfo
 def cohort_types_keyboard(
     types_with_counts: list[tuple[str, int]],
     page: int = 0,
+    search_query: str | None = None,
 ) -> tuple[InlineKeyboardMarkup, dict[int, str]]:
     """Returns (keyboard, {idx: type_name}) mapping for FSM storage."""
+    from src.bot.pagination_search import filter_items
+
     mapping: dict[int, str] = {}
     for i, (name, _count) in enumerate(types_with_counts):
         mapping[i] = name
 
-    page_items, total_pages = get_page_slice(types_with_counts, page)
+    filtered = (
+        filter_items(types_with_counts, search_query, "cohorts")
+        if search_query
+        else types_with_counts
+    )
+    page_items, total_pages = get_page_slice(filtered, page)
     kb = InlineKeyboardBuilder()
 
-    nav = paginate_buttons("cohorts", page, total_pages)
+    nav = paginate_buttons("cohorts", page, total_pages, search_query=search_query)
     if nav:
         kb.row(*nav)
 

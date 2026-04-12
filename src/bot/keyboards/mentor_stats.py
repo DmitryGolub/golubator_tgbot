@@ -8,12 +8,17 @@ from src.models.mentor import Mentor
 
 
 def mentor_select_keyboard(
-    mentors: list[Mentor], page: int = 0
+    mentors: list[Mentor], page: int = 0, search_query: str | None = None
 ) -> InlineKeyboardMarkup:
-    page_items, total_pages = get_page_slice(mentors, page)
+    from src.bot.pagination_search import filter_items
+
+    filtered = (
+        filter_items(mentors, search_query, "mstats") if search_query else mentors
+    )
+    page_items, total_pages = get_page_slice(filtered, page)
     builder = InlineKeyboardBuilder()
 
-    nav = paginate_buttons("mstats", page, total_pages)
+    nav = paginate_buttons("mstats", page, total_pages, search_query=search_query)
     if nav:
         builder.row(*nav)
 

@@ -533,7 +533,11 @@ async def cb_results_session_detail(
         elif answer.value_int is not None:
             val = str(answer.value_int)
         elif answer.value_choice is not None:
-            val = ", ".join(answer.value_choice)
+            if q and q.options:
+                label_map = {opt.value: opt.label for opt in q.options}
+                val = ", ".join(label_map.get(v, v) for v in answer.value_choice)
+            else:
+                val = ", ".join(answer.value_choice)
         else:
             val = "—"
         lines.append(f"<b>{q_title}</b>\n  {val}")

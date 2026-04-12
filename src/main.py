@@ -25,6 +25,7 @@ from src.bot.handlers.job_search_report import router as job_search_report_route
 from src.bot.handlers.education_feedback import router as education_feedback_router
 from src.bot.handlers.feedback_report import router as feedback_report_router
 from src.bot.handlers.lead_source import router as lead_source_router
+from src.bot.handlers.pagination_input import router as pagination_input_router
 from src.bot.middlewares.logging_middleware import LoggingMiddleware
 from src.bot.middlewares.survey_block_middleware import SurveyBlockMiddleware
 from src.bot.middlewares.user_sync_middleware import UserSyncMiddleware
@@ -57,6 +58,7 @@ async def main():
     dp.callback_query.outer_middleware(survey_block)
 
     dp.include_routers(
+        pagination_input_router,
         start_router,
         menu_router,
         cohort_create_router,

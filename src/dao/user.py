@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import or_, func, select, update
 from sqlalchemy.orm import joinedload
 
 from src.core.dao import BaseDAO
@@ -51,6 +51,7 @@ class UserDAO(BaseDAO):
         page_size: int = 6,
         role_name: str | None = None,
         include_placeholders: bool = False,
+        search: str | None = None,
         **filter_by,
     ) -> tuple[list[User], int]:
         async with async_session_maker() as session:
@@ -62,6 +63,14 @@ class UserDAO(BaseDAO):
             if role_name is not None:
                 base = base.join(RoleModel, cls.model.role_id == RoleModel.id).where(
                     RoleModel.name == role_name
+                )
+            if search:
+                pattern = f"%{search}%"
+                base = base.where(
+                    or_(
+                        cls.model.name.ilike(pattern),
+                        cls.model.username.ilike(pattern),
+                    )
                 )
 
             count_result = await session.execute(

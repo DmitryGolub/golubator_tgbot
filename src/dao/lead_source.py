@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from src.core.dao import BaseDAO
 from src.core.database import async_session_maker
@@ -39,20 +39,27 @@ class LeadSourceDAO(BaseDAO):
 
     @classmethod
     async def get_channel_links(
-        cls, page: int = 0, page_size: int = 6
+        cls, page: int = 0, page_size: int = 6, search: str | None = None
     ) -> tuple[list[LeadSource], int]:
         async with async_session_maker() as session:
-            count_q = (
-                select(func.count())
-                .select_from(LeadSource)
-                .where(LeadSource.source_type == LeadSourceType.channel)
-            )
+            base_filter = LeadSource.source_type == LeadSourceType.channel
+            conditions = [base_filter]
+            if search:
+                pattern = f"%{search}%"
+                conditions.append(
+                    or_(
+                        LeadSource.label.ilike(pattern),
+                        LeadSource.code.ilike(pattern),
+                    )
+                )
+
+            count_q = select(func.count()).select_from(LeadSource).where(*conditions)
             total = (await session.execute(count_q)).scalar_one()
             total_pages = max(1, (total + page_size - 1) // page_size)
 
             query = (
                 select(LeadSource)
-                .where(LeadSource.source_type == LeadSourceType.channel)
+                .where(*conditions)
                 .order_by(LeadSource.created_at.desc())
                 .offset(page * page_size)
                 .limit(page_size)

@@ -145,13 +145,14 @@ async def cohort_values_keyboard(cohort_type: str) -> InlineKeyboardMarkup:
 async def user_list_paginated_keyboard(
     total_pages: int,
     page: int = 0,
+    search_query: str | None = None,
 ) -> InlineKeyboardMarkup:
     from src.services.ui_text import UiTextService
 
     texts = await UiTextService.get_many(["user.btn.update", "menu.back"])
     kb = InlineKeyboardBuilder()
 
-    nav = paginate_buttons("user_list", page, total_pages)
+    nav = paginate_buttons("user_list", page, total_pages, search_query=search_query)
     if nav:
         kb.row(*nav)
 
@@ -164,11 +165,18 @@ async def user_list_paginated_keyboard(
     return kb.as_markup()
 
 
-def mentors_keyboard(mentors: Sequence[User], page: int = 0) -> InlineKeyboardMarkup:
-    page_items, total_pages = get_page_slice(mentors, page)
+def mentors_keyboard(
+    mentors: Sequence[User], page: int = 0, search_query: str | None = None
+) -> InlineKeyboardMarkup:
+    from src.bot.pagination_search import filter_items
+
+    filtered = (
+        filter_items(mentors, search_query, "mentors") if search_query else mentors
+    )
+    page_items, total_pages = get_page_slice(filtered, page)
     kb = InlineKeyboardBuilder()
 
-    nav = paginate_buttons("mentors", page, total_pages)
+    nav = paginate_buttons("mentors", page, total_pages, search_query=search_query)
     if nav:
         kb.row(*nav)
 
@@ -184,11 +192,18 @@ def mentors_keyboard(mentors: Sequence[User], page: int = 0) -> InlineKeyboardMa
     return kb.as_markup()
 
 
-def mentees_keyboard(mentees: Sequence, page: int = 0) -> InlineKeyboardMarkup:
-    page_items, total_pages = get_page_slice(mentees, page)
+def mentees_keyboard(
+    mentees: Sequence, page: int = 0, search_query: str | None = None
+) -> InlineKeyboardMarkup:
+    from src.bot.pagination_search import filter_items
+
+    filtered = (
+        filter_items(mentees, search_query, "mentees") if search_query else mentees
+    )
+    page_items, total_pages = get_page_slice(filtered, page)
     kb = InlineKeyboardBuilder()
 
-    nav = paginate_buttons("mentees", page, total_pages)
+    nav = paginate_buttons("mentees", page, total_pages, search_query=search_query)
     if nav:
         kb.row(*nav)
 
@@ -211,11 +226,16 @@ def mentees_keyboard(mentees: Sequence, page: int = 0) -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def users_keyboard(users: Sequence[User], page: int = 0) -> InlineKeyboardMarkup:
-    page_items, total_pages = get_page_slice(users, page)
+def users_keyboard(
+    users: Sequence[User], page: int = 0, search_query: str | None = None
+) -> InlineKeyboardMarkup:
+    from src.bot.pagination_search import filter_items
+
+    filtered = filter_items(users, search_query, "users") if search_query else users
+    page_items, total_pages = get_page_slice(filtered, page)
     kb = InlineKeyboardBuilder()
 
-    nav = paginate_buttons("users", page, total_pages)
+    nav = paginate_buttons("users", page, total_pages, search_query=search_query)
     if nav:
         kb.row(*nav)
 

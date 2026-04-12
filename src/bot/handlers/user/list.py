@@ -2,6 +2,7 @@ from contextlib import suppress
 
 from aiogram import Router, F
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup
 
 from src.bot.callbacks.pagination import PageNavCB
@@ -18,9 +19,11 @@ router = Router(name="user")
 router.callback_query.filter(PermissionFilter("manage_users"))
 
 
-async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarkup]:
+async def _build_user_list_page(
+    page: int = 0, search_query: str | None = None
+) -> tuple[str, InlineKeyboardMarkup]:
     page_users, total_pages = await UserDAO.get_paginated(
-        page=page, include_placeholders=True
+        page=page, include_placeholders=True, search=search_query
     )
 
     if not page_users:
@@ -81,7 +84,9 @@ async def _build_user_list_page(page: int = 0) -> tuple[str, InlineKeyboardMarku
             f"   • Дата регистрации: {reg_date}\n\n"
         )
 
-    markup = await user_list_paginated_keyboard(total_pages, page)
+    markup = await user_list_paginated_keyboard(
+        total_pages, page, search_query=search_query
+    )
     return answer, markup
 
 
@@ -97,8 +102,14 @@ async def cb_user_list(callback: CallbackQuery):
     PermissionFilter("manage_users"),
     PageNavCB.filter(F.menu == "user_list"),
 )
-async def cb_user_list_page(callback: CallbackQuery, callback_data: PageNavCB):
-    text, markup = await _build_user_list_page(page=callback_data.page)
+async def cb_user_list_page(
+    callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
+):
+    data = await state.get_data()
+    search_query = (data.get("_pagination_search") or {}).get("user_list")
+    text, markup = await _build_user_list_page(
+        page=callback_data.page, search_query=search_query
+    )
     await safe_edit_text(callback, text, reply_markup=markup)
     with suppress(TelegramBadRequest):
         await callback.answer()

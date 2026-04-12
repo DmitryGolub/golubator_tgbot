@@ -171,9 +171,11 @@ async def cb_cohorts_page(
 ):
     await callback.answer()
 
+    data = await state.get_data()
+    search_query = (data.get("_pagination_search") or {}).get("cohorts")
     types_with_counts = await CohortDAO.get_types_with_value_counts()
     markup, types_map = cohort_types_keyboard(
-        types_with_counts, page=callback_data.page
+        types_with_counts, page=callback_data.page, search_query=search_query
     )
     await state.update_data(cohort_types_map=types_map)
     await callback.message.edit_reply_markup(reply_markup=markup)

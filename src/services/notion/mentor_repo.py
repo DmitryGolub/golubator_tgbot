@@ -23,6 +23,12 @@ class NotionMentorRepo:
 
         name_title = props.get("Name", {}).get("title") or []
         name = join_rich_text(name_title).strip() or None
+        logger.debug(
+            "mentor _parse_page: page_id=%s, raw Name=%r, parsed=%r",
+            page.get("id"),
+            name_title,
+            name,
+        )
 
         tg_id_raw = props.get("Telegram ID", {}).get("number")
         telegram_id = int(tg_id_raw) if tg_id_raw is not None else None

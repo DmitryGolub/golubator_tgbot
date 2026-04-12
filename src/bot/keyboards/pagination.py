@@ -3,7 +3,12 @@ from typing import TypeVar
 
 from aiogram.types import InlineKeyboardButton
 
-from src.bot.callbacks.pagination import PageNavCB
+from src.bot.callbacks.pagination import (
+    PageJumpCB,
+    PageNavCB,
+    PageSearchCB,
+    PageSearchResetCB,
+)
 
 DEFAULT_PAGE_SIZE = 6
 
@@ -20,9 +25,12 @@ def get_page_slice(
 
 
 def paginate_buttons(
-    menu: str, current_page: int, total_pages: int
+    menu: str,
+    current_page: int,
+    total_pages: int,
+    search_query: str | None = None,
 ) -> list[InlineKeyboardButton]:
-    if total_pages <= 1:
+    if total_pages <= 1 and not search_query:
         return []
     buttons: list[InlineKeyboardButton] = []
     if current_page > 0:
@@ -36,7 +44,8 @@ def paginate_buttons(
         buttons.append(InlineKeyboardButton(text=" ", callback_data="noop"))
     buttons.append(
         InlineKeyboardButton(
-            text=f"{current_page + 1}/{total_pages}", callback_data="noop"
+            text=f"{current_page + 1}/{total_pages}",
+            callback_data=PageJumpCB(menu=menu).pack(),
         )
     )
     if current_page < total_pages - 1:
@@ -48,4 +57,19 @@ def paginate_buttons(
         )
     else:
         buttons.append(InlineKeyboardButton(text=" ", callback_data="noop"))
+    if search_query:
+        label = f"✕ {search_query[:10]}"
+        buttons.append(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=PageSearchResetCB(menu=menu).pack(),
+            )
+        )
+    else:
+        buttons.append(
+            InlineKeyboardButton(
+                text="🔍",
+                callback_data=PageSearchCB(menu=menu).pack(),
+            )
+        )
     return buttons

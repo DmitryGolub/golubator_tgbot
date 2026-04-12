@@ -343,28 +343,36 @@ class MeetingDAO(BaseDAO):
         new_link: str | None,
         proposer_id: int,
     ) -> Optional[Meeting]:
-        """Save old scheduled_at → original_scheduled_at, update time and status."""
+        """Save old scheduled_at → original_scheduled_at, update time and status.
+
+        Works for any proposal_status (pending or confirmed).
+        Preserves original_scheduled_at if already set (repeated counter-proposals).
+        Resets MeetingUser.accepted: True for proposer, None for others.
+        """
         async with async_session_maker() as session:
             subq = select(MeetingUser.meeting_id).where(
                 MeetingUser.meeting_id == meeting_id,
                 MeetingUser.user_id == proposer_id,
             )
             sel = (
-                select(Meeting.scheduled_at)
+                select(Meeting.scheduled_at, Meeting.original_scheduled_at)
                 .where(
                     Meeting.id == meeting_id,
                     Meeting.id.in_(subq),
-                    Meeting.proposal_status == ProposalStatus.confirmed,
                     Meeting.completed_at.is_(None),
                 )
                 .with_for_update()
             )
-            old_scheduled = (await session.execute(sel)).scalar_one_or_none()
-            if old_scheduled is None:
+            row = (await session.execute(sel)).one_or_none()
+            if row is None:
                 return None
 
+            old_scheduled, existing_original = row
+
             values: dict = {
-                "original_scheduled_at": old_scheduled,
+                "original_scheduled_at": func.coalesce(
+                    Meeting.original_scheduled_at, old_scheduled
+                ),
                 "scheduled_at": new_scheduled_at,
                 "proposed_by": proposer_id,
                 "proposal_status": ProposalStatus.pending_confirmation,
@@ -379,6 +387,25 @@ class MeetingDAO(BaseDAO):
                 .returning(Meeting.id)
             )
             await session.execute(stmt)
+
+            # Reset acceptances: proposer auto-accepts, others need to re-confirm
+            await session.execute(
+                update(MeetingUser)
+                .where(
+                    MeetingUser.meeting_id == meeting_id,
+                    MeetingUser.user_id == proposer_id,
+                )
+                .values(accepted=True)
+            )
+            await session.execute(
+                update(MeetingUser)
+                .where(
+                    MeetingUser.meeting_id == meeting_id,
+                    MeetingUser.user_id != proposer_id,
+                )
+                .values(accepted=None)
+            )
+
             await session.commit()
 
             return await cls._reload_with_participants(session, meeting_id)

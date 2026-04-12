@@ -508,8 +508,12 @@ async def cb_meeting_types_page(
     callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
 ):
     await callback.answer()
+    data = await state.get_data()
+    search_query = (data.get("_pagination_search") or {}).get("meeting_types")
     await callback.message.edit_reply_markup(
-        reply_markup=meeting_type_keyboard(page=callback_data.page)
+        reply_markup=meeting_type_keyboard(
+            page=callback_data.page, search_query=search_query
+        )
     )
 
 
@@ -638,11 +642,17 @@ async def msg_meeting_time(message: Message, state: FSMContext):
             scheduled_at=scheduled_at,
         )
     else:
-        await state.set_state(CreateMeetingFSM.waiting_link)
-        await message.answer(
-            "Введите ссылку на встречу (Telemost, Zoom, Google Meet и т.д.):",
-            reply_markup=meeting_link_cancel_keyboard(),
-        )
+        data = await state.get_data()
+        if data.get("reschedule_meeting_id"):
+            await _finalize_reschedule(
+                message.from_user.id, state, message.answer, message.bot
+            )
+        else:
+            await state.set_state(CreateMeetingFSM.waiting_link)
+            await message.answer(
+                "Введите ссылку на встречу (Telemost, Zoom, Google Meet и т.д.):",
+                reply_markup=meeting_link_cancel_keyboard(),
+            )
 
 
 @router.callback_query(
@@ -691,12 +701,21 @@ async def cb_meeting_choose_time(
             scheduled_at=scheduled_at,
         )
     else:
-        await state.set_state(CreateMeetingFSM.waiting_link)
-        await safe_edit_text(
-            callback,
-            "Введите ссылку на встречу (Telemost, Zoom, Google Meet и т.д.):",
-            reply_markup=meeting_link_cancel_keyboard(),
-        )
+        data = await state.get_data()
+        if data.get("reschedule_meeting_id"):
+            await _finalize_reschedule(
+                callback.from_user.id,
+                state,
+                lambda text, **kw: safe_edit_text(callback, text, **kw),
+                callback.bot,
+            )
+        else:
+            await state.set_state(CreateMeetingFSM.waiting_link)
+            await safe_edit_text(
+                callback,
+                "Введите ссылку на встречу (Telemost, Zoom, Google Meet и т.д.):",
+                reply_markup=meeting_link_cancel_keyboard(),
+            )
 
 
 def _parse_datetime(value: str) -> datetime | None:
@@ -760,6 +779,65 @@ async def _schedule_meeting_tasks(meeting) -> None:
         )
 
 
+async def _finalize_reschedule(user_id: int, state: FSMContext, reply_func, bot):
+    data = await state.get_data()
+    meeting_id = data.get("reschedule_meeting_id")
+    scheduled_at_raw = data.get("scheduled_at")
+    scheduled_at = (
+        _to_utc_assuming_msk(_parse_datetime(scheduled_at_raw))
+        if scheduled_at_raw
+        else None
+    )
+
+    if not scheduled_at or not meeting_id:
+        await reply_func(
+            "Не удалось сохранить дату/время. Попробуйте заново.",
+            reply_markup=await _menu_kb(user_id),
+        )
+        await state.clear()
+        return
+
+    meeting = await MeetingDAO.propose_reschedule(
+        meeting_id=meeting_id,
+        new_scheduled_at=scheduled_at,
+        new_link=None,
+        proposer_id=user_id,
+    )
+    await state.clear()
+
+    if not meeting:
+        await reply_func(
+            "Не удалось обновить созвон. Возможно, он уже завершён.",
+            reply_markup=await _menu_kb(user_id),
+        )
+        return
+
+    proposer = await UserDAO.find_one_or_none(telegram_id=user_id)
+    proposer_name = proposer.name if proposer else f"id={user_id}"
+
+    for p in meeting.participants:
+        if p.telegram_id == user_id:
+            continue
+        try:
+            await bot.send_message(
+                p.telegram_id,
+                _format_proposal_text(meeting, proposer_name),
+                reply_markup=pending_meeting_keyboard(meeting.id),
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to send reschedule proposal to %s for meeting %s: %s",
+                p.telegram_id,
+                meeting.id,
+                exc,
+            )
+
+    await reply_func(
+        "Предложение о переносе отправлено, ожидаем подтверждения.",
+        reply_markup=await _menu_kb(user_id),
+    )
+
+
 async def _finalize_meeting(
     user_id: int, state: FSMContext, link: str | None, reply_func, bot
 ):
@@ -803,11 +881,6 @@ async def _finalize_meeting(
         elif user and user.name:
             mentee_tags.append(user.name)
     mentee_tag = ", ".join(mentee_tags) if mentee_tags else None
-
-    # If counter-proposing, decline the original pending meeting first
-    original_meeting_id = data.get("original_meeting_id")
-    if original_meeting_id:
-        await MeetingDAO.decline_meeting(original_meeting_id, user_id)
 
     meeting = await MeetingDAO.create_with_participants(
         description=description,
@@ -1248,7 +1321,7 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
 
         archive_notion_page.delay(notion_page_id)
 
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id)
+    meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
     visible = _filter_visible_meetings(
         meetings,
@@ -1259,7 +1332,7 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
     text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=0)
     await safe_edit_text(
         callback,
-        f"Созвон #{callback_data.meeting_id} удалён.\n\n{text}",
+        f"Созвон удалён.\n\n{text}",
         reply_markup=mentor_meetings_keyboard(
             visible, page=0, viewer_id=callback.from_user.id
         ),
@@ -1380,13 +1453,8 @@ async def cb_propose_new_time(
         await callback.answer("Нет доступа к этой встрече.", show_alert=True)
         return
 
-    other_ids = [
-        p.telegram_id for p in meeting.participants if p.telegram_id != user_id
-    ]
     await state.update_data(
-        mentor_id=meeting.mentor_telegram_id,
-        participant_ids=other_ids,
-        original_meeting_id=meeting.id,
+        reschedule_meeting_id=meeting.id,
     )
     await state.set_state(CreateMeetingFSM.waiting_date)
     await safe_edit_text(
@@ -1436,6 +1504,7 @@ async def cb_participants_page(
 ):
     await callback.answer()
     data = await state.get_data()
+    search_query = (data.get("_pagination_search") or {}).get("participants")
     selected: list[int] = data.get("selected_participant_ids", [])
     showing_all = data.get("showing_all", False)
     if showing_all:
@@ -1448,6 +1517,7 @@ async def cb_participants_page(
             selected_ids=set(selected),
             page=callback_data.page,
             show_all_button=not showing_all,
+            search_query=search_query,
         )
     )
 
@@ -1457,8 +1527,12 @@ async def cb_participants_page(
     PermissionFilter("manage_meetings"),
     PageNavCB.filter(F.menu == "meetings"),
 )
-async def cb_meetings_page(callback: CallbackQuery, callback_data: PageNavCB):
+async def cb_meetings_page(
+    callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
+):
     await callback.answer()
+    data = await state.get_data()
+    search_query = (data.get("_pagination_search") or {}).get("meetings")
     meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
     visible = _filter_visible_meetings(
@@ -1473,7 +1547,10 @@ async def cb_meetings_page(callback: CallbackQuery, callback_data: PageNavCB):
         callback,
         text,
         reply_markup=mentor_meetings_keyboard(
-            visible, page=page, viewer_id=callback.from_user.id
+            visible,
+            page=page,
+            viewer_id=callback.from_user.id,
+            search_query=search_query,
         ),
     )
 
@@ -1531,8 +1608,12 @@ async def cb_student_past_meetings(callback: CallbackQuery):
 @router.callback_query(
     PageNavCB.filter(F.menu == "past_meetings"),
 )
-async def cb_past_meetings_page(callback: CallbackQuery, callback_data: PageNavCB):
+async def cb_past_meetings_page(
+    callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
+):
     await callback.answer()
+    data = await state.get_data()
+    search_query = (data.get("_pagination_search") or {}).get("past_meetings")
     meetings = await MeetingDAO.get_for_user(callback.from_user.id, only_past=True)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
     is_mentor = callback.from_user.id in mentor_tg_ids
@@ -1548,8 +1629,13 @@ async def cb_past_meetings_page(callback: CallbackQuery, callback_data: PageNavC
     )
     if is_mentor:
         markup = mentor_past_meetings_keyboard(
-            visible, page=page, viewer_id=callback.from_user.id
+            visible,
+            page=page,
+            viewer_id=callback.from_user.id,
+            search_query=search_query,
         )
     else:
-        markup = student_past_meetings_keyboard(visible, page=page)
+        markup = student_past_meetings_keyboard(
+            visible, page=page, search_query=search_query
+        )
     await safe_edit_text(callback, text, reply_markup=markup)

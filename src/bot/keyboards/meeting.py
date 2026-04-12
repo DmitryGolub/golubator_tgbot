@@ -93,17 +93,22 @@ def mentor_meetings_keyboard(
     meetings: list[Meeting] | None = None,
     page: int = 0,
     viewer_id: int | None = None,
+    search_query: str | None = None,
 ) -> InlineKeyboardMarkup:
+    from src.bot.pagination_search import filter_items
+
     kb = InlineKeyboardBuilder()
 
     page_size = MEETINGS_PAGE_SIZE
     all_meetings = meetings or []
+    if search_query:
+        all_meetings = filter_items(all_meetings, search_query, "meetings")
     total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
     page = max(0, min(page, total_pages - 1))
     start = page * page_size
     page_meetings = all_meetings[start : start + page_size]
 
-    nav = paginate_buttons("meetings", page, total_pages)
+    nav = paginate_buttons("meetings", page, total_pages, search_query=search_query)
     if nav:
         kb.row(*nav)
 
@@ -187,17 +192,22 @@ def student_meetings_keyboard(
     meetings: list[Meeting] | None = None,
     page: int = 0,
     viewer_id: int | None = None,
+    search_query: str | None = None,
 ) -> InlineKeyboardMarkup:
+    from src.bot.pagination_search import filter_items
+
     kb = InlineKeyboardBuilder()
 
     page_size = MEETINGS_PAGE_SIZE
     all_meetings = meetings or []
+    if search_query:
+        all_meetings = filter_items(all_meetings, search_query, "meetings")
     total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
     page = max(0, min(page, total_pages - 1))
     start = page * page_size
     page_meetings = all_meetings[start : start + page_size]
 
-    nav = paginate_buttons("meetings", page, total_pages)
+    nav = paginate_buttons("meetings", page, total_pages, search_query=search_query)
     if nav:
         kb.row(*nav)
 
@@ -251,12 +261,20 @@ def meeting_participants_multiselect_keyboard(
     selected_ids: set[int],
     page: int = 0,
     show_all_button: bool = True,
+    search_query: str | None = None,
 ) -> InlineKeyboardMarkup:
+    from src.bot.pagination_search import filter_items
+
     kb = InlineKeyboardBuilder()
 
-    page_items, total_pages = get_page_slice(list(users), page)
+    filtered = (
+        filter_items(users, search_query, "participants")
+        if search_query
+        else list(users)
+    )
+    page_items, total_pages = get_page_slice(filtered, page)
 
-    nav = paginate_buttons("participants", page, total_pages)
+    nav = paginate_buttons("participants", page, total_pages, search_query=search_query)
     if nav:
         kb.row(*nav)
 
@@ -317,12 +335,21 @@ def meeting_link_cancel_keyboard() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
-def meeting_students_keyboard(students, page: int = 0) -> InlineKeyboardMarkup:
+def meeting_students_keyboard(
+    students, page: int = 0, search_query: str | None = None
+) -> InlineKeyboardMarkup:
     """Accept User or Mentee objects. Uses doc_name/name and telegram_id."""
-    page_items, total_pages = get_page_slice(list(students), page)
+    from src.bot.pagination_search import filter_items
+
+    filtered = (
+        filter_items(students, search_query, "students")
+        if search_query
+        else list(students)
+    )
+    page_items, total_pages = get_page_slice(filtered, page)
     kb = InlineKeyboardBuilder()
 
-    nav = paginate_buttons("students", page, total_pages)
+    nav = paginate_buttons("students", page, total_pages, search_query=search_query)
     if nav:
         kb.row(*nav)
 
@@ -418,15 +445,23 @@ MEETING_TYPES = [
 ]
 
 
-def meeting_type_keyboard(page: int = 0) -> InlineKeyboardMarkup:
+def meeting_type_keyboard(
+    page: int = 0, search_query: str | None = None
+) -> InlineKeyboardMarkup:
+    from src.bot.pagination_search import filter_items
+
     buttons: list[tuple[str, str]] = [
         (t, ChooseMeetingTypeCB(type_idx=i).pack()) for i, t in enumerate(MEETING_TYPES)
     ]
+    if search_query:
+        buttons = filter_items(buttons, search_query, "meeting_types")
     page_items, total_pages = get_page_slice(buttons, page, page_size=5)
 
     kb = InlineKeyboardBuilder()
 
-    nav = paginate_buttons("meeting_types", page, total_pages)
+    nav = paginate_buttons(
+        "meeting_types", page, total_pages, search_query=search_query
+    )
     if nav:
         kb.row(*nav)
 
@@ -467,17 +502,24 @@ def mentor_past_meetings_keyboard(
     meetings: list[Meeting] | None = None,
     page: int = 0,
     viewer_id: int | None = None,
+    search_query: str | None = None,
 ) -> InlineKeyboardMarkup:
+    from src.bot.pagination_search import filter_items
+
     kb = InlineKeyboardBuilder()
 
     page_size = MEETINGS_PAGE_SIZE
     all_meetings = meetings or []
+    if search_query:
+        all_meetings = filter_items(all_meetings, search_query, "past_meetings")
     total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
     page = max(0, min(page, total_pages - 1))
     start = page * page_size
     page_meetings = all_meetings[start : start + page_size]
 
-    nav = paginate_buttons("past_meetings", page, total_pages)
+    nav = paginate_buttons(
+        "past_meetings", page, total_pages, search_query=search_query
+    )
     if nav:
         kb.row(*nav)
 
@@ -501,15 +543,22 @@ def mentor_past_meetings_keyboard(
 def student_past_meetings_keyboard(
     meetings: list[Meeting] | None = None,
     page: int = 0,
+    search_query: str | None = None,
 ) -> InlineKeyboardMarkup:
+    from src.bot.pagination_search import filter_items
+
     kb = InlineKeyboardBuilder()
 
     page_size = MEETINGS_PAGE_SIZE
     all_meetings = meetings or []
+    if search_query:
+        all_meetings = filter_items(all_meetings, search_query, "past_meetings")
     total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
     page = max(0, min(page, total_pages - 1))
 
-    nav = paginate_buttons("past_meetings", page, total_pages)
+    nav = paginate_buttons(
+        "past_meetings", page, total_pages, search_query=search_query
+    )
     if nav:
         kb.row(*nav)
 

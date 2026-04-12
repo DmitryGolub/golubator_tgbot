@@ -1,6 +1,7 @@
 import logging
 
 from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from src.bot.callbacks.mentor_stats import MentorStatsCB
 from src.bot.callbacks.pagination import PageNavCB
@@ -117,10 +118,16 @@ async def cb_admin_view_mentor_stats(
 @router.callback_query(
     PermissionFilter("manage_users"), PageNavCB.filter(F.menu == "mstats")
 )
-async def cb_mstats_page(callback: CallbackQuery, callback_data: PageNavCB):
+async def cb_mstats_page(
+    callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
+):
     await callback.answer()
+    data = await state.get_data()
+    search_query = (data.get("_pagination_search") or {}).get("mstats")
     all_mentors = await MentorDAO.get_all_with_users()
     mentors = [m for m in all_mentors if m.telegram_id is not None]
     await callback.message.edit_reply_markup(
-        reply_markup=mentor_select_keyboard(mentors, page=callback_data.page)
+        reply_markup=mentor_select_keyboard(
+            mentors, page=callback_data.page, search_query=search_query
+        )
     )
