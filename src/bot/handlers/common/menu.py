@@ -18,8 +18,8 @@ from src.dao.mentor_stats import MentorStatsDAO
 from src.dao.cohort import CohortDAO
 
 from src.bot.keyboards.meeting import mentor_meetings_keyboard
-from src.dao.meeting import MeetingDAO
 from src.services.call_flow import ActiveCallNotFoundError, CallFlowService
+from src.bot.keyboards.utils import format_username_display
 from src.utils.escape import e
 
 router = Router(name="menu")
@@ -32,6 +32,12 @@ async def _check_has_mentor(user_id: int, permissions: set[str]) -> bool:
     return bool(mentee and mentee.mentor and mentee.mentor.telegram_id)
 
 
+async def _check_has_directions(user_id: int, permissions: set[str]) -> bool:
+    if "view_direction_students" not in permissions:
+        return True
+    return await CohortDAO.has_category_cohorts(user_id)
+
+
 async def _ensure_user(tg_user):
     from src.bot.handlers.common.start import _ensure_user as _start_ensure_user
 
@@ -39,10 +45,16 @@ async def _ensure_user(tg_user):
 
 
 async def _render_menu(
-    message_or_callback, permissions: set[str], *, has_mentor: bool = True
+    message_or_callback,
+    permissions: set[str],
+    *,
+    has_mentor: bool = True,
+    has_directions: bool = True,
 ):
     text = await UiTextService.get("menu.title")
-    markup = await menu_keyboard(permissions, has_mentor=has_mentor)
+    markup = await menu_keyboard(
+        permissions, has_mentor=has_mentor, has_directions=has_directions
+    )
 
     if isinstance(message_or_callback, Message):
         await message_or_callback.answer(text=text, reply_markup=markup)
@@ -64,7 +76,10 @@ async def cmd_menu(message: Message, state: FSMContext):
         return
 
     has_mentor = await _check_has_mentor(message.from_user.id, permissions)
-    await _render_menu(message, permissions, has_mentor=has_mentor)
+    has_directions = await _check_has_directions(message.from_user.id, permissions)
+    await _render_menu(
+        message, permissions, has_mentor=has_mentor, has_directions=has_directions
+    )
 
 
 @router.callback_query(F.data == "back_to_menu")
@@ -83,7 +98,10 @@ async def cb_menu(callback: CallbackQuery, state: FSMContext):
         return
 
     has_mentor = await _check_has_mentor(callback.from_user.id, permissions)
-    await _render_menu(callback, permissions, has_mentor=has_mentor)
+    has_directions = await _check_has_directions(callback.from_user.id, permissions)
+    await _render_menu(
+        callback, permissions, has_mentor=has_mentor, has_directions=has_directions
+    )
 
 
 # ==== ADMIN ====
@@ -180,7 +198,7 @@ async def cb_mentor_students_menu(callback: CallbackQuery):
     for mentee in mentees:
         display_name = mentee.doc_name or (mentee.user.name if mentee.user else "—")
         username = mentee.user.username if mentee.user else None
-        username_display = f"@{e(username)}" if username else ""
+        username_display = format_username_display(username, prefix="@")
         cohorts = cohorts_map.get(mentee.telegram_id, []) if mentee.telegram_id else []
         categories = [c.cohort.value for c in cohorts if c.cohort.type == "Category"]
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
@@ -206,10 +224,13 @@ async def cb_mentor_students_add(callback: CallbackQuery):
     await callback.answer()
     permissions = await AuthService.get_user_permissions(callback.from_user.id)
     has_mentor = await _check_has_mentor(callback.from_user.id, permissions)
+    has_directions = await _check_has_directions(callback.from_user.id, permissions)
     await safe_edit_text(
         callback,
         "Выберите менти для изменения статуса.",
-        reply_markup=await menu_keyboard(permissions, has_mentor=has_mentor),
+        reply_markup=await menu_keyboard(
+            permissions, has_mentor=has_mentor, has_directions=has_directions
+        ),
     )
 
 
@@ -217,41 +238,30 @@ async def cb_mentor_students_add(callback: CallbackQuery):
 async def cb_mentor_end_call(callback: CallbackQuery):
     await callback.answer()
     text = await _finish_active_call_text(callback.from_user.id)
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    from src.bot.handlers.meeting import _filter_visible_meetings, _format_meetings
+    from src.bot.handlers.meeting import prepare_meetings_view
 
-    visible = _filter_visible_meetings(
-        meetings,
-        callback.from_user.id,
-        viewer_is_mentor=True,
-        mentor_tg_ids=mentor_tg_ids,
-    )
+    view = await prepare_meetings_view(callback.from_user.id, hide_past=True)
     await safe_edit_text(callback, text)
-    meetings_text = _format_meetings(visible, mentor_tg_ids)
     await callback.message.answer(
-        meetings_text,
-        reply_markup=mentor_meetings_keyboard(visible, page=0),
+        view.text,
+        reply_markup=mentor_meetings_keyboard(
+            view.visible, page=0, viewer_id=callback.from_user.id
+        ),
     )
 
 
 @router.message(PermissionFilter("end_call"), Command("end_call"))
 async def cmd_end_call(message: Message):
     text = await _finish_active_call_text(message.from_user.id)
-    meetings = await MeetingDAO.get_for_user(message.from_user.id)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    from src.bot.handlers.meeting import _filter_visible_meetings, _format_meetings
+    from src.bot.handlers.meeting import prepare_meetings_view
 
-    visible = _filter_visible_meetings(
-        meetings,
-        message.from_user.id,
-        viewer_is_mentor=True,
-        mentor_tg_ids=mentor_tg_ids,
-    )
+    view = await prepare_meetings_view(message.from_user.id, hide_past=True)
     await message.answer(text)
-    meetings_text = _format_meetings(visible, mentor_tg_ids)
     await message.answer(
-        meetings_text, reply_markup=mentor_meetings_keyboard(visible, page=0)
+        view.text,
+        reply_markup=mentor_meetings_keyboard(
+            view.visible, page=0, viewer_id=message.from_user.id
+        ),
     )
 
 
@@ -272,9 +282,7 @@ async def cb_mentor_me_info(callback: CallbackQuery):
     lines = [
         f"{title}\n",
         f"Имя: <b>{e(mentor.name)}</b>",
-        f"Юзернейм: @{e(mentor.user.username)}"
-        if mentor.user and mentor.user.username
-        else "",
+        f"Юзернейм:{format_username_display(mentor.user.username if mentor.user else None, prefix=' @')}",
         "",
         f"Созвоны: <b>{stats['total_calls']}</b>",
         f"Опросы заполнено: <b>{stats['total_surveys']}</b>",
@@ -313,8 +321,10 @@ async def cb_student_me_info(callback: CallbackQuery):
     if mentee:
         if mentee.mentor:
             mentor_name = mentee.mentor.name or "Отсутствует"
-            if mentee.mentor.user and mentee.mentor.user.username:
-                mentor_username = f"@{mentee.mentor.user.username}"
+            mentor_username = format_username_display(
+                mentee.mentor.user.username if mentee.mentor.user else None,
+                prefix="@",
+            )
         cohorts = (
             await CohortDAO.get_user_cohorts(mentee.telegram_id)
             if mentee.telegram_id
@@ -329,9 +339,9 @@ async def cb_student_me_info(callback: CallbackQuery):
     text = (
         f"{title}\n\n"
         f"Имя: <b>{e(student.name)}</b>\n"
-        f"Юзернейм: @{e(student.username)}\n"
+        f"Юзернейм:{format_username_display(student.username, prefix=' @')}\n"
         f"Роль: <b>{e(role_display)}</b>\n"
-        f"Мой ментор: <b>{e(mentor_name)}</b> {e(mentor_username)}\n"
+        f"Мой ментор: <b>{e(mentor_name)}</b> {mentor_username}\n"
         f"Состояние: <b>{e(mentee_state)}</b>\n"
     )
 

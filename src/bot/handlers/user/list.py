@@ -13,7 +13,9 @@ from src.utils.tz import MSK
 from src.dao.cohort import CohortDAO
 from src.dao.mentee import MenteeDAO
 from src.dao.user import UserDAO
+from src.bot.keyboards.utils import format_username_display
 from src.utils.escape import e
+from src.utils.roles import is_mentor
 
 router = Router(name="user")
 router.callback_query.filter(PermissionFilter("manage_users"))
@@ -44,12 +46,17 @@ async def _build_user_list_page(
 
     for user in page_users:
         mentee = mentee_by_tid.get(user.telegram_id)
-        mentor_name = "Отсутствует"
-        mentor_username = ""
-        if mentee and mentee.mentor:
-            mentor_name = mentee.mentor.name or "Отсутствует"
-            if mentee.mentor.user and mentee.mentor.user.username:
-                mentor_username = f"@{mentee.mentor.user.username}"
+        mentor_line = ""
+        if not is_mentor(user):
+            mentor_name = "Отсутствует"
+            mentor_username = ""
+            if mentee and mentee.mentor:
+                mentor_name = mentee.mentor.name or "Отсутствует"
+                mentor_username = format_username_display(
+                    mentee.mentor.user.username if mentee.mentor.user else None,
+                    prefix="@",
+                )
+            mentor_line = f"   • Ментор: <b>{e(mentor_name)}</b> {e(mentor_username)}\n"
 
         role_display = user.role_rel.display_name if user.role_rel else "—"
 
@@ -73,11 +80,11 @@ async def _build_user_list_page(
         )
 
         placeholder_badge = " [Нет Telegram]" if user.telegram_id < 0 else ""
-        username_display = f"@{e(user.username)}" if user.username else ""
+        username_display = format_username_display(user.username, prefix="@")
 
         answer += (
             f"👤 <b>{e(user.name)}</b> {username_display}{placeholder_badge}\n"
-            f"   • Ментор: <b>{e(mentor_name)}</b> {e(mentor_username)}\n"
+            f"{mentor_line}"
             f"   • Направления: <b>{e(cohort_display)}</b>\n"
             f"   • Роль: <b>{e(role_display)}</b>\n"
             f"{state_line}"

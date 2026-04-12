@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.survey_builder import (
@@ -12,6 +12,7 @@ from src.bot.callbacks.survey_builder import (
     SurveyTemplateDetailCB,
     SurveyTemplateToggleCB,
 )
+from src.bot.keyboards.pagination import paginate_buttons
 from src.bot.keyboards.utils import truncate_button_text
 from src.models.survey_session import SurveySession
 from src.models.survey_template import SurveyTemplate
@@ -84,17 +85,24 @@ def add_option_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def templates_list_keyboard(templates: list[SurveyTemplate]) -> InlineKeyboardMarkup:
+def templates_list_keyboard(
+    templates: list[SurveyTemplate],
+    page: int = 0,
+    total_pages: int = 1,
+    search_query: str | None = None,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for t in templates:
-        status = "ON" if t.is_active else "OFF"
-        raw = f"[{status}] {t.title}"
+    nav = paginate_buttons("surveys_list", page, total_pages, search_query)
+    if nav:
+        builder.row(*nav)
+    for idx, t in enumerate(templates):
+        global_num = page * 6 + idx + 1
         builder.button(
-            text=truncate_button_text(raw),
+            text=f"Изменить #{global_num}",
             callback_data=SurveyTemplateDetailCB(template_id=t.id),
         )
-    builder.button(text="⬅️ Назад", callback_data="menu_surveys")
-    builder.adjust(1)
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_surveys"))
     return builder.as_markup()
 
 

@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 
 from aiogram import Router, F
 from aiogram.filters import StateFilter
@@ -51,6 +52,7 @@ from src.dao.mentee import MenteeDAO
 from src.models.meeting import CallStatus, ProposalStatus
 from src.services.auth import AuthService
 from src.bot.handlers.pagination_input import clear_pagination_ctx
+from src.bot.keyboards.utils import format_username_display
 from src.bot.utils import safe_edit_text
 from src.utils.escape import e
 import logging
@@ -147,13 +149,13 @@ def _format_meetings(
 
         creator_text = (
             f"Организатор: <b>{e(creator.name)}</b>"
-            + (f" @{e(creator.username)}" if creator.username else "")
+            + format_username_display(creator.username)
             if creator
             else "Организатор: —"
         )
         if others:
             names = [
-                f"<b>{e(p.name)}</b>" + (f" @{e(p.username)}" if p.username else "")
+                f"<b>{e(p.name)}</b>" + format_username_display(p.username)
                 for p in others
             ]
             others_text = f"Участники: {', '.join(names)}"
@@ -188,6 +190,39 @@ def _format_meetings(
     return "\n".join(lines)
 
 
+@dataclass
+class MeetingsView:
+    text: str
+    visible: list
+    mentor_tg_ids: set[int]
+
+
+async def prepare_meetings_view(
+    user_id: int,
+    *,
+    hide_past: bool = False,
+    only_past: bool = False,
+    viewer_is_mentor: bool = True,
+    page: int = 0,
+    title: str = "Мои созвоны:",
+    text_prefix: str = "",
+) -> MeetingsView:
+    meetings = await MeetingDAO.get_for_user(
+        user_id, hide_past=hide_past, only_past=only_past
+    )
+    mentor_tg_ids = await MentorDAO.get_telegram_ids()
+    visible = _filter_visible_meetings(
+        meetings,
+        user_id,
+        viewer_is_mentor=viewer_is_mentor,
+        mentor_tg_ids=mentor_tg_ids,
+    )
+    text = text_prefix + _format_meetings(
+        visible, mentor_tg_ids=mentor_tg_ids, page=page, title=title
+    )
+    return MeetingsView(text=text, visible=visible, mentor_tg_ids=mentor_tg_ids)
+
+
 def _format_proposal_text(meeting, proposer_name: str) -> str:
     date_str = "—"
     if meeting.scheduled_at:
@@ -214,20 +249,12 @@ def _format_proposal_text(meeting, proposer_name: str) -> str:
 )
 async def cb_mentor_meetings(callback: CallbackQuery):
     await callback.answer()
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    visible = _filter_visible_meetings(
-        meetings,
-        callback.from_user.id,
-        viewer_is_mentor=True,
-        mentor_tg_ids=mentor_tg_ids,
-    )
-    text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=0)
+    view = await prepare_meetings_view(callback.from_user.id, hide_past=True)
     await safe_edit_text(
         callback,
-        text,
+        view.text,
         reply_markup=mentor_meetings_keyboard(
-            visible, page=0, viewer_id=callback.from_user.id
+            view.visible, page=0, viewer_id=callback.from_user.id
         ),
     )
 
@@ -237,20 +264,14 @@ async def cb_mentor_meetings(callback: CallbackQuery):
 )
 async def cb_student_meetings(callback: CallbackQuery):
     await callback.answer()
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    visible = _filter_visible_meetings(
-        meetings,
-        callback.from_user.id,
-        viewer_is_mentor=False,
-        mentor_tg_ids=mentor_tg_ids,
+    view = await prepare_meetings_view(
+        callback.from_user.id, hide_past=True, viewer_is_mentor=False
     )
-    text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids)
     await safe_edit_text(
         callback,
-        text,
+        view.text,
         reply_markup=student_meetings_keyboard(
-            visible, page=0, viewer_id=callback.from_user.id
+            view.visible, page=0, viewer_id=callback.from_user.id
         ),
     )
 
@@ -297,19 +318,12 @@ async def cb_start_meeting_call(
             "или команду /end_call."
         )
 
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    visible = _filter_visible_meetings(
-        meetings,
-        callback.from_user.id,
-        viewer_is_mentor=True,
-        mentor_tg_ids=mentor_tg_ids,
-    )
+    view = await prepare_meetings_view(callback.from_user.id)
     await safe_edit_text(
         callback,
         text,
         reply_markup=mentor_meetings_keyboard(
-            visible, page=0, viewer_id=callback.from_user.id
+            view.visible, page=0, viewer_id=callback.from_user.id
         ),
     )
 
@@ -955,10 +969,7 @@ def _format_edit_header(meeting) -> str:
         p for p in meeting.participants if p.telegram_id != meeting.mentor_telegram_id
     ]
     if others:
-        names = [
-            f"{e(p.name)}" + (f" @{e(p.username)}" if p.username else "")
-            for p in others
-        ]
+        names = [f"{e(p.name)}" + format_username_display(p.username) for p in others]
         participants_str = ", ".join(names)
     else:
         participants_str = "—"
@@ -1001,17 +1012,14 @@ async def _save_edit_and_return(user_id, state, reply_func, bot, **update_values
                     exc,
                 )
 
-    meetings = await MeetingDAO.get_for_user(user_id, hide_past=True)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    visible = _filter_visible_meetings(
-        meetings, user_id, viewer_is_mentor=True, mentor_tg_ids=mentor_tg_ids
-    )
-    text = f"✅ Созвон #{meeting_id} обновлён.\n\n" + _format_meetings(
-        visible, mentor_tg_ids=mentor_tg_ids, page=0
+    view = await prepare_meetings_view(
+        user_id,
+        hide_past=True,
+        text_prefix=f"✅ Созвон #{meeting_id} обновлён.\n\n",
     )
     await reply_func(
-        text,
-        reply_markup=mentor_meetings_keyboard(visible, page=0, viewer_id=user_id),
+        view.text,
+        reply_markup=mentor_meetings_keyboard(view.visible, page=0, viewer_id=user_id),
     )
 
 
@@ -1283,18 +1291,15 @@ async def cb_edit_confirm_participants(callback: CallbackQuery, state: FSMContex
                     exc,
                 )
 
-    meetings = await MeetingDAO.get_for_user(user_id, hide_past=True)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    visible = _filter_visible_meetings(
-        meetings, user_id, viewer_is_mentor=True, mentor_tg_ids=mentor_tg_ids
-    )
-    text = f"✅ Созвон #{meeting_id} обновлён.\n\n" + _format_meetings(
-        visible, mentor_tg_ids=mentor_tg_ids, page=0
+    view = await prepare_meetings_view(
+        user_id,
+        hide_past=True,
+        text_prefix=f"✅ Созвон #{meeting_id} обновлён.\n\n",
     )
     await safe_edit_text(
         callback,
-        text,
-        reply_markup=mentor_meetings_keyboard(visible, page=0, viewer_id=user_id),
+        view.text,
+        reply_markup=mentor_meetings_keyboard(view.visible, page=0, viewer_id=user_id),
     )
 
 
@@ -1335,40 +1340,31 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
 
         archive_notion_page.delay(notion_page_id)
 
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-
     if callback_data.source == "past":
-        meetings = await MeetingDAO.get_for_user(callback.from_user.id, only_past=True)
-        visible = _filter_visible_meetings(
-            meetings,
+        view = await prepare_meetings_view(
             callback.from_user.id,
-            viewer_is_mentor=True,
-            mentor_tg_ids=mentor_tg_ids,
-        )
-        text = _format_meetings(
-            visible, mentor_tg_ids=mentor_tg_ids, page=0, title="Завершённые созвоны:"
+            only_past=True,
+            title="Завершённые созвоны:",
+            text_prefix="Созвон удалён.\n\n",
         )
         await safe_edit_text(
             callback,
-            f"Созвон удалён.\n\n{text}",
+            view.text,
             reply_markup=mentor_past_meetings_keyboard(
-                visible, page=0, viewer_id=callback.from_user.id
+                view.visible, page=0, viewer_id=callback.from_user.id
             ),
         )
     else:
-        meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
-        visible = _filter_visible_meetings(
-            meetings,
+        view = await prepare_meetings_view(
             callback.from_user.id,
-            viewer_is_mentor=True,
-            mentor_tg_ids=mentor_tg_ids,
+            hide_past=True,
+            text_prefix="Созвон удалён.\n\n",
         )
-        text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=0)
         await safe_edit_text(
             callback,
-            f"Созвон удалён.\n\n{text}",
+            view.text,
             reply_markup=mentor_meetings_keyboard(
-                visible, page=0, viewer_id=callback.from_user.id
+                view.visible, page=0, viewer_id=callback.from_user.id
             ),
         )
 
@@ -1567,21 +1563,13 @@ async def cb_meetings_page(
     await callback.answer()
     data = await state.get_data()
     search_query = (data.get("_pagination_search") or {}).get("meetings")
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    visible = _filter_visible_meetings(
-        meetings,
-        callback.from_user.id,
-        viewer_is_mentor=True,
-        mentor_tg_ids=mentor_tg_ids,
-    )
     page = callback_data.page
-    text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=page)
+    view = await prepare_meetings_view(callback.from_user.id, hide_past=True, page=page)
     await safe_edit_text(
         callback,
-        text,
+        view.text,
         reply_markup=mentor_meetings_keyboard(
-            visible,
+            view.visible,
             page=page,
             viewer_id=callback.from_user.id,
             search_query=search_query,
@@ -1595,22 +1583,14 @@ async def cb_meetings_page(
 )
 async def cb_mentor_past_meetings(callback: CallbackQuery):
     await callback.answer()
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, only_past=True)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    visible = _filter_visible_meetings(
-        meetings,
-        callback.from_user.id,
-        viewer_is_mentor=True,
-        mentor_tg_ids=mentor_tg_ids,
-    )
-    text = _format_meetings(
-        visible, mentor_tg_ids=mentor_tg_ids, page=0, title="Завершённые созвоны:"
+    view = await prepare_meetings_view(
+        callback.from_user.id, only_past=True, title="Завершённые созвоны:"
     )
     await safe_edit_text(
         callback,
-        text,
+        view.text,
         reply_markup=mentor_past_meetings_keyboard(
-            visible, page=0, viewer_id=callback.from_user.id
+            view.visible, page=0, viewer_id=callback.from_user.id
         ),
     )
 
@@ -1620,21 +1600,16 @@ async def cb_mentor_past_meetings(callback: CallbackQuery):
 )
 async def cb_student_past_meetings(callback: CallbackQuery):
     await callback.answer()
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, only_past=True)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    visible = _filter_visible_meetings(
-        meetings,
+    view = await prepare_meetings_view(
         callback.from_user.id,
+        only_past=True,
         viewer_is_mentor=False,
-        mentor_tg_ids=mentor_tg_ids,
-    )
-    text = _format_meetings(
-        visible, mentor_tg_ids=mentor_tg_ids, page=0, title="Завершённые созвоны:"
+        title="Завершённые созвоны:",
     )
     await safe_edit_text(
         callback,
-        text,
-        reply_markup=student_past_meetings_keyboard(visible, page=0),
+        view.text,
+        reply_markup=student_past_meetings_keyboard(view.visible, page=0),
     )
 
 
@@ -1648,28 +1623,25 @@ async def cb_past_meetings_page(
     await callback.answer()
     data = await state.get_data()
     search_query = (data.get("_pagination_search") or {}).get("past_meetings")
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, only_past=True)
+    page = callback_data.page
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
     is_mentor = callback.from_user.id in mentor_tg_ids
-    visible = _filter_visible_meetings(
-        meetings,
+    view = await prepare_meetings_view(
         callback.from_user.id,
+        only_past=True,
         viewer_is_mentor=is_mentor,
-        mentor_tg_ids=mentor_tg_ids,
-    )
-    page = callback_data.page
-    text = _format_meetings(
-        visible, mentor_tg_ids=mentor_tg_ids, page=page, title="Завершённые созвоны:"
+        page=page,
+        title="Завершённые созвоны:",
     )
     if is_mentor:
         markup = mentor_past_meetings_keyboard(
-            visible,
+            view.visible,
             page=page,
             viewer_id=callback.from_user.id,
             search_query=search_query,
         )
     else:
         markup = student_past_meetings_keyboard(
-            visible, page=page, search_query=search_query
+            view.visible, page=page, search_query=search_query
         )
-    await safe_edit_text(callback, text, reply_markup=markup)
+    await safe_edit_text(callback, view.text, reply_markup=markup)

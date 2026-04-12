@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.trigger_rules import (
@@ -17,7 +17,7 @@ from src.bot.callbacks.trigger_rules import (
     TriggerSurveyTemplateCB,
     TriggerTypeCB,
 )
-from src.bot.keyboards.utils import truncate_button_text
+from src.bot.keyboards.pagination import paginate_buttons
 from src.models.trigger import TriggerRule
 
 
@@ -110,20 +110,24 @@ def survey_templates_keyboard(templates) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def rules_list_keyboard(rules: list[TriggerRule]) -> InlineKeyboardMarkup:
+def rules_list_keyboard(
+    rules: list[TriggerRule],
+    page: int = 0,
+    total_pages: int = 1,
+    search_query: str | None = None,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for r in rules:
-        status = "ON" if r.is_active else "OFF"
-        trigger_label = TRIGGER_TYPE_LABELS.get(
-            r.trigger_type.value, r.trigger_type.value
-        )
-        raw = f"[{status}] {r.name} ({trigger_label})"
+    nav = paginate_buttons("rules", page, total_pages, search_query)
+    if nav:
+        builder.row(*nav)
+    for idx, r in enumerate(rules):
+        global_num = page * 6 + idx + 1
         builder.button(
-            text=truncate_button_text(raw, 35),
+            text=f"Изменить #{global_num}",
             callback_data=TriggerRuleDetailCB(rule_id=r.id),
         )
-    builder.button(text="⬅️ Назад", callback_data="menu_triggers")
-    builder.adjust(1)
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_triggers"))
     return builder.as_markup()
 
 

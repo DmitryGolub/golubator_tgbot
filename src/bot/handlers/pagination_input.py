@@ -467,27 +467,16 @@ async def _refresh_participants_msg(
 
 async def _refresh_meetings(callback: CallbackQuery, page: int, state: FSMContext):
     from src.bot.keyboards.meeting import mentor_meetings_keyboard
-    from src.dao.meeting import MeetingDAO
-    from src.dao.mentor import MentorDAO
+    from src.bot.handlers.meeting import prepare_meetings_view
 
     data = await state.get_data()
     sq = (data.get("_pagination_search") or {}).get("meetings")
-    from src.bot.handlers.meeting import _filter_visible_meetings, _format_meetings
-
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, hide_past=True)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    visible = _filter_visible_meetings(
-        meetings,
-        callback.from_user.id,
-        viewer_is_mentor=True,
-        mentor_tg_ids=mentor_tg_ids,
-    )
-    text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=page)
+    view = await prepare_meetings_view(callback.from_user.id, hide_past=True, page=page)
     await safe_edit_text(
         callback,
-        text,
+        view.text,
         reply_markup=mentor_meetings_keyboard(
-            visible, page=page, viewer_id=callback.from_user.id, search_query=sq
+            view.visible, page=page, viewer_id=callback.from_user.id, search_query=sq
         ),
     )
 
@@ -501,26 +490,18 @@ async def _refresh_meetings_msg(
     user_id: int = 0,
 ):
     from src.bot.keyboards.meeting import mentor_meetings_keyboard
-    from src.dao.meeting import MeetingDAO
-    from src.dao.mentor import MentorDAO
+    from src.bot.handlers.meeting import prepare_meetings_view
 
     data = await state.get_data()
     sq = (data.get("_pagination_search") or {}).get("meetings")
-    from src.bot.handlers.meeting import _filter_visible_meetings, _format_meetings
-
-    meetings = await MeetingDAO.get_for_user(user_id, hide_past=True)
-    mentor_tg_ids = await MentorDAO.get_telegram_ids()
-    visible = _filter_visible_meetings(
-        meetings, user_id, viewer_is_mentor=True, mentor_tg_ids=mentor_tg_ids
-    )
-    text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=page)
+    view = await prepare_meetings_view(user_id, hide_past=True, page=page)
     with suppress(TelegramBadRequest):
         await bot.edit_message_text(
-            text=text,
+            text=view.text,
             chat_id=chat_id,
             message_id=message_id,
             reply_markup=mentor_meetings_keyboard(
-                visible, page=page, viewer_id=user_id, search_query=sq
+                view.visible, page=page, viewer_id=user_id, search_query=sq
             ),
         )
 
@@ -530,32 +511,29 @@ async def _refresh_past_meetings(callback: CallbackQuery, page: int, state: FSMC
         mentor_past_meetings_keyboard,
         student_past_meetings_keyboard,
     )
-    from src.dao.meeting import MeetingDAO
     from src.dao.mentor import MentorDAO
+    from src.bot.handlers.meeting import prepare_meetings_view
 
     data = await state.get_data()
     sq = (data.get("_pagination_search") or {}).get("past_meetings")
-    from src.bot.handlers.meeting import _filter_visible_meetings, _format_meetings
-
-    meetings = await MeetingDAO.get_for_user(callback.from_user.id, only_past=True)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
     is_mentor = callback.from_user.id in mentor_tg_ids
-    visible = _filter_visible_meetings(
-        meetings,
+    view = await prepare_meetings_view(
         callback.from_user.id,
+        only_past=True,
         viewer_is_mentor=is_mentor,
-        mentor_tg_ids=mentor_tg_ids,
-    )
-    text = _format_meetings(
-        visible, mentor_tg_ids=mentor_tg_ids, page=page, title="Завершённые созвоны:"
+        page=page,
+        title="Завершённые созвоны:",
     )
     if is_mentor:
         markup = mentor_past_meetings_keyboard(
-            visible, page=page, viewer_id=callback.from_user.id, search_query=sq
+            view.visible, page=page, viewer_id=callback.from_user.id, search_query=sq
         )
     else:
-        markup = student_past_meetings_keyboard(visible, page=page, search_query=sq)
-    await safe_edit_text(callback, text, reply_markup=markup)
+        markup = student_past_meetings_keyboard(
+            view.visible, page=page, search_query=sq
+        )
+    await safe_edit_text(callback, view.text, reply_markup=markup)
 
 
 async def _refresh_past_meetings_msg(
@@ -570,31 +548,31 @@ async def _refresh_past_meetings_msg(
         mentor_past_meetings_keyboard,
         student_past_meetings_keyboard,
     )
-    from src.dao.meeting import MeetingDAO
     from src.dao.mentor import MentorDAO
+    from src.bot.handlers.meeting import prepare_meetings_view
 
     data = await state.get_data()
     sq = (data.get("_pagination_search") or {}).get("past_meetings")
-    from src.bot.handlers.meeting import _filter_visible_meetings, _format_meetings
-
-    meetings = await MeetingDAO.get_for_user(user_id, only_past=True)
     mentor_tg_ids = await MentorDAO.get_telegram_ids()
     is_mentor = user_id in mentor_tg_ids
-    visible = _filter_visible_meetings(
-        meetings, user_id, viewer_is_mentor=is_mentor, mentor_tg_ids=mentor_tg_ids
-    )
-    text = _format_meetings(
-        visible, mentor_tg_ids=mentor_tg_ids, page=page, title="Завершённые созвоны:"
+    view = await prepare_meetings_view(
+        user_id,
+        only_past=True,
+        viewer_is_mentor=is_mentor,
+        page=page,
+        title="Завершённые созвоны:",
     )
     if is_mentor:
         markup = mentor_past_meetings_keyboard(
-            visible, page=page, viewer_id=user_id, search_query=sq
+            view.visible, page=page, viewer_id=user_id, search_query=sq
         )
     else:
-        markup = student_past_meetings_keyboard(visible, page=page, search_query=sq)
+        markup = student_past_meetings_keyboard(
+            view.visible, page=page, search_query=sq
+        )
     with suppress(TelegramBadRequest):
         await bot.edit_message_text(
-            text=text, chat_id=chat_id, message_id=message_id, reply_markup=markup
+            text=view.text, chat_id=chat_id, message_id=message_id, reply_markup=markup
         )
 
 
@@ -788,6 +766,62 @@ async def _refresh_students_msg(
         )
 
 
+async def _refresh_rules(callback: CallbackQuery, page: int, state: FSMContext):
+    from src.bot.handlers.trigger_rules import _build_rules_list_page
+
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("rules")
+    text, markup = await _build_rules_list_page(page=page, search_query=sq)
+    await safe_edit_text(callback, text, reply_markup=markup)
+
+
+async def _refresh_rules_msg(
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
+):
+    from src.bot.handlers.trigger_rules import _build_rules_list_page
+
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("rules")
+    text, markup = await _build_rules_list_page(page=page, search_query=sq)
+    with suppress(TelegramBadRequest):
+        await bot.edit_message_text(
+            text=text, chat_id=chat_id, message_id=message_id, reply_markup=markup
+        )
+
+
+async def _refresh_surveys_list(callback: CallbackQuery, page: int, state: FSMContext):
+    from src.bot.handlers.survey_builder import _build_surveys_list_page
+
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("surveys_list")
+    text, markup = await _build_surveys_list_page(page=page, search_query=sq)
+    await safe_edit_text(callback, text, reply_markup=markup)
+
+
+async def _refresh_surveys_list_msg(
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
+):
+    from src.bot.handlers.survey_builder import _build_surveys_list_page
+
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("surveys_list")
+    text, markup = await _build_surveys_list_page(page=page, search_query=sq)
+    with suppress(TelegramBadRequest):
+        await bot.edit_message_text(
+            text=text, chat_id=chat_id, message_id=message_id, reply_markup=markup
+        )
+
+
 # ── Dispatch tables ───────────────────────────────────────────────────────
 
 MENU_REFRESHERS: dict = {
@@ -803,6 +837,8 @@ MENU_REFRESHERS: dict = {
     "mstats": _refresh_mstats,
     "channel_links": _refresh_channel_links,
     "students": _refresh_students,
+    "rules": _refresh_rules,
+    "surveys_list": _refresh_surveys_list,
 }
 
 MENU_REFRESHERS_BY_MSG: dict = {
@@ -818,4 +854,6 @@ MENU_REFRESHERS_BY_MSG: dict = {
     "mstats": _refresh_mstats_msg,
     "channel_links": _refresh_channel_links_msg,
     "students": _refresh_students_msg,
+    "rules": _refresh_rules_msg,
+    "surveys_list": _refresh_surveys_list_msg,
 }

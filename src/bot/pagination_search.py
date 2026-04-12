@@ -38,6 +38,8 @@ SEARCH_EXTRACTORS: dict[str, Callable[[Any], list[str]]] = {
     "meeting_types": lambda item: [item[0] if isinstance(item, tuple) else str(item)],
     "cohorts": lambda item: [item[0] if isinstance(item, tuple) else str(item)],
     "channel_links": lambda link: [link.label or "", link.code or ""],
+    "rules": lambda r: [r.name or ""],
+    "surveys_list": lambda t: [t.title or ""],
 }
 
 

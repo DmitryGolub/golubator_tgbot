@@ -74,6 +74,22 @@ class CohortDAO:
             return list(result.scalars().all())
 
     @staticmethod
+    async def has_category_cohorts(user_telegram_id: int) -> bool:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(
+                    select(UserCohort.cohort_id)
+                    .join(Cohort, Cohort.id == UserCohort.cohort_id)
+                    .where(
+                        UserCohort.user_telegram_id == user_telegram_id,
+                        Cohort.type == "Category",
+                    )
+                    .exists()
+                )
+            )
+            return result.scalar()
+
+    @staticmethod
     async def get_direction_leads_for_student(
         student_telegram_id: int,
     ) -> list[int]:

@@ -3,6 +3,7 @@ from aiogram.types import CallbackQuery
 
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.bot.keyboards.utils import format_username_display
 from src.bot.utils import safe_edit_text
 from src.dao.cohort import CohortDAO
 from src.services.ui_text import UiTextService
@@ -27,13 +28,9 @@ async def cb_direction_students(callback: CallbackQuery):
     for direction, students in grouped.items():
         lines.append(f"<b>{direction}</b>")
         for i, (user, doc_name) in enumerate(students, 1):
-            if user.username:
-                mention = f"@{user.username}"
-            elif doc_name:
-                mention = doc_name
-            else:
-                mention = user.name
-            lines.append(f"  {i}. {mention}")
+            name = doc_name or user.name
+            username_display = format_username_display(user.username, prefix=" @")
+            lines.append(f"  {i}. {name}{username_display}")
         lines.append("")
 
     kb = await back_to_menu_keyboard()

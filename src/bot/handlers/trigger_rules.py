@@ -2,9 +2,10 @@ import logging
 from datetime import time
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from aiogram.fsm.context import FSMContext
 
+from src.bot.callbacks.pagination import PageNavCB
 from src.bot.callbacks.trigger_rules import (
     TriggerActionCB,
     TriggerActionTypeCB,
@@ -22,6 +23,7 @@ from src.bot.callbacks.trigger_rules import (
     TriggerTypeCB,
 )
 from src.bot.filters.permission import PermissionFilter
+from src.bot.keyboards.pagination import get_page_slice
 from src.bot.keyboards.trigger_rules import (
     ACTION_TYPE_LABELS,
     RECIPIENT_TYPE_LABELS,
@@ -42,6 +44,7 @@ from src.bot.keyboards.trigger_rules import (
     trigger_menu_keyboard,
     trigger_type_keyboard,
 )
+from src.bot.pagination_search import filter_items
 from src.bot.states.trigger_rules import TriggerRuleBuilderFSM
 from src.bot.utils import safe_edit_text
 from src.dao.trigger_rule import TriggerRuleDAO
@@ -74,6 +77,37 @@ async def cb_triggers_menu(callback: CallbackQuery, state: FSMContext):
 # --- List ---
 
 
+async def _build_rules_list_page(
+    page: int = 0, search_query: str | None = None
+) -> tuple[str, InlineKeyboardMarkup]:
+    rules = await TriggerRuleDAO.get_all()
+    filtered = filter_items(rules, search_query, "rules") if search_query else rules
+    page_items, total_pages = get_page_slice(filtered, page)
+
+    if not filtered:
+        return "Нет правил.", rules_list_keyboard([], page=0, total_pages=1)
+
+    lines = ["<b>Правила:</b>\n"]
+    for idx, r in enumerate(page_items):
+        global_num = page * 6 + idx + 1
+        status = "ON" if r.is_active else "OFF"
+        trigger_label = TRIGGER_TYPE_LABELS.get(
+            r.trigger_type.value, r.trigger_type.value
+        )
+        lines.append(
+            f"{global_num}. [{status}] {e(r.name)}\n   Триггер: {e(trigger_label)}"
+        )
+
+    text = "\n\n".join(lines)
+    markup = rules_list_keyboard(
+        list(page_items),
+        page=page,
+        total_pages=total_pages,
+        search_query=search_query,
+    )
+    return text, markup
+
+
 @router.callback_query(TriggerActionCB.filter(F.action == "list"))
 async def cb_list_rules(callback: CallbackQuery, state: FSMContext):
     await state.clear()
@@ -82,11 +116,23 @@ async def cb_list_rules(callback: CallbackQuery, state: FSMContext):
         await callback.answer(await UiTextService.get("trigger.no_rules"))
         return
     await callback.answer()
-    await safe_edit_text(
-        callback,
-        await UiTextService.get("trigger.list.header"),
-        reply_markup=rules_list_keyboard(rules),
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("rules")
+    text, markup = await _build_rules_list_page(page=0, search_query=sq)
+    await safe_edit_text(callback, text, reply_markup=markup)
+
+
+@router.callback_query(PageNavCB.filter(F.menu == "rules"))
+async def cb_rules_page(
+    callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
+):
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("rules")
+    text, markup = await _build_rules_list_page(
+        page=callback_data.page, search_query=sq
     )
+    await safe_edit_text(callback, text, reply_markup=markup)
+    await callback.answer()
 
 
 @router.callback_query(TriggerRuleDetailCB.filter())
@@ -185,11 +231,8 @@ async def cb_delete_rule(
     await callback.answer(await UiTextService.get("trigger.deleted"))
     rules = await TriggerRuleDAO.get_all()
     if rules:
-        await safe_edit_text(
-            callback,
-            await UiTextService.get("trigger.list.header"),
-            reply_markup=rules_list_keyboard(rules),
-        )
+        text, markup = await _build_rules_list_page(page=0)
+        await safe_edit_text(callback, text, reply_markup=markup)
     else:
         await safe_edit_text(
             callback,

@@ -56,7 +56,10 @@ _CHANNEL_LINK_BUTTONS = [
 
 
 async def menu_keyboard(
-    permissions: set[str], *, has_mentor: bool = True
+    permissions: set[str],
+    *,
+    has_mentor: bool = True,
+    has_directions: bool = True,
 ) -> InlineKeyboardMarkup:
     needed_keys: list[str] = []
     buttons_spec: list[tuple[str, str]] = []  # (ui_text_key, callback_data)
@@ -73,6 +76,8 @@ async def menu_keyboard(
 
     for perm, key, cb in _LEAD_BUTTONS:
         if perm in permissions:
+            if perm == "view_direction_students" and not has_directions:
+                continue
             needed_keys.append(key)
             buttons_spec.append((key, cb))
 

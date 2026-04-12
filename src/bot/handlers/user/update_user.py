@@ -38,7 +38,9 @@ from src.utils.onboarding import (
     schedule_onboarding_for_mentor,
     notify_student_new_mentor,
 )
+from src.bot.keyboards.utils import format_username_display
 from src.utils.escape import e
+from src.utils.roles import is_mentor
 from src.bot.utils import safe_message as _msg
 
 router = Router(name="update-user-fsm")
@@ -116,13 +118,17 @@ async def _build_user_info(user_telegram_id: int) -> str:
     if not user:
         return "Пользователь не найден."
 
-    mentee = await MenteeDAO.find_by_telegram_id(user_telegram_id)
-    mentor_name = "Отсутствует"
-    mentor_username = ""
-    if mentee and mentee.mentor:
-        mentor_name = mentee.mentor.name or "Отсутствует"
-        if mentee.mentor.user and mentee.mentor.user.username:
-            mentor_username = f" @{e(mentee.mentor.user.username)}"
+    mentor_line = ""
+    if not is_mentor(user):
+        mentee = await MenteeDAO.find_by_telegram_id(user_telegram_id)
+        mentor_name = "Отсутствует"
+        mentor_username = ""
+        if mentee and mentee.mentor:
+            mentor_name = mentee.mentor.name or "Отсутствует"
+            mentor_username = format_username_display(
+                mentee.mentor.user.username if mentee.mentor.user else None,
+            )
+        mentor_line = f"   • Ментор: <b>{e(mentor_name)}</b>{e(mentor_username)}\n"
 
     role_display = user.role_rel.display_name if user.role_rel else "—"
 
@@ -135,11 +141,11 @@ async def _build_user_info(user_telegram_id: int) -> str:
     if statuses:
         state_line = f"   • Состояние: <b>{e(', '.join(statuses))}</b>\n"
 
-    username_display = f" @{e(user.username)}" if user.username else ""
+    username_display = format_username_display(user.username)
 
     return (
         f"👤 <b>{e(user.name)}</b>{username_display}\n"
-        f"   • Ментор: <b>{e(mentor_name)}</b>{e(mentor_username)}\n"
+        f"{mentor_line}"
         f"   • Направления: <b>{e(cohort_display)}</b>\n"
         f"   • Роль: <b>{e(role_display)}</b>\n"
         f"{state_line}\n"
@@ -412,7 +418,7 @@ async def cb_choose_enum_value(
     else:
         value_human = value
 
-    username_part = f" @{e(user.username)}" if user.username else ""
+    username_part = format_username_display(user.username)
     await _msg(callback).edit_text(
         f"Пользователь {e(user.name)}{username_part}\n"
         f"{e(param_human.title())} обновлено на: {e(value_human)}",
@@ -468,7 +474,7 @@ async def cb_choose_mentor(
     else:
         value_human = "Профиль менти не найден для пользователя"
 
-    username_part = f" @{e(user.username)}" if user.username else ""
+    username_part = format_username_display(user.username)
     await _msg(callback).edit_text(
         f"Пользователь {e(user.name)}{username_part}\n"
         f"Ментор обновлено на: {e(value_human)}",

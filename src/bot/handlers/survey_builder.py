@@ -2,9 +2,10 @@ import logging
 import uuid
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from aiogram.fsm.context import FSMContext
 
+from src.bot.callbacks.pagination import PageNavCB
 from src.bot.callbacks.survey_builder import (
     SurveyBuilderActionCB,
     SurveyQuestionTypeCB,
@@ -17,6 +18,7 @@ from src.bot.callbacks.survey_builder import (
     SurveyTemplateToggleCB,
 )
 from src.bot.filters.permission import PermissionFilter
+from src.bot.keyboards.pagination import get_page_slice
 from src.bot.keyboards.survey_builder import (
     QUESTION_TYPE_LABELS,
     add_option_keyboard,
@@ -32,6 +34,7 @@ from src.bot.keyboards.survey_builder import (
     template_detail_keyboard,
     templates_list_keyboard,
 )
+from src.bot.pagination_search import filter_items
 from src.bot.states.survey_builder import SurveyBuilderFSM, SurveySendFSM
 from src.bot.utils import safe_edit_text
 from src.dao.survey_session import SurveySessionDAO
@@ -69,22 +72,61 @@ async def cb_surveys_menu(callback: CallbackQuery, state: FSMContext):
 # --- List templates ---
 
 
+async def _build_surveys_list_page(
+    page: int = 0, search_query: str | None = None
+) -> tuple[str, InlineKeyboardMarkup]:
+    service = SurveyTemplateService()
+    templates = await service.list_active()
+    filtered = (
+        filter_items(templates, search_query, "surveys_list")
+        if search_query
+        else templates
+    )
+    page_items, total_pages = get_page_slice(filtered, page)
+
+    if not filtered:
+        return "Нет созданных опросов.", templates_list_keyboard(
+            [], page=0, total_pages=1
+        )
+
+    lines = ["<b>Список опросов:</b>\n"]
+    for idx, t in enumerate(page_items):
+        global_num = page * 6 + idx + 1
+        status = "ON" if t.is_active else "OFF"
+        desc = t.description or "—"
+        lines.append(f"{global_num}. [{status}] {e(t.title)}\n   Описание: {e(desc)}")
+
+    text = "\n\n".join(lines)
+    markup = templates_list_keyboard(
+        list(page_items),
+        page=page,
+        total_pages=total_pages,
+        search_query=search_query,
+    )
+    return text, markup
+
+
 @router.callback_query(SurveyBuilderActionCB.filter(F.action == "list"))
 async def cb_list_templates(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
-    service = SurveyTemplateService()
-    templates = await service.list_active()
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("surveys_list")
+    text, markup = await _build_surveys_list_page(page=0, search_query=sq)
+    await safe_edit_text(callback, text, reply_markup=markup)
 
-    if not templates:
-        await safe_edit_text(callback, "Нет созданных опросов")
-        return
 
-    await safe_edit_text(
-        callback,
-        "Список опросов:",
-        reply_markup=templates_list_keyboard(templates),
+@router.callback_query(PageNavCB.filter(F.menu == "surveys_list"))
+async def cb_surveys_list_page(
+    callback: CallbackQuery, callback_data: PageNavCB, state: FSMContext
+):
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("surveys_list")
+    text, markup = await _build_surveys_list_page(
+        page=callback_data.page, search_query=sq
     )
+    await safe_edit_text(callback, text, reply_markup=markup)
+    await callback.answer()
 
 
 @router.callback_query(SurveyTemplateDetailCB.filter())
@@ -170,11 +212,8 @@ async def cb_delete_template(
 
     templates = await service.list_active()
     if templates:
-        await safe_edit_text(
-            callback,
-            "Список опросов:",
-            reply_markup=templates_list_keyboard(templates),
-        )
+        text, markup = await _build_surveys_list_page(page=0)
+        await safe_edit_text(callback, text, reply_markup=markup)
     else:
         await safe_edit_text(
             callback,
