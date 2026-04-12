@@ -28,7 +28,7 @@ class PaginationInputFilter(BaseFilter):
         if not message.text:
             return False
         data = await state.get_data()
-        return "_pagination_ctx" in data
+        return bool(data.get("_pagination_ctx"))
 
 
 def _cancel_keyboard() -> InlineKeyboardMarkup:
@@ -178,7 +178,13 @@ async def on_pagination_text_input(message: Message, state: FSMContext, bot: Bot
         page = int(text) - 1
         await state.update_data(_pagination_ctx=None)
         await _refresh_menu_by_msg_id(
-            bot, message.chat.id, original_msg_id, menu, page, state
+            bot,
+            message.chat.id,
+            original_msg_id,
+            menu,
+            page,
+            state,
+            user_id=message.from_user.id,
         )
 
     elif action == "search":
@@ -195,7 +201,13 @@ async def on_pagination_text_input(message: Message, state: FSMContext, bot: Bot
         search_map[menu] = text
         await state.update_data(_pagination_search=search_map, _pagination_ctx=None)
         await _refresh_menu_by_msg_id(
-            bot, message.chat.id, original_msg_id, menu, 0, state
+            bot,
+            message.chat.id,
+            original_msg_id,
+            menu,
+            0,
+            state,
+            user_id=message.from_user.id,
         )
 
 
@@ -213,13 +225,19 @@ async def _refresh_menu(
 
 
 async def _refresh_menu_by_msg_id(
-    bot: Bot, chat_id: int, message_id: int, menu: str, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    menu: str,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
     refresher = MENU_REFRESHERS_BY_MSG.get(menu)
     if not refresher:
         logger.warning("No msg refresher for menu %s", menu)
         return
-    await refresher(bot, chat_id, message_id, page, state)
+    await refresher(bot, chat_id, message_id, page, state, user_id)
 
 
 # ── Per-menu refresh functions ────────────────────────────────────────────
@@ -244,7 +262,12 @@ async def _refresh_users(callback: CallbackQuery, page: int, state: FSMContext):
 
 
 async def _refresh_users_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
     from src.bot.keyboards.user import users_keyboard
     from src.dao.user import UserDAO
@@ -274,7 +297,12 @@ async def _refresh_user_list(callback: CallbackQuery, page: int, state: FSMConte
 
 
 async def _refresh_user_list_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
     from src.bot.handlers.user.list import _build_user_list_page
 
@@ -299,7 +327,12 @@ async def _refresh_mentors(callback: CallbackQuery, page: int, state: FSMContext
 
 
 async def _refresh_mentors_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
     from src.bot.keyboards.user import mentors_keyboard
     from src.dao.user import UserDAO
@@ -329,9 +362,25 @@ async def _refresh_mentees(callback: CallbackQuery, page: int, state: FSMContext
 
 
 async def _refresh_mentees_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
-    logger.warning("mentees msg refresh not supported without user context")
+    from src.bot.keyboards.user import mentees_keyboard
+    from src.dao.mentee import MenteeDAO
+
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("mentees")
+    mentees = await MenteeDAO.get_by_mentor_telegram_id(user_id)
+    with suppress(TelegramBadRequest):
+        await bot.edit_message_reply_markup(
+            chat_id,
+            message_id,
+            reply_markup=mentees_keyboard(mentees, page=page, search_query=sq),
+        )
 
 
 async def _refresh_participants(callback: CallbackQuery, page: int, state: FSMContext):
@@ -360,10 +409,37 @@ async def _refresh_participants(callback: CallbackQuery, page: int, state: FSMCo
 
 
 async def _refresh_participants_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
-    # Participants refresh requires user_id context — handled via callback path
-    logger.warning("participants msg refresh not supported without user context")
+    from src.bot.keyboards.meeting import meeting_participants_multiselect_keyboard
+    from src.dao.mentee import MenteeDAO
+    from src.dao.user import UserDAO
+
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("participants")
+    selected = data.get("selected_participant_ids", [])
+    showing_all = data.get("showing_all", False)
+    if showing_all:
+        users = await UserDAO.get_all(include_placeholders=True)
+    else:
+        users = await MenteeDAO.get_by_mentor_telegram_id(user_id)
+    with suppress(TelegramBadRequest):
+        await bot.edit_message_reply_markup(
+            chat_id,
+            message_id,
+            reply_markup=meeting_participants_multiselect_keyboard(
+                users,
+                selected_ids=set(selected),
+                page=page,
+                show_all_button=not showing_all,
+                search_query=sq,
+            ),
+        )
 
 
 async def _refresh_meetings(callback: CallbackQuery, page: int, state: FSMContext):
@@ -394,9 +470,36 @@ async def _refresh_meetings(callback: CallbackQuery, page: int, state: FSMContex
 
 
 async def _refresh_meetings_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
-    logger.warning("meetings msg refresh not supported without user context")
+    from src.bot.keyboards.meeting import mentor_meetings_keyboard
+    from src.dao.meeting import MeetingDAO
+    from src.dao.mentor import MentorDAO
+
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("meetings")
+    from src.bot.handlers.meeting import _filter_visible_meetings, _format_meetings
+
+    meetings = await MeetingDAO.get_for_user(user_id, hide_past=True)
+    mentor_tg_ids = await MentorDAO.get_telegram_ids()
+    visible = _filter_visible_meetings(
+        meetings, user_id, viewer_is_mentor=True, mentor_tg_ids=mentor_tg_ids
+    )
+    text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=page)
+    with suppress(TelegramBadRequest):
+        await bot.edit_message_text(
+            text,
+            chat_id,
+            message_id,
+            reply_markup=mentor_meetings_keyboard(
+                visible, page=page, viewer_id=user_id, search_query=sq
+            ),
+        )
 
 
 async def _refresh_past_meetings(callback: CallbackQuery, page: int, state: FSMContext):
@@ -433,9 +536,41 @@ async def _refresh_past_meetings(callback: CallbackQuery, page: int, state: FSMC
 
 
 async def _refresh_past_meetings_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
-    logger.warning("past_meetings msg refresh not supported without user context")
+    from src.bot.keyboards.meeting import (
+        mentor_past_meetings_keyboard,
+        student_past_meetings_keyboard,
+    )
+    from src.dao.meeting import MeetingDAO
+    from src.dao.mentor import MentorDAO
+
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("past_meetings")
+    from src.bot.handlers.meeting import _filter_visible_meetings, _format_meetings
+
+    meetings = await MeetingDAO.get_for_user(user_id, only_past=True)
+    mentor_tg_ids = await MentorDAO.get_telegram_ids()
+    is_mentor = user_id in mentor_tg_ids
+    visible = _filter_visible_meetings(
+        meetings, user_id, viewer_is_mentor=is_mentor, mentor_tg_ids=mentor_tg_ids
+    )
+    text = _format_meetings(
+        visible, mentor_tg_ids=mentor_tg_ids, page=page, title="Завершённые созвоны:"
+    )
+    if is_mentor:
+        markup = mentor_past_meetings_keyboard(
+            visible, page=page, viewer_id=user_id, search_query=sq
+        )
+    else:
+        markup = student_past_meetings_keyboard(visible, page=page, search_query=sq)
+    with suppress(TelegramBadRequest):
+        await bot.edit_message_text(text, chat_id, message_id, reply_markup=markup)
 
 
 async def _refresh_meeting_types(callback: CallbackQuery, page: int, state: FSMContext):
@@ -450,7 +585,12 @@ async def _refresh_meeting_types(callback: CallbackQuery, page: int, state: FSMC
 
 
 async def _refresh_meeting_types_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
     from src.bot.keyboards.meeting import meeting_type_keyboard
 
@@ -480,7 +620,12 @@ async def _refresh_cohorts(callback: CallbackQuery, page: int, state: FSMContext
 
 
 async def _refresh_cohorts_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
     from src.bot.keyboards.cohort import cohort_types_keyboard
     from src.dao.cohort import CohortDAO
@@ -511,7 +656,12 @@ async def _refresh_mstats(callback: CallbackQuery, page: int, state: FSMContext)
 
 
 async def _refresh_mstats_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
     from src.bot.keyboards.mentor_stats import mentor_select_keyboard
     from src.dao.mentor import MentorDAO
@@ -537,7 +687,12 @@ async def _refresh_channel_links(callback: CallbackQuery, page: int, state: FSMC
 
 
 async def _refresh_channel_links_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
     from src.bot.keyboards.lead_source import channel_links_keyboard
     from src.dao.lead_source import LeadSourceDAO
@@ -585,9 +740,25 @@ async def _refresh_students(callback: CallbackQuery, page: int, state: FSMContex
 
 
 async def _refresh_students_msg(
-    bot: Bot, chat_id: int, message_id: int, page: int, state: FSMContext
+    bot: Bot,
+    chat_id: int,
+    message_id: int,
+    page: int,
+    state: FSMContext,
+    user_id: int = 0,
 ):
-    logger.warning("students msg refresh not supported without user context")
+    from src.bot.keyboards.meeting import meeting_students_keyboard
+    from src.dao.mentee import MenteeDAO
+
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("students")
+    mentees = await MenteeDAO.get_by_mentor_telegram_id(user_id)
+    with suppress(TelegramBadRequest):
+        await bot.edit_message_reply_markup(
+            chat_id,
+            message_id,
+            reply_markup=meeting_students_keyboard(mentees, page=page, search_query=sq),
+        )
 
 
 # ── Dispatch tables ───────────────────────────────────────────────────────
