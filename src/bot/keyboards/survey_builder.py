@@ -34,9 +34,6 @@ def survey_builder_menu_keyboard() -> InlineKeyboardMarkup:
     builder.button(
         text="Список опросов", callback_data=SurveyBuilderActionCB(action="list")
     )
-    builder.button(
-        text="Результаты", callback_data=SurveyBuilderActionCB(action="results")
-    )
     builder.button(text="⬅️ Назад", callback_data="back_to_menu")
     builder.adjust(1)
     return builder.as_markup()
@@ -99,6 +96,12 @@ def templates_list_keyboard(
         )
         item_buttons.append(
             InlineKeyboardButton(
+                text=f"📊 #{num}",
+                callback_data=SurveyResultsTemplateCB(template_id=t.id).pack(),
+            )
+        )
+        item_buttons.append(
+            InlineKeyboardButton(
                 text=f"Отправить #{num}",
                 callback_data=SurveySendSelectCB(template_id=t.id).pack(),
             )
@@ -108,7 +111,7 @@ def templates_list_keyboard(
         page=page,
         total_pages=total_pages,
         item_buttons=item_buttons,
-        columns=2,
+        columns=3,
         search_query=search_query,
         back_button=InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_surveys"),
     )
@@ -128,18 +131,6 @@ def template_detail_keyboard(template: SurveyTemplate) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def results_templates_keyboard(templates: list[SurveyTemplate]) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    for t in templates:
-        builder.button(
-            text=t.title,
-            callback_data=SurveyResultsTemplateCB(template_id=t.id),
-        )
-    builder.button(text="⬅️ Назад", callback_data="menu_surveys")
-    builder.adjust(1)
-    return builder.as_markup()
-
-
 def results_sessions_keyboard(sessions: list[SurveySession]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for s in sessions:
@@ -148,9 +139,7 @@ def results_sessions_keyboard(sessions: list[SurveySession]) -> InlineKeyboardMa
             text=f"#{s.id} ({date_str})",
             callback_data=SurveyResultsSessionCB(session_id=s.id),
         )
-    builder.button(
-        text="⬅️ Назад", callback_data=SurveyBuilderActionCB(action="results")
-    )
+    builder.button(text="⬅️ Назад", callback_data=SurveyBuilderActionCB(action="list"))
     builder.adjust(1)
     return builder.as_markup()
 

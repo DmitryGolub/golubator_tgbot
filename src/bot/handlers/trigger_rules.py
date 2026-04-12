@@ -77,6 +77,14 @@ async def cb_triggers_menu(callback: CallbackQuery, state: FSMContext):
 # --- List ---
 
 
+def _format_delay(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds} сек"
+    if seconds < 3600:
+        return f"{seconds // 60} мин"
+    return f"{seconds // 3600} ч"
+
+
 async def _build_rules_list_page(
     page: int = 0, search_query: str | None = None
 ) -> tuple[str, InlineKeyboardMarkup]:
@@ -94,9 +102,21 @@ async def _build_rules_list_page(
         trigger_label = TRIGGER_TYPE_LABELS.get(
             r.trigger_type.value, r.trigger_type.value
         )
-        lines.append(
-            f"{global_num}. [{status}] {e(r.name)}\n   Триггер: {e(trigger_label)}"
+        action_label = ACTION_TYPE_LABELS.get(r.action_type.value, r.action_type.value)
+        recipient_label = RECIPIENT_TYPE_LABELS.get(
+            r.recipient_type.value, r.recipient_type.value
         )
+        entry = (
+            f"{global_num}. [{status}] {e(r.name)}\n"
+            f"   Триггер: {e(trigger_label)}\n"
+            f"   Действие: {e(action_label)}\n"
+            f"   Получатели: {e(recipient_label)}"
+        )
+        if r.delay_seconds:
+            entry += f"\n   Задержка: {_format_delay(r.delay_seconds)}"
+        if r.trigger_type.value == "periodic_cron" and r.periodic_cron:
+            entry += f"\n   Расписание: {e(r.periodic_cron)}"
+        lines.append(entry)
 
     text = "\n\n".join(lines)
     markup = rules_list_keyboard(

@@ -2,7 +2,12 @@ import logging
 import uuid
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from aiogram.fsm.context import FSMContext
 
 from src.bot.callbacks.pagination import PageNavCB
@@ -26,7 +31,6 @@ from src.bot.keyboards.survey_builder import (
     cancel_keyboard,
     question_type_keyboard,
     results_sessions_keyboard,
-    results_templates_keyboard,
     survey_builder_menu_keyboard,
     survey_send_confirm_keyboard,
     survey_send_recipient_type_keyboard,
@@ -496,23 +500,6 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
 # --- Results ---
 
 
-@router.callback_query(SurveyBuilderActionCB.filter(F.action == "results"))
-async def cb_results_templates(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await state.clear()
-    service = SurveyTemplateService()
-    templates = await service.list_active()
-    if not templates:
-        await safe_edit_text(callback, "Нет опросов")
-        return
-
-    await safe_edit_text(
-        callback,
-        "Выберите опрос для просмотра результатов:",
-        reply_markup=results_templates_keyboard(templates),
-    )
-
-
 @router.callback_query(SurveyResultsTemplateCB.filter())
 async def cb_results_sessions(
     callback: CallbackQuery, callback_data: SurveyResultsTemplateCB
@@ -522,10 +509,20 @@ async def cb_results_sessions(
         callback_data.template_id
     )
     if not sessions:
+        back_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️ Назад",
+                        callback_data=SurveyBuilderActionCB(action="list").pack(),
+                    )
+                ]
+            ]
+        )
         await safe_edit_text(
             callback,
             "Завершённых сессий нет.",
-            reply_markup=survey_builder_menu_keyboard(),
+            reply_markup=back_kb,
         )
         return
 
@@ -545,10 +542,20 @@ async def cb_results_session_detail(
     try:
         session = await service.get_session(callback_data.session_id)
     except SessionNotFoundError:
+        back_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️ Назад",
+                        callback_data=SurveyBuilderActionCB(action="list").pack(),
+                    )
+                ]
+            ]
+        )
         await safe_edit_text(
             callback,
             "Сессия не найдена.",
-            reply_markup=survey_builder_menu_keyboard(),
+            reply_markup=back_kb,
         )
         return
 
@@ -580,10 +587,22 @@ async def cb_results_session_detail(
             val = "—"
         lines.append(f"<b>{q_title}</b>\n  {val}")
 
+    back_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Назад",
+                    callback_data=SurveyResultsTemplateCB(
+                        template_id=session.template_id
+                    ).pack(),
+                )
+            ]
+        ]
+    )
     await safe_edit_text(
         callback,
         "\n".join(lines),
-        reply_markup=survey_builder_menu_keyboard(),
+        reply_markup=back_kb,
     )
 
 
