@@ -57,17 +57,6 @@ RECIPIENT_TYPE_LABELS = {
 }
 
 
-def trigger_menu_keyboard() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.button(
-        text="Создать правило", callback_data=TriggerActionCB(action="create")
-    )
-    builder.button(text="Список правил", callback_data=TriggerActionCB(action="list"))
-    builder.button(text="⬅️ Назад", callback_data="back_to_menu")
-    builder.adjust(1)
-    return builder.as_markup()
-
-
 def trigger_type_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for value, label in TRIGGER_TYPE_LABELS.items():
@@ -134,7 +123,7 @@ def rules_list_keyboard(
                 )
             ]
         ],
-        back_button=InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_triggers"),
+        back_button=InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"),
     )
 
 
@@ -143,7 +132,7 @@ def rule_detail_keyboard(rule: TriggerRule) -> InlineKeyboardMarkup:
     toggle_text = "Выключить" if rule.is_active else "Включить"
     builder.button(text=toggle_text, callback_data=TriggerRuleToggleCB(rule_id=rule.id))
     builder.button(text="Удалить", callback_data=TriggerRuleDeleteCB(rule_id=rule.id))
-    builder.button(text="⬅️ Назад", callback_data=TriggerActionCB(action="list"))
+    builder.button(text="⬅️ Назад", callback_data="menu_triggers")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -154,7 +143,7 @@ def confirm_delete_rule_keyboard(rule_id: int) -> InlineKeyboardMarkup:
         text="Да, удалить",
         callback_data=TriggerRuleConfirmDeleteCB(rule_id=rule_id),
     )
-    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="list"))
+    builder.button(text="❌ Отмена", callback_data="menu_triggers")
     builder.adjust(2)
     return builder.as_markup()
 

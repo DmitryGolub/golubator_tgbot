@@ -39,7 +39,6 @@ from src.bot.keyboards.trigger_rules import (
     rules_list_keyboard,
     schedule_mode_keyboard,
     survey_templates_keyboard,
-    trigger_menu_keyboard,
     trigger_type_keyboard,
 )
 from src.bot.pagination_search import filter_items
@@ -64,11 +63,10 @@ router.callback_query.filter(PermissionFilter("manage_triggers"))
 async def cb_triggers_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    await safe_edit_text(
-        callback,
-        await UiTextService.get("trigger.menu.title"),
-        reply_markup=trigger_menu_keyboard(),
-    )
+    data = await state.get_data()
+    sq = (data.get("_pagination_search") or {}).get("rules")
+    text, markup = await _build_rules_list_page(page=0, search_query=sq)
+    await safe_edit_text(callback, text, reply_markup=markup)
 
 
 # --- List ---
@@ -123,20 +121,6 @@ async def _build_rules_list_page(
         search_query=search_query,
     )
     return text, markup
-
-
-@router.callback_query(TriggerActionCB.filter(F.action == "list"))
-async def cb_list_rules(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    rules = await TriggerRuleDAO.get_all()
-    if not rules:
-        await callback.answer(await UiTextService.get("trigger.no_rules"))
-        return
-    await callback.answer()
-    data = await state.get_data()
-    sq = (data.get("_pagination_search") or {}).get("rules")
-    text, markup = await _build_rules_list_page(page=0, search_query=sq)
-    await safe_edit_text(callback, text, reply_markup=markup)
 
 
 @router.callback_query(PageNavCB.filter(F.menu == "rules"))
@@ -224,11 +208,8 @@ async def cb_delete_rule_confirm(
     await callback.answer()
     rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
     if not rule:
-        await safe_edit_text(
-            callback,
-            await UiTextService.get("trigger.rule_not_found"),
-            reply_markup=trigger_menu_keyboard(),
-        )
+        text, markup = await _build_rules_list_page(page=0)
+        await safe_edit_text(callback, text, reply_markup=markup)
         return
     await safe_edit_text(
         callback,
@@ -251,11 +232,8 @@ async def cb_delete_rule(
         text, markup = await _build_rules_list_page(page=0)
         await safe_edit_text(callback, text, reply_markup=markup)
     else:
-        await safe_edit_text(
-            callback,
-            await UiTextService.get("trigger.menu.title"),
-            reply_markup=trigger_menu_keyboard(),
-        )
+        text, markup = await _build_rules_list_page(page=0)
+        await safe_edit_text(callback, text, reply_markup=markup)
 
 
 # --- Create rule FSM ---
@@ -687,12 +665,13 @@ async def msg_delay(message: Message, state: FSMContext):
         rule.action_type.value, rule.action_type.value
     )
 
+    text, markup = await _build_rules_list_page(page=0)
     await message.answer(
         f"Правило <b>{e(rule.name)}</b> создано.\n\n"
         f"Триггер: {e(trigger_label)}\n"
         f"Действие: {e(action_label)}\n"
-        f"Задержка: {delay} сек",
-        reply_markup=trigger_menu_keyboard(),
+        f"Задержка: {delay} сек\n\n{text}",
+        reply_markup=markup,
     )
 
 
@@ -703,8 +682,5 @@ async def msg_delay(message: Message, state: FSMContext):
 async def cb_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("Отменено")
-    await safe_edit_text(
-        callback,
-        await UiTextService.get("trigger.menu.title"),
-        reply_markup=trigger_menu_keyboard(),
-    )
+    text, markup = await _build_rules_list_page(page=0)
+    await safe_edit_text(callback, text, reply_markup=markup)
