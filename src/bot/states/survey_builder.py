@@ -9,3 +9,9 @@ class SurveyBuilderFSM(StatesGroup):
     configuring_rating_min = State()
     configuring_rating_max = State()
     adding_option_label = State()
+
+
+class SurveySendFSM(StatesGroup):
+    choosing_recipient_type = State()
+    configuring_recipients = State()
+    confirming = State()

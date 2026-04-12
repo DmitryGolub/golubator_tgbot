@@ -27,3 +27,11 @@ class SurveyResultsTemplateCB(CallbackData, prefix="sb_res_tmpl"):
 
 class SurveyResultsSessionCB(CallbackData, prefix="sb_res_sess"):
     session_id: int
+
+
+class SurveySendSelectCB(CallbackData, prefix="ss_select"):
+    template_id: int
+
+
+class SurveySendRecipientCB(CallbackData, prefix="ss_rtype"):
+    value: str

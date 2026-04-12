@@ -388,7 +388,7 @@ async def cb_toggle_participant(
 
     showing_all = data.get("showing_all", False)
     if showing_all:
-        users = await UserDAO.get_all()
+        users = await UserDAO.get_all(include_placeholders=True)
     else:
         users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     for attempt in range(3):
@@ -420,7 +420,7 @@ async def cb_show_all_users(callback: CallbackQuery, state: FSMContext):
     selected: list[int] = data.get("selected_participant_ids", [])
     await state.update_data(showing_all=True)
 
-    users = await UserDAO.get_all()
+    users = await UserDAO.get_all(include_placeholders=True)
     await callback.message.edit_reply_markup(
         reply_markup=meeting_participants_multiselect_keyboard(
             users, selected_ids=set(selected), show_all_button=False
@@ -1107,7 +1107,7 @@ async def cb_edit_toggle_participant(
 
     showing_all = data.get("showing_all", False)
     if showing_all:
-        users = await UserDAO.get_all()
+        users = await UserDAO.get_all(include_placeholders=True)
     else:
         users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     for attempt in range(3):
@@ -1138,7 +1138,7 @@ async def cb_edit_show_all_users(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     selected: list[int] = data.get("selected_participant_ids", [])
     await state.update_data(showing_all=True)
-    users = await UserDAO.get_all()
+    users = await UserDAO.get_all(include_placeholders=True)
     await callback.message.edit_reply_markup(
         reply_markup=meeting_participants_multiselect_keyboard(
             users, selected_ids=set(selected), show_all_button=False
@@ -1439,7 +1439,7 @@ async def cb_participants_page(
     selected: list[int] = data.get("selected_participant_ids", [])
     showing_all = data.get("showing_all", False)
     if showing_all:
-        users = await UserDAO.get_all()
+        users = await UserDAO.get_all(include_placeholders=True)
     else:
         users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     await callback.message.edit_reply_markup(

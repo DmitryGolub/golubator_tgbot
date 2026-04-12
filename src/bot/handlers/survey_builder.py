@@ -10,6 +10,8 @@ from src.bot.callbacks.survey_builder import (
     SurveyQuestionTypeCB,
     SurveyResultsSessionCB,
     SurveyResultsTemplateCB,
+    SurveySendRecipientCB,
+    SurveySendSelectCB,
     SurveyTemplateDeleteCB,
     SurveyTemplateDetailCB,
     SurveyTemplateToggleCB,
@@ -24,10 +26,13 @@ from src.bot.keyboards.survey_builder import (
     results_sessions_keyboard,
     results_templates_keyboard,
     survey_builder_menu_keyboard,
+    survey_send_confirm_keyboard,
+    survey_send_recipient_type_keyboard,
+    survey_send_templates_keyboard,
     template_detail_keyboard,
     templates_list_keyboard,
 )
-from src.bot.states.survey_builder import SurveyBuilderFSM
+from src.bot.states.survey_builder import SurveyBuilderFSM, SurveySendFSM
 from src.bot.utils import safe_edit_text
 from src.dao.survey_session import SurveySessionDAO
 from src.dao.user import UserDAO
@@ -536,6 +541,155 @@ async def cb_results_session_detail(
     await safe_edit_text(
         callback,
         "\n".join(lines),
+        reply_markup=survey_builder_menu_keyboard(),
+    )
+
+
+# --- Manual send ---
+
+RECIPIENT_TYPE_LABELS = {
+    "by_role": "По роли",
+    "by_state": "По статусу",
+    "by_cohort": "По когорте",
+    "specific_users": "Конкретные пользователи",
+}
+
+RECIPIENT_HINTS = {
+    "by_role": "Введите название роли (например: mentor):",
+    "by_state": "Введите статус (greeting/hold/study/search/offer):",
+    "by_cohort": "Введите значение когорты:",
+    "specific_users": "Введите Telegram ID пользователей через запятую:",
+}
+
+
+@router.callback_query(SurveyBuilderActionCB.filter(F.action == "send"))
+async def cb_send_menu(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.clear()
+    service = SurveyTemplateService()
+    templates = await service.list_active()
+
+    if not templates:
+        await safe_edit_text(
+            callback,
+            "Нет активных опросов для отправки.",
+            reply_markup=survey_builder_menu_keyboard(),
+        )
+        return
+
+    await safe_edit_text(
+        callback,
+        "Выберите опрос для отправки:",
+        reply_markup=survey_send_templates_keyboard(templates),
+    )
+
+
+@router.callback_query(SurveySendSelectCB.filter())
+async def cb_send_select_template(
+    callback: CallbackQuery, callback_data: SurveySendSelectCB, state: FSMContext
+):
+    await callback.answer()
+    service = SurveyTemplateService()
+    try:
+        template = await service.get(callback_data.template_id)
+    except TemplateNotFoundError:
+        await safe_edit_text(callback, "Опрос не найден.")
+        return
+
+    await state.update_data(
+        send_template_id=template.id,
+        send_template_title=template.title,
+    )
+    await state.set_state(SurveySendFSM.choosing_recipient_type)
+    await safe_edit_text(
+        callback,
+        f"Опрос: <b>{e(template.title)}</b>\n\nВыберите тип получателей:",
+        reply_markup=survey_send_recipient_type_keyboard(),
+    )
+
+
+@router.callback_query(
+    SurveySendFSM.choosing_recipient_type, SurveySendRecipientCB.filter()
+)
+async def cb_send_recipient_type(
+    callback: CallbackQuery, callback_data: SurveySendRecipientCB, state: FSMContext
+):
+    rt = callback_data.value
+    await state.update_data(send_recipient_type=rt)
+    await callback.answer()
+    await state.set_state(SurveySendFSM.configuring_recipients)
+    await safe_edit_text(callback, RECIPIENT_HINTS[rt], reply_markup=cancel_keyboard())
+
+
+@router.message(SurveySendFSM.configuring_recipients)
+async def msg_send_recipient_config(message: Message, state: FSMContext):
+    data = await state.get_data()
+    rt = data["send_recipient_type"]
+    text = message.text.strip()
+
+    config = {}
+    if rt == "by_role":
+        config = {"role_name": text}
+    elif rt == "by_state":
+        config = {"state": text}
+    elif rt == "by_cohort":
+        config = {"cohort_value": text}
+    elif rt == "specific_users":
+        user_ids = [
+            int(uid.strip()) for uid in text.split(",") if uid.strip().isdigit()
+        ]
+        if not user_ids:
+            await message.answer(
+                "Введите хотя бы один числовой Telegram ID через запятую."
+            )
+            return
+        config = {"user_ids": user_ids}
+
+    await state.update_data(send_recipient_config=config)
+    await state.set_state(SurveySendFSM.confirming)
+
+    template_title = e(data["send_template_title"])
+    rt_label = RECIPIENT_TYPE_LABELS.get(rt, rt)
+    config_str = text
+
+    await message.answer(
+        f"<b>Подтверждение отправки</b>\n\n"
+        f"Опрос: <b>{template_title}</b>\n"
+        f"Получатели: {rt_label}\n"
+        f"Конфигурация: <code>{e(config_str)}</code>",
+        reply_markup=survey_send_confirm_keyboard(),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(
+    SurveySendFSM.confirming, SurveyBuilderActionCB.filter(F.action == "send_confirm")
+)
+async def cb_send_confirm(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+
+    template_id = data["send_template_id"]
+    template_title = data["send_template_title"]
+    recipient_type = data["send_recipient_type"]
+    recipient_config = data["send_recipient_config"]
+
+    await safe_edit_text(callback, "Отправка опроса...")
+
+    from src.services.survey_direct_send import SurveyDirectSendService
+
+    sent = await SurveyDirectSendService.send_survey(
+        template_id=template_id,
+        template_title=template_title,
+        recipient_type=recipient_type,
+        recipient_config=recipient_config,
+        bot=callback.bot,
+    )
+
+    await state.clear()
+    await safe_edit_text(
+        callback,
+        f"Опрос <b>{e(template_title)}</b> отправлен.\nПолучателей: <b>{sent}</b>",
         reply_markup=survey_builder_menu_keyboard(),
     )
 
