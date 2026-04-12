@@ -168,6 +168,7 @@ class MeetingUser(Base):
         ForeignKey("iam.users.telegram_id", ondelete="CASCADE"),
         primary_key=True,
     )
+    accepted: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
 
     __table_args__ = (
         Index("ix_meeting_users_user_id", "user_id"),

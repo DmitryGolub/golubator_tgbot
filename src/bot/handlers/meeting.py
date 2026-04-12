@@ -5,7 +5,7 @@ from aiogram.filters import StateFilter
 from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
-from datetime import datetime, timedelta, date, timezone
+from datetime import datetime, date, timezone
 
 from src.utils.tz import MSK
 
@@ -52,10 +52,6 @@ from src.services.auth import AuthService
 from src.bot.utils import safe_edit_text
 from src.utils.escape import e
 import logging
-from src.tasks.meeting import (
-    notify_meeting_created,
-    notify_meeting_reminder,
-)
 from src.services.call_flow import (
     ActiveCallAlreadyExistsError,
     CallAlreadyExistsError,
@@ -737,26 +733,13 @@ async def _schedule_meeting_tasks(meeting) -> None:
 
     scheduled_utc = _to_utc_assuming_msk(scheduled_at)
 
-    # Legacy notifications (kept for backward compatibility during transition)
-    notify_meeting_created.delay(meeting_id)
-    logger.info("Scheduled notify_created for meeting %s", meeting_id)
-
-    now = datetime.now(timezone.utc)
-    if scheduled_utc:
-        reminder_eta = scheduled_utc - timedelta(minutes=5)
-        if reminder_eta > now:
-            notify_meeting_reminder.apply_async(args=[meeting_id], eta=reminder_eta)
-            logger.info(
-                "Scheduled reminder for meeting %s at %s", meeting_id, reminder_eta
-            )
-
     # Backward compat: first non-creator as student_id
     participant_ids = [p.telegram_id for p in meeting.participants]
     student_id = next(
         (pid for pid in participant_ids if pid != meeting.mentor_telegram_id), None
     )
 
-    # New trigger system
+    # Trigger system handles both created-notification and reminder
     try:
         from src.models.trigger import TriggerType
         from src.services.events.dispatcher import EventDispatcher
@@ -1288,20 +1271,21 @@ async def cb_confirm_meeting(callback: CallbackQuery, callback_data: ConfirmMeet
     await callback.answer()
     user_id = callback.from_user.id
 
-    meeting = await MeetingDAO.confirm_meeting(callback_data.meeting_id, user_id)
+    meeting, all_confirmed = await MeetingDAO.confirm_meeting(
+        callback_data.meeting_id, user_id
+    )
     if not meeting:
-        await callback.answer("Уже обработано или нет прав.", show_alert=True)
+        await callback.answer("Вы уже подтвердили или нет прав.", show_alert=True)
         return
 
-    if meeting.original_scheduled_at:
+    if meeting.original_scheduled_at and all_confirmed:
         # This was a reschedule proposal — clear original_scheduled_at
         meeting = await MeetingDAO.confirm_reschedule(meeting.id, user_id)
 
-    if meeting:
+    if all_confirmed and meeting:
         await _schedule_meeting_tasks(meeting)
 
-    # Notify all other participants about confirmation
-    if meeting:
+        # Notify all other participants that meeting is fully confirmed
         for p in meeting.participants:
             if p.telegram_id == user_id:
                 continue
@@ -1312,11 +1296,17 @@ async def cb_confirm_meeting(callback: CallbackQuery, callback_data: ConfirmMeet
                     "Failed to notify %s about confirmation: %s", p.telegram_id, exc
                 )
 
-    await safe_edit_text(
-        callback,
-        "✅ Созвон подтверждён.",
-        reply_markup=await _menu_kb(user_id),
-    )
+        await safe_edit_text(
+            callback,
+            "✅ Созвон подтверждён.",
+            reply_markup=await _menu_kb(user_id),
+        )
+    else:
+        await safe_edit_text(
+            callback,
+            "✅ Ваше подтверждение принято, ожидаем остальных участников.",
+            reply_markup=await _menu_kb(user_id),
+        )
 
 
 @router.callback_query(DeclineMeetingCB.filter())

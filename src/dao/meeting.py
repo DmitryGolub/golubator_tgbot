@@ -77,7 +77,15 @@ class MeetingDAO(BaseDAO):
             meeting_res = await session.execute(meeting_stmt)
             meeting: Meeting = meeting_res.scalar_one()
 
-            rows = [{"meeting_id": meeting.id, "user_id": uid} for uid in all_ids]
+            proposer_id = proposed_by or creator_id
+            rows = [
+                {
+                    "meeting_id": meeting.id,
+                    "user_id": uid,
+                    "accepted": True if uid == proposer_id else None,
+                }
+                for uid in all_ids
+            ]
             await session.execute(insert(MeetingUser).values(rows))
             await session.commit()
 
@@ -240,27 +248,63 @@ class MeetingDAO(BaseDAO):
     @classmethod
     async def confirm_meeting(
         cls, meeting_id: int, confirming_user_id: int
-    ) -> Optional[Meeting]:
-        """Confirm a pending proposal. The confirming user must not be the proposer."""
+    ) -> tuple[Optional[Meeting], bool]:
+        """Confirm a pending proposal for a single participant.
+
+        Returns (meeting, all_confirmed):
+        - (None, False) if already confirmed or no rights
+        - (meeting, False) if accepted but others still pending
+        - (meeting, True) if this was the last confirmation → proposal_status = confirmed
+        """
         async with async_session_maker() as session:
-            stmt = (
-                update(Meeting)
-                .where(
+            # Verify: meeting is pending and user is not the proposer
+            meeting_check = await session.execute(
+                select(Meeting.id).where(
                     Meeting.id == meeting_id,
                     Meeting.proposed_by != confirming_user_id,
                     Meeting.proposal_status == ProposalStatus.pending_confirmation,
                 )
-                .values(proposal_status=ProposalStatus.confirmed)
-                .returning(Meeting.id)
+            )
+            if meeting_check.scalar_one_or_none() is None:
+                return None, False
+
+            # Mark this participant as accepted (only if not yet accepted)
+            stmt = (
+                update(MeetingUser)
+                .where(
+                    MeetingUser.meeting_id == meeting_id,
+                    MeetingUser.user_id == confirming_user_id,
+                    MeetingUser.accepted.is_(None),
+                )
+                .values(accepted=True)
+                .returning(MeetingUser.user_id)
             )
             result = await session.execute(stmt)
-            updated_id = result.scalar_one_or_none()
+            if result.scalar_one_or_none() is None:
+                # Already confirmed by this user
+                return None, False
+
+            # Check if all participants have accepted
+            pending_count = (
+                await session.execute(
+                    select(func.count()).where(
+                        MeetingUser.meeting_id == meeting_id,
+                        MeetingUser.accepted.is_(None),
+                    )
+                )
+            ).scalar_one()
+
+            all_confirmed = pending_count == 0
+            if all_confirmed:
+                await session.execute(
+                    update(Meeting)
+                    .where(Meeting.id == meeting_id)
+                    .values(proposal_status=ProposalStatus.confirmed)
+                )
+
             await session.commit()
-
-            if updated_id is None:
-                return None
-
-            return await cls._reload_with_participants(session, meeting_id)
+            meeting = await cls._reload_with_participants(session, meeting_id)
+            return meeting, all_confirmed
 
     @classmethod
     async def decline_meeting(
