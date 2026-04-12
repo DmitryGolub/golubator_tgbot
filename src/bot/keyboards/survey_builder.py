@@ -1,6 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+
 from src.bot.callbacks.survey_builder import (
     SurveyBuilderActionCB,
     SurveyQuestionTypeCB,
@@ -12,7 +13,7 @@ from src.bot.callbacks.survey_builder import (
     SurveyTemplateDetailCB,
     SurveyTemplateToggleCB,
 )
-from src.bot.keyboards.pagination import paginate_buttons
+from src.bot.keyboards.pagination import DEFAULT_PAGE_SIZE, build_paginated_keyboard
 from src.bot.keyboards.utils import truncate_button_text
 from src.models.survey_session import SurveySession
 from src.models.survey_template import SurveyTemplate
@@ -91,19 +92,22 @@ def templates_list_keyboard(
     total_pages: int = 1,
     search_query: str | None = None,
 ) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    nav = paginate_buttons("surveys_list", page, total_pages, search_query)
-    if nav:
-        builder.row(*nav)
-    for idx, t in enumerate(templates):
-        global_num = page * 6 + idx + 1
-        builder.button(
-            text=f"Изменить #{global_num}",
-            callback_data=SurveyTemplateDetailCB(template_id=t.id),
+    item_buttons = [
+        InlineKeyboardButton(
+            text=f"Изменить #{page * DEFAULT_PAGE_SIZE + idx + 1}",
+            callback_data=SurveyTemplateDetailCB(template_id=t.id).pack(),
         )
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_surveys"))
-    return builder.as_markup()
+        for idx, t in enumerate(templates)
+    ]
+    return build_paginated_keyboard(
+        menu="surveys_list",
+        page=page,
+        total_pages=total_pages,
+        item_buttons=item_buttons,
+        columns=2,
+        search_query=search_query,
+        back_button=InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_surveys"),
+    )
 
 
 def template_detail_keyboard(template: SurveyTemplate) -> InlineKeyboardMarkup:

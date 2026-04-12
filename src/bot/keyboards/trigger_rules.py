@@ -17,7 +17,7 @@ from src.bot.callbacks.trigger_rules import (
     TriggerSurveyTemplateCB,
     TriggerTypeCB,
 )
-from src.bot.keyboards.pagination import paginate_buttons
+from src.bot.keyboards.pagination import DEFAULT_PAGE_SIZE, build_paginated_keyboard
 from src.models.trigger import TriggerRule
 
 
@@ -116,19 +116,22 @@ def rules_list_keyboard(
     total_pages: int = 1,
     search_query: str | None = None,
 ) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    nav = paginate_buttons("rules", page, total_pages, search_query)
-    if nav:
-        builder.row(*nav)
-    for idx, r in enumerate(rules):
-        global_num = page * 6 + idx + 1
-        builder.button(
-            text=f"Изменить #{global_num}",
-            callback_data=TriggerRuleDetailCB(rule_id=r.id),
+    item_buttons = [
+        InlineKeyboardButton(
+            text=f"Изменить #{page * DEFAULT_PAGE_SIZE + idx + 1}",
+            callback_data=TriggerRuleDetailCB(rule_id=r.id).pack(),
         )
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_triggers"))
-    return builder.as_markup()
+        for idx, r in enumerate(rules)
+    ]
+    return build_paginated_keyboard(
+        menu="rules",
+        page=page,
+        total_pages=total_pages,
+        item_buttons=item_buttons,
+        columns=2,
+        search_query=search_query,
+        back_button=InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_triggers"),
+    )
 
 
 def rule_detail_keyboard(rule: TriggerRule) -> InlineKeyboardMarkup:

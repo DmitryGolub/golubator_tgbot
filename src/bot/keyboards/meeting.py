@@ -20,12 +20,13 @@ from src.bot.callbacks.meeting import (
     ChooseMeetingTimeCB,
     ToggleMeetingParticipantCB,
 )
-from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
+from src.bot.keyboards.pagination import (
+    DEFAULT_PAGE_SIZE,
+    get_page_slice,
+    paginate_buttons,
+)
 from src.bot.keyboards.utils import format_user_label
 from src.models.meeting import Meeting, ProposalStatus
-
-
-MEETINGS_PAGE_SIZE = 5
 
 
 def pending_meeting_keyboard(meeting_id: int) -> InlineKeyboardMarkup:
@@ -99,14 +100,12 @@ def mentor_meetings_keyboard(
 
     kb = InlineKeyboardBuilder()
 
-    page_size = MEETINGS_PAGE_SIZE
     all_meetings = meetings or []
     if search_query:
         all_meetings = filter_items(all_meetings, search_query, "meetings")
-    total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
+    page_meetings, total_pages = get_page_slice(all_meetings, page)
     page = max(0, min(page, total_pages - 1))
-    start = page * page_size
-    page_meetings = all_meetings[start : start + page_size]
+    start = page * DEFAULT_PAGE_SIZE
 
     nav = paginate_buttons("meetings", page, total_pages, search_query=search_query)
     if nav:
@@ -198,14 +197,12 @@ def student_meetings_keyboard(
 
     kb = InlineKeyboardBuilder()
 
-    page_size = MEETINGS_PAGE_SIZE
     all_meetings = meetings or []
     if search_query:
         all_meetings = filter_items(all_meetings, search_query, "meetings")
-    total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
+    page_meetings, total_pages = get_page_slice(all_meetings, page)
     page = max(0, min(page, total_pages - 1))
-    start = page * page_size
-    page_meetings = all_meetings[start : start + page_size]
+    start = page * DEFAULT_PAGE_SIZE
 
     nav = paginate_buttons("meetings", page, total_pages, search_query=search_query)
     if nav:
@@ -455,7 +452,7 @@ def meeting_type_keyboard(
     ]
     if search_query:
         buttons = filter_items(buttons, search_query, "meeting_types")
-    page_items, total_pages = get_page_slice(buttons, page, page_size=5)
+    page_items, total_pages = get_page_slice(buttons, page)
 
     kb = InlineKeyboardBuilder()
 
@@ -508,14 +505,12 @@ def mentor_past_meetings_keyboard(
 
     kb = InlineKeyboardBuilder()
 
-    page_size = MEETINGS_PAGE_SIZE
     all_meetings = meetings or []
     if search_query:
         all_meetings = filter_items(all_meetings, search_query, "past_meetings")
-    total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
+    page_meetings, total_pages = get_page_slice(all_meetings, page)
     page = max(0, min(page, total_pages - 1))
-    start = page * page_size
-    page_meetings = all_meetings[start : start + page_size]
+    start = page * DEFAULT_PAGE_SIZE
 
     nav = paginate_buttons(
         "past_meetings", page, total_pages, search_query=search_query
@@ -551,11 +546,10 @@ def student_past_meetings_keyboard(
 
     kb = InlineKeyboardBuilder()
 
-    page_size = MEETINGS_PAGE_SIZE
     all_meetings = meetings or []
     if search_query:
         all_meetings = filter_items(all_meetings, search_query, "past_meetings")
-    total_pages = max(1, (len(all_meetings) + page_size - 1) // page_size)
+    _page_items, total_pages = get_page_slice(all_meetings, page)
     page = max(0, min(page, total_pages - 1))
 
     nav = paginate_buttons(
