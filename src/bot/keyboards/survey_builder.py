@@ -113,7 +113,15 @@ def templates_list_keyboard(
         item_buttons=item_buttons,
         columns=3,
         search_query=search_query,
-        back_button=InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_surveys"),
+        extra_rows=[
+            [
+                InlineKeyboardButton(
+                    text="Создать опрос",
+                    callback_data=SurveyBuilderActionCB(action="create").pack(),
+                )
+            ]
+        ],
+        back_button=InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"),
     )
 
 

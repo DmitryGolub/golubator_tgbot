@@ -31,7 +31,6 @@ from src.bot.keyboards.survey_builder import (
     cancel_keyboard,
     question_type_keyboard,
     results_sessions_keyboard,
-    survey_builder_menu_keyboard,
     survey_send_confirm_keyboard,
     survey_send_recipient_type_keyboard,
     template_detail_keyboard,
@@ -48,7 +47,6 @@ from src.services.survey_template import (
     SurveyTemplateService,
     TemplateNotFoundError,
 )
-from src.services.ui_text import UiTextService
 from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
@@ -65,11 +63,8 @@ router.callback_query.filter(PermissionFilter("manage_surveys"))
 async def cb_surveys_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    await safe_edit_text(
-        callback,
-        await UiTextService.get("survey.menu.title"),
-        reply_markup=survey_builder_menu_keyboard(),
-    )
+    text, markup = await _build_surveys_list_page(page=0)
+    await safe_edit_text(callback, text, reply_markup=markup)
 
 
 # --- List templates ---
@@ -213,16 +208,8 @@ async def cb_delete_template(
         await safe_edit_text(callback, "Произошла ошибка")
         return
 
-    templates = await service.list_active()
-    if templates:
-        text, markup = await _build_surveys_list_page(page=0)
-        await safe_edit_text(callback, text, reply_markup=markup)
-    else:
-        await safe_edit_text(
-            callback,
-            await UiTextService.get("survey.menu.title"),
-            reply_markup=survey_builder_menu_keyboard(),
-        )
+    text, markup = await _build_surveys_list_page(page=0)
+    await safe_edit_text(callback, text, reply_markup=markup)
 
 
 # --- Create template FSM ---
@@ -488,12 +475,13 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
         )
         questions_text += f"\n  {q.sort_order}. {q.title} [{type_label}]"
 
+    text, markup = await _build_surveys_list_page(page=0)
     await safe_edit_text(
         callback,
         f"Опрос <b>{template.title}</b> создан.\n"
         f"Slug: <code>{template.slug}</code>\n"
-        f"Вопросов: {len(template.questions)}{questions_text}",
-        reply_markup=survey_builder_menu_keyboard(),
+        f"Вопросов: {len(template.questions)}{questions_text}\n\n{text}",
+        reply_markup=markup,
     )
 
 
@@ -726,10 +714,11 @@ async def cb_send_confirm(callback: CallbackQuery, state: FSMContext):
     )
 
     await state.clear()
+    text, markup = await _build_surveys_list_page(page=0)
     await safe_edit_text(
         callback,
-        f"Опрос <b>{e(template_title)}</b> отправлен.\nПолучателей: <b>{sent}</b>",
-        reply_markup=survey_builder_menu_keyboard(),
+        f"Опрос <b>{e(template_title)}</b> отправлен.\nПолучателей: <b>{sent}</b>\n\n{text}",
+        reply_markup=markup,
     )
 
 
@@ -740,8 +729,5 @@ async def cb_send_confirm(callback: CallbackQuery, state: FSMContext):
 async def cb_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("Отменено")
-    await safe_edit_text(
-        callback,
-        await UiTextService.get("survey.menu.title"),
-        reply_markup=survey_builder_menu_keyboard(),
-    )
+    text, markup = await _build_surveys_list_page(page=0)
+    await safe_edit_text(callback, text, reply_markup=markup)

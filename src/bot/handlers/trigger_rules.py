@@ -114,8 +114,8 @@ async def _build_rules_list_page(
         )
         if r.delay_seconds:
             entry += f"\n   Задержка: {_format_delay(r.delay_seconds)}"
-        if r.trigger_type.value == "periodic_cron" and r.periodic_cron:
-            entry += f"\n   Расписание: {e(r.periodic_cron)}"
+        if r.trigger_type.value == "periodic_cron" and r.cron_expression:
+            entry += f"\n   Расписание: {e(r.cron_expression)}"
         lines.append(entry)
 
     text = "\n\n".join(lines)
