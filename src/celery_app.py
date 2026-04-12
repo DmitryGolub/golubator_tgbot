@@ -50,6 +50,11 @@ celery_app.conf.update(
             "task": "notion.backup_pull_cohorts",
             "schedule": crontab(minute="*/5"),
         },
+        # Meetings: auto-start confirmed meetings whose scheduled_at has passed
+        "meeting.auto_start_due_calls": {
+            "task": "meeting.auto_start_due_calls",
+            "schedule": crontab(minute="*"),
+        },
         # Triggers
         "triggers.tick_periodic": {
             "task": "triggers.tick_periodic",

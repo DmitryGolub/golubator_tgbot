@@ -6,11 +6,14 @@ from src.bot.callbacks.trigger_rules import (
     TriggerActionTypeCB,
     TriggerCohortTypeCB,
     TriggerCohortValueCB,
+    TriggerDelayModeCB,
     TriggerRecipientTypeCB,
     TriggerRegularityCB,
     TriggerRuleConfirmDeleteCB,
     TriggerRuleDeleteCB,
     TriggerRuleDetailCB,
+    TriggerRuleEditFieldCB,
+    TriggerRuleEditMenuCB,
     TriggerRuleToggleCB,
     TriggerScheduleModeCB,
     TriggerSurveyTemplateCB,
@@ -43,6 +46,11 @@ REGULARITY_LABELS = {
 ACTION_TYPE_LABELS = {
     "send_notification": "Отправить уведомление",
     "send_survey": "Отправить опрос",
+}
+
+DELAY_MODE_LABELS = {
+    "after_trigger": "После триггера",
+    "before_scheduled": "До запланированного",
 }
 
 RECIPIENT_TYPE_LABELS = {
@@ -131,8 +139,79 @@ def rule_detail_keyboard(rule: TriggerRule) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     toggle_text = "Выключить" if rule.is_active else "Включить"
     builder.button(text=toggle_text, callback_data=TriggerRuleToggleCB(rule_id=rule.id))
+    builder.button(
+        text="✏️ Изменить",
+        callback_data=TriggerRuleEditMenuCB(rule_id=rule.id),
+    )
     builder.button(text="Удалить", callback_data=TriggerRuleDeleteCB(rule_id=rule.id))
     builder.button(text="⬅️ Назад", callback_data="menu_triggers")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def delay_mode_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for value, label in DELAY_MODE_LABELS.items():
+        builder.button(text=label, callback_data=TriggerDelayModeCB(value=value))
+    builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def rule_edit_menu_keyboard(rule: TriggerRule) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Название", callback_data=TriggerRuleEditFieldCB(field="nm"))
+    builder.button(
+        text="Тип триггера", callback_data=TriggerRuleEditFieldCB(field="tt")
+    )
+    builder.button(
+        text="Тип действия", callback_data=TriggerRuleEditFieldCB(field="at")
+    )
+    builder.button(
+        text="Содержимое действия",
+        callback_data=TriggerRuleEditFieldCB(field="ac"),
+    )
+    builder.button(
+        text="Тип получателей", callback_data=TriggerRuleEditFieldCB(field="rt")
+    )
+    if rule.recipient_type.value in (
+        "by_role",
+        "by_state",
+        "by_cohort",
+        "specific_users",
+    ):
+        builder.button(
+            text="Настройки получателей",
+            callback_data=TriggerRuleEditFieldCB(field="rc"),
+        )
+    builder.button(
+        text="Задержка (сек)", callback_data=TriggerRuleEditFieldCB(field="dl")
+    )
+    builder.button(
+        text="Режим задержки", callback_data=TriggerRuleEditFieldCB(field="dm")
+    )
+    if rule.trigger_type.value == "periodic_cron":
+        builder.button(
+            text="Cron-выражение",
+            callback_data=TriggerRuleEditFieldCB(field="cr"),
+        )
+        builder.button(
+            text="Регулярность",
+            callback_data=TriggerRuleEditFieldCB(field="rg"),
+        )
+        builder.button(
+            text="Время отправки",
+            callback_data=TriggerRuleEditFieldCB(field="td"),
+        )
+    if rule.trigger_type.value == "cohort_changed":
+        builder.button(
+            text="Условия когорты",
+            callback_data=TriggerRuleEditFieldCB(field="tc"),
+        )
+    builder.button(
+        text="⬅️ Назад",
+        callback_data=TriggerRuleDetailCB(rule_id=rule.id),
+    )
     builder.adjust(1)
     return builder.as_markup()
 

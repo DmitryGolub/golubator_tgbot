@@ -3,8 +3,19 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
 from src.bot.callbacks.survey_builder import (
+    SurveyAddOptionCB,
+    SurveyAddQuestionCB,
     SurveyBuilderActionCB,
+    SurveyDeleteOptionCB,
+    SurveyEditFieldCB,
+    SurveyEditOptionCB,
+    SurveyEditQFieldCB,
+    SurveyEditQuestionCB,
+    SurveyEditQuestionTypeCB,
+    SurveyEditTemplateMenuCB,
+    SurveyQuestionsListCB,
     SurveyQuestionTypeCB,
+    SurveyReorderQCB,
     SurveyResultsSessionCB,
     SurveyResultsTemplateCB,
     SurveySendRecipientCB,
@@ -15,7 +26,7 @@ from src.bot.callbacks.survey_builder import (
 )
 from src.bot.keyboards.pagination import DEFAULT_PAGE_SIZE, build_paginated_keyboard
 from src.models.survey_session import SurveySession
-from src.models.survey_template import SurveyTemplate
+from src.models.survey_template import SurveyQuestion, SurveyTemplate
 
 
 QUESTION_TYPE_LABELS = {
@@ -127,6 +138,14 @@ def templates_list_keyboard(
 
 def template_detail_keyboard(template: SurveyTemplate) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    builder.button(
+        text="✏️ Редактировать",
+        callback_data=SurveyEditTemplateMenuCB(template_id=template.id),
+    )
+    builder.button(
+        text="📝 Вопросы",
+        callback_data=SurveyQuestionsListCB(template_id=template.id),
+    )
     toggle_text = "Выключить" if template.is_active else "Включить"
     builder.button(
         text=toggle_text, callback_data=SurveyTemplateToggleCB(template_id=template.id)
@@ -135,6 +154,134 @@ def template_detail_keyboard(template: SurveyTemplate) -> InlineKeyboardMarkup:
         text="Удалить", callback_data=SurveyTemplateDeleteCB(template_id=template.id)
     )
     builder.button(text="⬅️ Назад", callback_data=SurveyBuilderActionCB(action="list"))
+    builder.adjust(2, 2, 1)
+    return builder.as_markup()
+
+
+def edit_template_fields_keyboard(template_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="Название",
+        callback_data=SurveyEditFieldCB(template_id=template_id, field="title"),
+    )
+    builder.button(
+        text="Описание",
+        callback_data=SurveyEditFieldCB(template_id=template_id, field="description"),
+    )
+    builder.button(
+        text="Slug",
+        callback_data=SurveyEditFieldCB(template_id=template_id, field="slug"),
+    )
+    builder.button(
+        text="⬅️ Назад",
+        callback_data=SurveyTemplateDetailCB(template_id=template_id),
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def questions_list_keyboard(template: SurveyTemplate) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for q in template.questions:
+        builder.button(
+            text=f"{q.sort_order}. {q.title[:40]}",
+            callback_data=SurveyEditQuestionCB(question_id=q.id),
+        )
+    builder.button(
+        text="➕ Добавить вопрос",
+        callback_data=SurveyAddQuestionCB(template_id=template.id),
+    )
+    builder.button(
+        text="⬅️ Назад",
+        callback_data=SurveyTemplateDetailCB(template_id=template.id),
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def edit_question_keyboard(question: SurveyQuestion) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="✏️ Текст",
+        callback_data=SurveyEditQFieldCB(question_id=question.id, field="title"),
+    )
+    builder.button(
+        text="🔀 Тип",
+        callback_data=SurveyEditQFieldCB(question_id=question.id, field="type"),
+    )
+    qtype = (
+        question.question_type.value
+        if hasattr(question.question_type, "value")
+        else question.question_type
+    )
+    if qtype == "rating":
+        builder.button(
+            text="🔢 Рейтинг",
+            callback_data=SurveyEditQFieldCB(question_id=question.id, field="config"),
+        )
+    elif qtype in ("single_choice", "multiple_choice"):
+        builder.button(
+            text="📋 Варианты",
+            callback_data=SurveyEditQFieldCB(question_id=question.id, field="options"),
+        )
+    builder.button(
+        text="⬆️",
+        callback_data=SurveyReorderQCB(question_id=question.id, direction="up"),
+    )
+    builder.button(
+        text="⬇️",
+        callback_data=SurveyReorderQCB(question_id=question.id, direction="down"),
+    )
+    builder.button(
+        text="🗑 Удалить вопрос",
+        callback_data=SurveyEditQFieldCB(question_id=question.id, field="delete"),
+    )
+    builder.button(
+        text="⬅️ Назад",
+        callback_data=SurveyQuestionsListCB(template_id=question.template_id),
+    )
+    builder.adjust(2, 1, 2, 1, 1)
+    return builder.as_markup()
+
+
+def edit_options_keyboard(question: SurveyQuestion) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for opt in question.options:
+        builder.button(
+            text=f"✏️ {opt.label[:30]}",
+            callback_data=SurveyEditOptionCB(option_id=opt.id),
+        )
+        builder.button(
+            text="🗑",
+            callback_data=SurveyDeleteOptionCB(option_id=opt.id),
+        )
+    builder.button(
+        text="➕ Добавить вариант",
+        callback_data=SurveyAddOptionCB(question_id=question.id),
+    )
+    builder.button(
+        text="⬅️ Назад",
+        callback_data=SurveyEditQuestionCB(question_id=question.id),
+    )
+    # 2 columns for the option pairs, then single column for add/back
+    sizes = [2] * len(question.options) + [1, 1]
+    builder.adjust(*sizes)
+    return builder.as_markup()
+
+
+def question_type_edit_keyboard(question_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for value, label in QUESTION_TYPE_LABELS.items():
+        builder.button(
+            text=label,
+            callback_data=SurveyEditQuestionTypeCB(
+                question_id=question_id, value=value
+            ),
+        )
+    builder.button(
+        text="⬅️ Назад",
+        callback_data=SurveyEditQuestionCB(question_id=question_id),
+    )
     builder.adjust(1)
     return builder.as_markup()
 

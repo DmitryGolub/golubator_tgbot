@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy import select
@@ -72,6 +73,19 @@ class TriggerRuleDAO:
             if not rule:
                 return None
             rule.is_active = is_active
+            await session.commit()
+            await session.refresh(rule)
+            return rule
+
+    @classmethod
+    async def update(cls, rule_id: int, **fields) -> Optional[TriggerRule]:
+        async with async_session_maker() as session:
+            rule = await session.get(TriggerRule, rule_id)
+            if not rule:
+                return None
+            for key, value in fields.items():
+                setattr(rule, key, value)
+            rule.updated_at = datetime.now(tz=UTC)
             await session.commit()
             await session.refresh(rule)
             return rule

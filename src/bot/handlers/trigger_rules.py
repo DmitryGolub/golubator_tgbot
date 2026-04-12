@@ -11,11 +11,14 @@ from src.bot.callbacks.trigger_rules import (
     TriggerActionTypeCB,
     TriggerCohortTypeCB,
     TriggerCohortValueCB,
+    TriggerDelayModeCB,
     TriggerRecipientTypeCB,
     TriggerRegularityCB,
     TriggerRuleConfirmDeleteCB,
     TriggerRuleDeleteCB,
     TriggerRuleDetailCB,
+    TriggerRuleEditFieldCB,
+    TriggerRuleEditMenuCB,
     TriggerRuleToggleCB,
     TriggerScheduleModeCB,
     TriggerSurveyTemplateCB,
@@ -33,18 +36,28 @@ from src.bot.keyboards.trigger_rules import (
     cohort_value_keyboard,
     cohort_wildcard_keyboard,
     confirm_delete_rule_keyboard,
+    delay_mode_keyboard,
     recipient_type_keyboard,
     regularity_keyboard,
     rule_detail_keyboard,
+    rule_edit_menu_keyboard,
     rules_list_keyboard,
     schedule_mode_keyboard,
     survey_templates_keyboard,
     trigger_type_keyboard,
 )
 from src.bot.pagination_search import filter_items
-from src.bot.states.trigger_rules import TriggerRuleBuilderFSM
+from src.bot.states.trigger_rules import TriggerRuleBuilderFSM, TriggerRuleEditFSM
 from src.bot.utils import safe_edit_text
 from src.dao.trigger_rule import TriggerRuleDAO
+from src.models.trigger import (
+    ActionType,
+    DelayMode,
+    RecipientType,
+    TriggerRule,
+    TriggerType,
+)
+from src.models.enums import Regularity
 from src.services.survey_template import SurveyTemplateService
 from src.services.ui_text import UiTextService
 from src.utils.escape import e
@@ -136,13 +149,9 @@ async def cb_rules_page(
     await callback.answer()
 
 
-@router.callback_query(TriggerRuleDetailCB.filter())
-async def cb_rule_detail(callback: CallbackQuery, callback_data: TriggerRuleDetailCB):
-    rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
-    if not rule:
-        await callback.answer(await UiTextService.get("trigger.rule_not_found"))
-        return
-
+def _format_rule_detail(
+    rule: TriggerRule,
+) -> tuple[str, InlineKeyboardMarkup]:
     trigger_label = TRIGGER_TYPE_LABELS.get(
         rule.trigger_type.value, rule.trigger_type.value
     )
@@ -163,8 +172,18 @@ async def cb_rule_detail(callback: CallbackQuery, callback_data: TriggerRuleDeta
         f"Статус: {status}"
     )
 
+    if rule.action_config is None:
+        text += "\nСодержимое действия: <i>не задано</i>"
+
     if rule.cron_expression:
         text += f"\nCron: <code>{e(rule.cron_expression)}</code>"
+    if rule.regularity:
+        text += f"\nРегулярность: {e(rule.regularity.value)}"
+    if rule.time_of_day:
+        text += f"\nВремя: {rule.time_of_day.strftime('%H:%M')}"
+
+    if rule.recipient_config:
+        text += f"\nНастройки получателей: <code>{e(str(rule.recipient_config))}</code>"
 
     if rule.trigger_config:
         cfg = rule.trigger_config
@@ -181,8 +200,23 @@ async def cb_rule_detail(callback: CallbackQuery, callback_data: TriggerRuleDeta
             f"  В: {e(tv_label)}"
         )
 
+    return text, rule_detail_keyboard(rule)
+
+
+@router.callback_query(TriggerRuleDetailCB.filter())
+async def cb_rule_detail(
+    callback: CallbackQuery,
+    callback_data: TriggerRuleDetailCB,
+    state: FSMContext,
+):
+    await state.clear()
+    rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
+    if not rule:
+        await callback.answer(await UiTextService.get("trigger.rule_not_found"))
+        return
+    text, markup = _format_rule_detail(rule)
     await callback.answer()
-    await safe_edit_text(callback, text, reply_markup=rule_detail_keyboard(rule))
+    await safe_edit_text(callback, text, reply_markup=markup)
 
 
 @router.callback_query(TriggerRuleToggleCB.filter())
@@ -472,22 +506,26 @@ async def cb_regularity(
     )
 
 
-@router.message(TriggerRuleBuilderFSM.entering_time_of_day)
-async def msg_time_of_day(message: Message, state: FSMContext):
-    text = message.text.strip()
-    parts = text.split(":")
+def _parse_time_of_day(text: str) -> tuple[time | None, str | None]:
+    parts = text.strip().split(":")
     if len(parts) != 2:
-        await message.answer("Формат: HH:MM (например, 09:30). Попробуйте снова:")
-        return
+        return None, "Формат: HH:MM (например, 09:30). Попробуйте снова:"
     try:
         h, m = int(parts[0]), int(parts[1])
     except ValueError:
-        await message.answer("Формат: HH:MM (например, 09:30). Попробуйте снова:")
-        return
+        return None, "Формат: HH:MM (например, 09:30). Попробуйте снова:"
     if not (0 <= h <= 23 and 0 <= m <= 59):
-        await message.answer("Часы: 0-23, минуты: 0-59. Попробуйте снова:")
+        return None, "Часы: 0-23, минуты: 0-59. Попробуйте снова:"
+    return time(h, m), None
+
+
+@router.message(TriggerRuleBuilderFSM.entering_time_of_day)
+async def msg_time_of_day(message: Message, state: FSMContext):
+    t, err = _parse_time_of_day(message.text or "")
+    if err:
+        await message.answer(err)
         return
-    await state.update_data(time_of_day=f"{h:02d}:{m:02d}")
+    await state.update_data(time_of_day=f"{t.hour:02d}:{t.minute:02d}")
     await state.set_state(TriggerRuleBuilderFSM.choosing_action_type)
     await message.answer("Выберите действие:", reply_markup=action_type_keyboard())
 
@@ -588,29 +626,32 @@ async def cb_recipient_type(
         )
 
 
-@router.message(TriggerRuleBuilderFSM.configuring_recipients)
-async def msg_recipient_config(message: Message, state: FSMContext):
-    data = await state.get_data()
-    rt = data["recipient_type"]
-    text = message.text.strip()
-
-    config = {}
+def _build_recipient_config(rt: str, text: str) -> tuple[dict | None, str | None]:
+    text = text.strip()
     if rt == "by_role":
-        config = {"role_name": text}
-    elif rt == "by_state":
-        config = {"state": text}
-    elif rt == "by_cohort":
-        config = {"cohort_value": text}
-    elif rt == "specific_users":
+        return {"role_name": text}, None
+    if rt == "by_state":
+        return {"state": text}, None
+    if rt == "by_cohort":
+        return {"cohort_value": text}, None
+    if rt == "specific_users":
         user_ids = [
             int(uid.strip()) for uid in text.split(",") if uid.strip().isdigit()
         ]
         if not user_ids:
-            await message.answer(
-                "Введите хотя бы один числовой Telegram ID через запятую."
-            )
-            return
-        config = {"user_ids": user_ids}
+            return None, "Введите хотя бы один числовой Telegram ID через запятую."
+        return {"user_ids": user_ids}, None
+    return {}, None
+
+
+@router.message(TriggerRuleBuilderFSM.configuring_recipients)
+async def msg_recipient_config(message: Message, state: FSMContext):
+    data = await state.get_data()
+    rt = data["recipient_type"]
+    config, err = _build_recipient_config(rt, message.text or "")
+    if err:
+        await message.answer(err)
+        return
 
     await state.update_data(recipient_config=config)
     await state.set_state(TriggerRuleBuilderFSM.setting_delay)
@@ -673,6 +714,406 @@ async def msg_delay(message: Message, state: FSMContext):
         f"Задержка: {delay} сек\n\n{text}",
         reply_markup=markup,
     )
+
+
+# --- Edit rule FSM ---
+
+
+async def _finish_edit(
+    target: CallbackQuery | Message,
+    state: FSMContext,
+    **fields,
+):
+    data = await state.get_data()
+    rule_id = data.get("edit_rule_id")
+    rule = await TriggerRuleDAO.update(rule_id, **fields)
+    await state.clear()
+    if rule is None:
+        text, markup = await _build_rules_list_page(page=0)
+    else:
+        text, markup = _format_rule_detail(rule)
+    if isinstance(target, CallbackQuery):
+        await safe_edit_text(target, text, reply_markup=markup)
+    else:
+        await target.answer(text, reply_markup=markup)
+
+
+@router.callback_query(TriggerRuleEditMenuCB.filter())
+async def cb_edit_menu(
+    callback: CallbackQuery,
+    callback_data: TriggerRuleEditMenuCB,
+    state: FSMContext,
+):
+    rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
+    if not rule:
+        await callback.answer(await UiTextService.get("trigger.rule_not_found"))
+        return
+    await state.clear()
+    await state.update_data(edit_rule_id=rule.id)
+    await state.set_state(TriggerRuleEditFSM.choosing_field)
+    await callback.answer()
+    await safe_edit_text(
+        callback,
+        f"Выберите параметр для редактирования — <b>{e(rule.name)}</b>:",
+        reply_markup=rule_edit_menu_keyboard(rule),
+    )
+
+
+@router.callback_query(
+    TriggerRuleEditFSM.choosing_field, TriggerRuleEditFieldCB.filter()
+)
+async def cb_edit_field(
+    callback: CallbackQuery,
+    callback_data: TriggerRuleEditFieldCB,
+    state: FSMContext,
+):
+    data = await state.get_data()
+    rule_id = data.get("edit_rule_id")
+    rule = await TriggerRuleDAO.get_by_id(rule_id) if rule_id else None
+    if not rule:
+        await callback.answer(await UiTextService.get("trigger.rule_not_found"))
+        return
+    await callback.answer()
+    field = callback_data.field
+
+    if field == "nm":
+        await state.set_state(TriggerRuleEditFSM.editing_name)
+        await safe_edit_text(
+            callback,
+            "Введите новое название правила:",
+            reply_markup=cancel_keyboard(),
+        )
+    elif field == "tt":
+        await state.set_state(TriggerRuleEditFSM.editing_trigger_type)
+        await safe_edit_text(
+            callback,
+            "Выберите новый тип триггера:",
+            reply_markup=trigger_type_keyboard(),
+        )
+    elif field == "at":
+        await state.set_state(TriggerRuleEditFSM.editing_action_type)
+        await safe_edit_text(
+            callback,
+            "Выберите новый тип действия:",
+            reply_markup=action_type_keyboard(),
+        )
+    elif field == "rt":
+        await state.set_state(TriggerRuleEditFSM.editing_recipient_type)
+        await safe_edit_text(
+            callback,
+            "Выберите новый тип получателей:",
+            reply_markup=recipient_type_keyboard(),
+        )
+    elif field == "cr":
+        await state.set_state(TriggerRuleEditFSM.editing_cron)
+        await safe_edit_text(
+            callback,
+            "Введите новое cron-выражение (5 полей):\n"
+            "<code>минуты часы день_месяца месяц день_недели</code>",
+            reply_markup=cancel_keyboard(),
+        )
+    elif field == "rg":
+        await state.set_state(TriggerRuleEditFSM.editing_regularity)
+        await safe_edit_text(
+            callback,
+            "Выберите новую регулярность:",
+            reply_markup=regularity_keyboard(),
+        )
+    elif field == "td":
+        await state.set_state(TriggerRuleEditFSM.editing_time_of_day)
+        await safe_edit_text(
+            callback,
+            "Введите новое время отправки (HH:MM, UTC):",
+            reply_markup=cancel_keyboard(),
+        )
+    elif field == "dl":
+        await state.set_state(TriggerRuleEditFSM.editing_delay)
+        await safe_edit_text(
+            callback,
+            "Введите новую задержку в секундах (0 = немедленно):",
+            reply_markup=cancel_keyboard(),
+        )
+    elif field == "dm":
+        await state.set_state(TriggerRuleEditFSM.editing_delay_mode)
+        await safe_edit_text(
+            callback,
+            "Выберите новый режим задержки:",
+            reply_markup=delay_mode_keyboard(),
+        )
+    elif field == "ac":
+        if rule.action_type == ActionType.send_notification:
+            await state.set_state(TriggerRuleEditFSM.editing_action_text)
+            await safe_edit_text(
+                callback,
+                "Введите новый текст уведомления (поддерживается HTML):",
+                reply_markup=cancel_keyboard(),
+            )
+        else:
+            service = SurveyTemplateService()
+            templates = await service.list_active()
+            if not templates:
+                await safe_edit_text(
+                    callback,
+                    "Нет активных шаблонов опросов. Сначала создайте опрос.",
+                )
+                await state.clear()
+                return
+            await state.set_state(TriggerRuleEditFSM.editing_survey_template)
+            await safe_edit_text(
+                callback,
+                "Выберите новый шаблон опроса:",
+                reply_markup=survey_templates_keyboard(templates),
+            )
+    elif field == "rc":
+        rt = rule.recipient_type.value
+        hints = {
+            "by_role": "Введите название роли (например: mentor):",
+            "by_state": "Введите статус (greeting/hold/study/search/offer):",
+            "by_cohort": "Введите значение когорты:",
+            "specific_users": "Введите Telegram ID пользователей через запятую:",
+        }
+        await state.set_state(TriggerRuleEditFSM.editing_recipient_config)
+        await safe_edit_text(
+            callback,
+            hints.get(rt, "Введите новое значение:"),
+            reply_markup=cancel_keyboard(),
+        )
+    elif field == "tc":
+        from src.dao.cohort import CohortDAO
+
+        types = await CohortDAO.get_distinct_types()
+        await state.set_state(TriggerRuleEditFSM.editing_cohort_type)
+        await safe_edit_text(
+            callback,
+            "Выберите тип когорты для отслеживания:",
+            reply_markup=cohort_type_keyboard(types),
+        )
+
+
+@router.message(TriggerRuleEditFSM.editing_name)
+async def msg_edit_name(message: Message, state: FSMContext):
+    name = (message.text or "").strip()
+    if not name:
+        await message.answer("Название не может быть пустым:")
+        return
+    await _finish_edit(message, state, name=name)
+
+
+@router.callback_query(TriggerRuleEditFSM.editing_trigger_type, TriggerTypeCB.filter())
+async def cb_edit_trigger_type(
+    callback: CallbackQuery, callback_data: TriggerTypeCB, state: FSMContext
+):
+    await callback.answer()
+    await _finish_edit(callback, state, trigger_type=TriggerType(callback_data.value))
+
+
+@router.callback_query(
+    TriggerRuleEditFSM.editing_action_type, TriggerActionTypeCB.filter()
+)
+async def cb_edit_action_type(
+    callback: CallbackQuery, callback_data: TriggerActionTypeCB, state: FSMContext
+):
+    await callback.answer()
+    await _finish_edit(
+        callback,
+        state,
+        action_type=ActionType(callback_data.value),
+        action_config=None,
+    )
+
+
+@router.callback_query(
+    TriggerRuleEditFSM.editing_recipient_type, TriggerRecipientTypeCB.filter()
+)
+async def cb_edit_recipient_type(
+    callback: CallbackQuery,
+    callback_data: TriggerRecipientTypeCB,
+    state: FSMContext,
+):
+    await callback.answer()
+    await _finish_edit(
+        callback,
+        state,
+        recipient_type=RecipientType(callback_data.value),
+        recipient_config=None,
+    )
+
+
+@router.message(TriggerRuleEditFSM.editing_cron)
+async def msg_edit_cron(message: Message, state: FSMContext):
+    expr = (message.text or "").strip()
+    err = _validate_cron(expr)
+    if err:
+        await message.answer(f"{err} Попробуйте снова:")
+        return
+    await _finish_edit(message, state, cron_expression=expr)
+
+
+@router.callback_query(
+    TriggerRuleEditFSM.editing_regularity, TriggerRegularityCB.filter()
+)
+async def cb_edit_regularity(
+    callback: CallbackQuery, callback_data: TriggerRegularityCB, state: FSMContext
+):
+    await callback.answer()
+    await _finish_edit(callback, state, regularity=Regularity(callback_data.value))
+
+
+@router.message(TriggerRuleEditFSM.editing_time_of_day)
+async def msg_edit_time_of_day(message: Message, state: FSMContext):
+    t, err = _parse_time_of_day(message.text or "")
+    if err:
+        await message.answer(err)
+        return
+    await _finish_edit(message, state, time_of_day=t)
+
+
+@router.message(TriggerRuleEditFSM.editing_delay)
+async def msg_edit_delay(message: Message, state: FSMContext):
+    try:
+        delay = int((message.text or "").strip())
+    except ValueError:
+        await message.answer("Введите число:")
+        return
+    if delay < 0:
+        await message.answer("Задержка не может быть отрицательной:")
+        return
+    await _finish_edit(message, state, delay_seconds=delay)
+
+
+@router.callback_query(
+    TriggerRuleEditFSM.editing_delay_mode, TriggerDelayModeCB.filter()
+)
+async def cb_edit_delay_mode(
+    callback: CallbackQuery, callback_data: TriggerDelayModeCB, state: FSMContext
+):
+    await callback.answer()
+    await _finish_edit(callback, state, delay_mode=DelayMode(callback_data.value))
+
+
+@router.message(TriggerRuleEditFSM.editing_action_text)
+async def msg_edit_action_text(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Текст не может быть пустым:")
+        return
+    await _finish_edit(message, state, action_config={"text": text})
+
+
+@router.callback_query(
+    TriggerRuleEditFSM.editing_survey_template, TriggerSurveyTemplateCB.filter()
+)
+async def cb_edit_survey_template(
+    callback: CallbackQuery,
+    callback_data: TriggerSurveyTemplateCB,
+    state: FSMContext,
+):
+    service = SurveyTemplateService()
+    template = await service.get(callback_data.template_id)
+    await callback.answer()
+    await _finish_edit(
+        callback,
+        state,
+        action_config={
+            "survey_template_id": template.id,
+            "survey_title": template.title,
+        },
+    )
+
+
+@router.message(TriggerRuleEditFSM.editing_recipient_config)
+async def msg_edit_recipient_config(message: Message, state: FSMContext):
+    data = await state.get_data()
+    rule_id = data.get("edit_rule_id")
+    rule = await TriggerRuleDAO.get_by_id(rule_id) if rule_id else None
+    if not rule:
+        await state.clear()
+        await message.answer(await UiTextService.get("trigger.rule_not_found"))
+        return
+    config, err = _build_recipient_config(rule.recipient_type.value, message.text or "")
+    if err:
+        await message.answer(err)
+        return
+    await _finish_edit(message, state, recipient_config=config)
+
+
+@router.callback_query(
+    TriggerRuleEditFSM.editing_cohort_type, TriggerCohortTypeCB.filter()
+)
+async def cb_edit_cohort_type(
+    callback: CallbackQuery,
+    callback_data: TriggerCohortTypeCB,
+    state: FSMContext,
+):
+    cohort_type = callback_data.value
+    await state.update_data(edit_cohort_type=cohort_type)
+    await callback.answer()
+    if cohort_type == "*":
+        await state.set_state(TriggerRuleEditFSM.editing_cohort_from)
+        await safe_edit_text(
+            callback,
+            "Начальное значение (from):",
+            reply_markup=cohort_wildcard_keyboard(),
+        )
+    else:
+        from src.dao.cohort import CohortDAO
+
+        values = await CohortDAO.get_distinct_values(cohort_type)
+        await state.set_state(TriggerRuleEditFSM.editing_cohort_from)
+        await safe_edit_text(
+            callback,
+            "Выберите начальное значение (from):",
+            reply_markup=cohort_value_keyboard(values),
+        )
+
+
+@router.callback_query(
+    TriggerRuleEditFSM.editing_cohort_from, TriggerCohortValueCB.filter()
+)
+async def cb_edit_cohort_from(
+    callback: CallbackQuery,
+    callback_data: TriggerCohortValueCB,
+    state: FSMContext,
+):
+    await state.update_data(edit_cohort_from=callback_data.value)
+    await callback.answer()
+    data = await state.get_data()
+    cohort_type = data.get("edit_cohort_type", "*")
+    if cohort_type == "*":
+        await state.set_state(TriggerRuleEditFSM.editing_cohort_to)
+        await safe_edit_text(
+            callback,
+            "Конечное значение (to):",
+            reply_markup=cohort_wildcard_keyboard(),
+        )
+    else:
+        from src.dao.cohort import CohortDAO
+
+        values = await CohortDAO.get_distinct_values(cohort_type)
+        await state.set_state(TriggerRuleEditFSM.editing_cohort_to)
+        await safe_edit_text(
+            callback,
+            "Выберите конечное значение (to):",
+            reply_markup=cohort_value_keyboard(values),
+        )
+
+
+@router.callback_query(
+    TriggerRuleEditFSM.editing_cohort_to, TriggerCohortValueCB.filter()
+)
+async def cb_edit_cohort_to(
+    callback: CallbackQuery,
+    callback_data: TriggerCohortValueCB,
+    state: FSMContext,
+):
+    data = await state.get_data()
+    trigger_config = {
+        "cohort_type": data.get("edit_cohort_type", "*"),
+        "from_value": data.get("edit_cohort_from", "*"),
+        "to_value": callback_data.value,
+    }
+    await callback.answer()
+    await _finish_edit(callback, state, trigger_config=trigger_config)
 
 
 # --- Cancel ---

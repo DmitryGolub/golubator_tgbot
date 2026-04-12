@@ -51,3 +51,15 @@ class TriggerCohortTypeCB(CallbackData, prefix="tr_ctype"):
 
 class TriggerCohortValueCB(CallbackData, prefix="tr_cval"):
     value: str
+
+
+class TriggerRuleEditMenuCB(CallbackData, prefix="tr_edm"):
+    rule_id: int
+
+
+class TriggerRuleEditFieldCB(CallbackData, prefix="tr_edf"):
+    field: str
+
+
+class TriggerDelayModeCB(CallbackData, prefix="tr_dmd"):
+    value: str

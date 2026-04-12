@@ -6,10 +6,12 @@ from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from src.celery_app import celery_app
 from src.core.config import settings
+from src.dao.meeting import MeetingDAO
 from src.models.meeting import Meeting
 from src.models.user import User
 from src.tasks._db import celery_db, run_async
@@ -179,4 +181,47 @@ def archive_notion_page(notion_page_id: str) -> None:
         run_async(_archive_notion_page_async(notion_page_id))
     except Exception:
         logger.exception("archive_notion_page failed for %s", notion_page_id)
+        raise
+
+
+async def _auto_start_due_calls_async() -> None:
+    async with celery_db():
+        due = await MeetingDAO.find_due_unstarted_call_ids()
+        if not due:
+            return
+
+        logger.info("auto_start_due_calls: found %d due meetings", len(due))
+        for meeting_id, scheduled_at in due:
+            try:
+                started = await MeetingDAO.start_call(
+                    meeting_id, started_at=scheduled_at
+                )
+            except IntegrityError:
+                logger.warning(
+                    "auto_start_due_calls: meeting %s skipped — "
+                    "mentor already has an active call",
+                    meeting_id,
+                )
+                continue
+
+            if started is None:
+                logger.info(
+                    "auto_start_due_calls: meeting %s already started (race)",
+                    meeting_id,
+                )
+                continue
+
+            logger.info(
+                "auto_start_due_calls: meeting %s auto-started at %s",
+                meeting_id,
+                scheduled_at,
+            )
+
+
+@celery_app.task(name="meeting.auto_start_due_calls", ignore_result=True)
+def auto_start_due_calls() -> None:
+    try:
+        run_async(_auto_start_due_calls_async())
+    except Exception:
+        logger.exception("auto_start_due_calls failed")
         raise

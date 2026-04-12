@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import joinedload
 
 from src.core.database import async_session_maker
@@ -151,6 +151,19 @@ class SurveyTemplateDAO:
             return await session.get(SurveyQuestion, question_id)
 
     @classmethod
+    async def get_question_with_options(
+        cls, question_id: int
+    ) -> Optional[SurveyQuestion]:
+        async with async_session_maker() as session:
+            query = (
+                select(SurveyQuestion)
+                .where(SurveyQuestion.id == question_id)
+                .options(joinedload(SurveyQuestion.options))
+            )
+            result = await session.execute(query)
+            return result.unique().scalar_one_or_none()
+
+    @classmethod
     async def delete(cls, template_id: int) -> bool:
         async with async_session_maker() as session:
             template = await session.get(SurveyTemplate, template_id)
@@ -172,3 +185,173 @@ class SurveyTemplateDAO:
             await session.commit()
             await session.refresh(template)
             return template
+
+    # --- Edit operations ---
+
+    @classmethod
+    async def update_template(
+        cls, template_id: int, **kwargs
+    ) -> Optional[SurveyTemplate]:
+        async with async_session_maker() as session:
+            template = await session.get(SurveyTemplate, template_id)
+            if not template:
+                return None
+            for key, value in kwargs.items():
+                setattr(template, key, value)
+            await session.commit()
+            await session.refresh(template)
+            return template
+
+    @classmethod
+    async def update_question(
+        cls, question_id: int, **kwargs
+    ) -> Optional[SurveyQuestion]:
+        async with async_session_maker() as session:
+            question = await session.get(SurveyQuestion, question_id)
+            if not question:
+                return None
+            for key, value in kwargs.items():
+                setattr(question, key, value)
+            await session.commit()
+            await session.refresh(question)
+            return question
+
+    @classmethod
+    async def delete_question(cls, question_id: int) -> bool:
+        async with async_session_maker() as session:
+            question = await session.get(SurveyQuestion, question_id)
+            if not question:
+                return False
+            template_id = question.template_id
+            deleted_order = question.sort_order
+            await session.delete(question)
+            await session.flush()
+            # Shift subsequent questions down (single UPDATE is valid under
+            # Postgres unique constraint checks at statement end).
+            await session.execute(
+                update(SurveyQuestion)
+                .where(
+                    SurveyQuestion.template_id == template_id,
+                    SurveyQuestion.sort_order > deleted_order,
+                )
+                .values(sort_order=SurveyQuestion.sort_order - 1)
+            )
+            await session.commit()
+            return True
+
+    @classmethod
+    async def swap_question_order(
+        cls, question_id: int, direction: str
+    ) -> Optional[SurveyQuestion]:
+        async with async_session_maker() as session:
+            question = await session.get(SurveyQuestion, question_id)
+            if not question:
+                return None
+
+            if direction == "up":
+                neighbor_order = question.sort_order - 1
+            elif direction == "down":
+                neighbor_order = question.sort_order + 1
+            else:
+                return None
+
+            neighbor_query = select(SurveyQuestion).where(
+                SurveyQuestion.template_id == question.template_id,
+                SurveyQuestion.sort_order == neighbor_order,
+            )
+            neighbor = (await session.execute(neighbor_query)).scalar_one_or_none()
+            if not neighbor:
+                return None
+
+            original_a = question.sort_order
+            original_b = neighbor.sort_order
+
+            # Use temp=-1 to bypass unique constraint
+            question.sort_order = -1
+            await session.flush()
+            neighbor.sort_order = original_a
+            await session.flush()
+            question.sort_order = original_b
+            await session.commit()
+            await session.refresh(question)
+            return question
+
+    @classmethod
+    async def update_option(
+        cls, option_id: int, **kwargs
+    ) -> Optional[SurveyQuestionOption]:
+        async with async_session_maker() as session:
+            option = await session.get(SurveyQuestionOption, option_id)
+            if not option:
+                return None
+            for key, value in kwargs.items():
+                setattr(option, key, value)
+            await session.commit()
+            await session.refresh(option)
+            return option
+
+    @classmethod
+    async def delete_option(cls, option_id: int) -> bool:
+        async with async_session_maker() as session:
+            option = await session.get(SurveyQuestionOption, option_id)
+            if not option:
+                return False
+            question_id = option.question_id
+            deleted_order = option.sort_order
+            await session.delete(option)
+            await session.flush()
+            await session.execute(
+                update(SurveyQuestionOption)
+                .where(
+                    SurveyQuestionOption.question_id == question_id,
+                    SurveyQuestionOption.sort_order > deleted_order,
+                )
+                .values(sort_order=SurveyQuestionOption.sort_order - 1)
+            )
+            await session.commit()
+            return True
+
+    @classmethod
+    async def add_option(
+        cls, *, question_id: int, value: str, label: str
+    ) -> SurveyQuestionOption:
+        async with async_session_maker() as session:
+            max_order_query = select(SurveyQuestionOption.sort_order).where(
+                SurveyQuestionOption.question_id == question_id
+            )
+            result = await session.execute(max_order_query)
+            orders = [row for row in result.scalars().all()]
+            next_order = (max(orders) + 1) if orders else 1
+
+            option = SurveyQuestionOption(
+                question_id=question_id,
+                sort_order=next_order,
+                value=value,
+                label=label,
+            )
+            session.add(option)
+            await session.commit()
+            await session.refresh(option)
+            return option
+
+    @classmethod
+    async def replace_question_options(
+        cls, question_id: int, options: list[dict]
+    ) -> None:
+        async with async_session_maker() as session:
+            await session.execute(
+                delete(SurveyQuestionOption).where(
+                    SurveyQuestionOption.question_id == question_id
+                )
+            )
+            await session.flush()
+            for i, opt in enumerate(options):
+                session.add(
+                    SurveyQuestionOption(
+                        question_id=question_id,
+                        sort_order=i + 1,
+                        value=opt["value"],
+                        label=opt["label"],
+                    )
+                )
+            await session.commit()

@@ -177,8 +177,32 @@ class MeetingDAO(BaseDAO):
     get_active_call_for_mentor = get_active_call_for_user
 
     @classmethod
-    async def start_call(cls, meeting_id: int) -> Optional[Meeting]:
+    async def find_due_unstarted_call_ids(cls) -> list[tuple[int, datetime]]:
+        """Return (meeting_id, scheduled_at) for confirmed meetings whose
+        scheduled_at has passed and which have not been started yet.
+        """
         async with async_session_maker() as session:
+            query = (
+                select(Meeting.id, Meeting.scheduled_at)
+                .where(
+                    Meeting.proposal_status == ProposalStatus.confirmed,
+                    Meeting.call_status.is_(None),
+                    Meeting.completed_at.is_(None),
+                    Meeting.is_cancelled.is_(False),
+                    Meeting.scheduled_at.isnot(None),
+                    Meeting.scheduled_at <= func.now(),
+                )
+                .order_by(Meeting.scheduled_at.asc())
+            )
+            result = await session.execute(query)
+            return [(row[0], row[1]) for row in result.all()]
+
+    @classmethod
+    async def start_call(
+        cls, meeting_id: int, started_at: datetime | None = None
+    ) -> Optional[Meeting]:
+        async with async_session_maker() as session:
+            effective_started_at = started_at or datetime.now(timezone.utc)
             stmt = (
                 update(Meeting)
                 .where(
@@ -187,7 +211,7 @@ class MeetingDAO(BaseDAO):
                 )
                 .values(
                     call_status=CallStatus.ongoing,
-                    call_started_at=datetime.now(timezone.utc),
+                    call_started_at=effective_started_at,
                 )
                 .returning(Meeting.id)
             )

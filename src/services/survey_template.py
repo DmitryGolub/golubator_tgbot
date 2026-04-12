@@ -1,7 +1,11 @@
 from typing import Optional
 
 from src.dao.survey_template import SurveyTemplateDAO
-from src.models.survey_template import SurveyTemplate
+from src.models.survey_template import (
+    SurveyQuestion,
+    SurveyQuestionOption,
+    SurveyTemplate,
+)
 
 
 class TemplateNotFoundError(Exception):
@@ -9,6 +13,14 @@ class TemplateNotFoundError(Exception):
 
 
 class SlugAlreadyExistsError(Exception):
+    pass
+
+
+class QuestionNotFoundError(Exception):
+    pass
+
+
+class OptionNotFoundError(Exception):
     pass
 
 
@@ -90,3 +102,61 @@ class SurveyTemplateService:
         if not template:
             raise TemplateNotFoundError
         return template
+
+    # --- Edit operations ---
+
+    async def update_template(self, template_id: int, **kwargs) -> SurveyTemplate:
+        if "slug" in kwargs:
+            existing = await SurveyTemplateDAO.get_by_slug(kwargs["slug"])
+            if existing and existing.id != template_id:
+                raise SlugAlreadyExistsError
+        template = await SurveyTemplateDAO.update_template(template_id, **kwargs)
+        if not template:
+            raise TemplateNotFoundError
+        # Re-fetch with relationships loaded
+        return await self.get(template_id)
+
+    async def get_question(self, question_id: int) -> SurveyQuestion:
+        question = await SurveyTemplateDAO.get_question_with_options(question_id)
+        if not question:
+            raise QuestionNotFoundError
+        return question
+
+    async def update_question(self, question_id: int, **kwargs) -> SurveyQuestion:
+        question = await SurveyTemplateDAO.update_question(question_id, **kwargs)
+        if not question:
+            raise QuestionNotFoundError
+        return await self.get_question(question_id)
+
+    async def delete_question(self, question_id: int) -> None:
+        deleted = await SurveyTemplateDAO.delete_question(question_id)
+        if not deleted:
+            raise QuestionNotFoundError
+
+    async def swap_question_order(
+        self, question_id: int, direction: str
+    ) -> Optional[SurveyQuestion]:
+        return await SurveyTemplateDAO.swap_question_order(question_id, direction)
+
+    async def add_option(
+        self, *, question_id: int, value: str, label: str
+    ) -> SurveyQuestionOption:
+        return await SurveyTemplateDAO.add_option(
+            question_id=question_id, value=value, label=label
+        )
+
+    async def delete_option(self, option_id: int) -> None:
+        deleted = await SurveyTemplateDAO.delete_option(option_id)
+        if not deleted:
+            raise OptionNotFoundError
+
+    async def update_option(self, option_id: int, **kwargs) -> SurveyQuestionOption:
+        option = await SurveyTemplateDAO.update_option(option_id, **kwargs)
+        if not option:
+            raise OptionNotFoundError
+        return option
+
+    async def replace_question_options(
+        self, question_id: int, options: list[dict]
+    ) -> None:
+        await SurveyTemplateDAO.replace_question_options(question_id, options)

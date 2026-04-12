@@ -17,3 +17,22 @@ class TriggerRuleBuilderFSM(StatesGroup):
     choosing_cohort_to = State()
     configuring_recipients = State()
     setting_delay = State()
+
+
+class TriggerRuleEditFSM(StatesGroup):
+    choosing_field = State()
+    editing_name = State()
+    editing_trigger_type = State()
+    editing_action_type = State()
+    editing_recipient_type = State()
+    editing_cron = State()
+    editing_regularity = State()
+    editing_time_of_day = State()
+    editing_delay = State()
+    editing_delay_mode = State()
+    editing_action_text = State()
+    editing_survey_template = State()
+    editing_recipient_config = State()
+    editing_cohort_type = State()
+    editing_cohort_from = State()
+    editing_cohort_to = State()
