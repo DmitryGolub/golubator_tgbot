@@ -28,7 +28,26 @@ class PaginationInputFilter(BaseFilter):
         if not message.text:
             return False
         data = await state.get_data()
-        return bool(data.get("_pagination_ctx"))
+        ctx = data.get("_pagination_ctx")
+        if not ctx:
+            return False
+        saved_state = ctx.get("fsm_state")
+        if saved_state and saved_state != await state.get_state():
+            await state.update_data(_pagination_ctx=None)
+            return False
+        return True
+
+
+async def clear_pagination_ctx(state: FSMContext, bot: Bot, chat_id: int) -> None:
+    data = await state.get_data()
+    ctx = data.get("_pagination_ctx")
+    if not ctx:
+        return
+    prompt_id = ctx.get("prompt_id")
+    if prompt_id:
+        with suppress(TelegramBadRequest):
+            await bot.delete_message(chat_id, prompt_id)
+    await state.update_data(_pagination_ctx=None)
 
 
 def _cancel_keyboard() -> InlineKeyboardMarkup:
@@ -76,6 +95,7 @@ async def on_page_jump(
             "message_id": msg.message_id,
             "prompt_id": prompt.message_id,
             "total_pages": total_pages,
+            "fsm_state": await state.get_state(),
         }
     )
 
@@ -105,6 +125,7 @@ async def on_page_search(
             "menu": menu,
             "message_id": msg.message_id,
             "prompt_id": prompt.message_id,
+            "fsm_state": await state.get_state(),
         }
     )
 
@@ -251,9 +272,9 @@ async def _refresh_users(callback: CallbackQuery, page: int, state: FSMContext):
     sq = (data.get("_pagination_search") or {}).get("users")
     users_filter = data.get("users_filter", "all")
     if users_filter == "students":
-        users = await UserDAO.get_all(role_name="student", include_placeholders=True)
+        users = await UserDAO.get_all(role_name="student")
     else:
-        users = await UserDAO.get_all(include_placeholders=True)
+        users = await UserDAO.get_all()
     await safe_edit_text(
         callback,
         callback.message.text or "Выберите пользователя для редактирования:",
@@ -276,13 +297,13 @@ async def _refresh_users_msg(
     sq = (data.get("_pagination_search") or {}).get("users")
     users_filter = data.get("users_filter", "all")
     if users_filter == "students":
-        users = await UserDAO.get_all(role_name="student", include_placeholders=True)
+        users = await UserDAO.get_all(role_name="student")
     else:
-        users = await UserDAO.get_all(include_placeholders=True)
+        users = await UserDAO.get_all()
     with suppress(TelegramBadRequest):
         await bot.edit_message_reply_markup(
-            chat_id,
-            message_id,
+            chat_id=chat_id,
+            message_id=message_id,
             reply_markup=users_keyboard(users, page=page, search_query=sq),
         )
 
@@ -310,7 +331,9 @@ async def _refresh_user_list_msg(
     sq = (data.get("_pagination_search") or {}).get("user_list")
     text, markup = await _build_user_list_page(page=page, search_query=sq)
     with suppress(TelegramBadRequest):
-        await bot.edit_message_text(text, chat_id, message_id, reply_markup=markup)
+        await bot.edit_message_text(
+            text=text, chat_id=chat_id, message_id=message_id, reply_markup=markup
+        )
 
 
 async def _refresh_mentors(callback: CallbackQuery, page: int, state: FSMContext):
@@ -342,8 +365,8 @@ async def _refresh_mentors_msg(
     mentors = await UserDAO.get_all_with_permission("manage_meetings")
     with suppress(TelegramBadRequest):
         await bot.edit_message_reply_markup(
-            chat_id,
-            message_id,
+            chat_id=chat_id,
+            message_id=message_id,
             reply_markup=mentors_keyboard(mentors, page=page, search_query=sq),
         )
 
@@ -377,8 +400,8 @@ async def _refresh_mentees_msg(
     mentees = await MenteeDAO.get_by_mentor_telegram_id(user_id)
     with suppress(TelegramBadRequest):
         await bot.edit_message_reply_markup(
-            chat_id,
-            message_id,
+            chat_id=chat_id,
+            message_id=message_id,
             reply_markup=mentees_keyboard(mentees, page=page, search_query=sq),
         )
 
@@ -393,7 +416,7 @@ async def _refresh_participants(callback: CallbackQuery, page: int, state: FSMCo
     selected = data.get("selected_participant_ids", [])
     showing_all = data.get("showing_all", False)
     if showing_all:
-        users = await UserDAO.get_all(include_placeholders=True)
+        users = await UserDAO.get_all()
     else:
         users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     with suppress(TelegramBadRequest):
@@ -425,13 +448,13 @@ async def _refresh_participants_msg(
     selected = data.get("selected_participant_ids", [])
     showing_all = data.get("showing_all", False)
     if showing_all:
-        users = await UserDAO.get_all(include_placeholders=True)
+        users = await UserDAO.get_all()
     else:
         users = await MenteeDAO.get_by_mentor_telegram_id(user_id)
     with suppress(TelegramBadRequest):
         await bot.edit_message_reply_markup(
-            chat_id,
-            message_id,
+            chat_id=chat_id,
+            message_id=message_id,
             reply_markup=meeting_participants_multiselect_keyboard(
                 users,
                 selected_ids=set(selected),
@@ -493,9 +516,9 @@ async def _refresh_meetings_msg(
     text = _format_meetings(visible, mentor_tg_ids=mentor_tg_ids, page=page)
     with suppress(TelegramBadRequest):
         await bot.edit_message_text(
-            text,
-            chat_id,
-            message_id,
+            text=text,
+            chat_id=chat_id,
+            message_id=message_id,
             reply_markup=mentor_meetings_keyboard(
                 visible, page=page, viewer_id=user_id, search_query=sq
             ),
@@ -570,7 +593,9 @@ async def _refresh_past_meetings_msg(
     else:
         markup = student_past_meetings_keyboard(visible, page=page, search_query=sq)
     with suppress(TelegramBadRequest):
-        await bot.edit_message_text(text, chat_id, message_id, reply_markup=markup)
+        await bot.edit_message_text(
+            text=text, chat_id=chat_id, message_id=message_id, reply_markup=markup
+        )
 
 
 async def _refresh_meeting_types(callback: CallbackQuery, page: int, state: FSMContext):
@@ -598,8 +623,8 @@ async def _refresh_meeting_types_msg(
     sq = (data.get("_pagination_search") or {}).get("meeting_types")
     with suppress(TelegramBadRequest):
         await bot.edit_message_reply_markup(
-            chat_id,
-            message_id,
+            chat_id=chat_id,
+            message_id=message_id,
             reply_markup=meeting_type_keyboard(page=page, search_query=sq),
         )
 
@@ -638,7 +663,9 @@ async def _refresh_cohorts_msg(
     )
     await state.update_data(cohort_types_map=types_map)
     with suppress(TelegramBadRequest):
-        await bot.edit_message_reply_markup(chat_id, message_id, reply_markup=markup)
+        await bot.edit_message_reply_markup(
+            chat_id=chat_id, message_id=message_id, reply_markup=markup
+        )
 
 
 async def _refresh_mstats(callback: CallbackQuery, page: int, state: FSMContext):
@@ -672,8 +699,8 @@ async def _refresh_mstats_msg(
     mentors = [m for m in all_mentors if m.telegram_id is not None]
     with suppress(TelegramBadRequest):
         await bot.edit_message_reply_markup(
-            chat_id,
-            message_id,
+            chat_id=chat_id,
+            message_id=message_id,
             reply_markup=mentor_select_keyboard(mentors, page=page, search_query=sq),
         )
 
@@ -717,9 +744,9 @@ async def _refresh_channel_links_msg(
 
     with suppress(TelegramBadRequest):
         await bot.edit_message_text(
-            text,
-            chat_id,
-            message_id,
+            text=text,
+            chat_id=chat_id,
+            message_id=message_id,
             reply_markup=await channel_links_keyboard(
                 links, page, total_pages, search_query=sq
             ),
@@ -755,8 +782,8 @@ async def _refresh_students_msg(
     mentees = await MenteeDAO.get_by_mentor_telegram_id(user_id)
     with suppress(TelegramBadRequest):
         await bot.edit_message_reply_markup(
-            chat_id,
-            message_id,
+            chat_id=chat_id,
+            message_id=message_id,
             reply_markup=meeting_students_keyboard(mentees, page=page, search_query=sq),
         )
 

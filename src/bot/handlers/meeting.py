@@ -3,6 +3,7 @@ import asyncio
 from aiogram import Router, F
 from aiogram.filters import StateFilter
 from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
+from aiogram import Bot
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from datetime import datetime, date, timezone
@@ -49,6 +50,7 @@ from src.dao.user import UserDAO
 from src.dao.mentee import MenteeDAO
 from src.models.meeting import CallStatus, ProposalStatus
 from src.services.auth import AuthService
+from src.bot.handlers.pagination_input import clear_pagination_ctx
 from src.bot.utils import safe_edit_text
 from src.utils.escape import e
 import logging
@@ -386,16 +388,22 @@ async def cb_toggle_participant(
         selected.append(uid)
     await state.update_data(selected_participant_ids=selected)
 
+    page = callback_data.page
+    sq = (data.get("_pagination_search") or {}).get("participants")
     showing_all = data.get("showing_all", False)
     if showing_all:
-        users = await UserDAO.get_all(include_placeholders=True)
+        users = await UserDAO.get_all()
     else:
         users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     for attempt in range(3):
         try:
             await callback.message.edit_reply_markup(
                 reply_markup=meeting_participants_multiselect_keyboard(
-                    users, selected_ids=set(selected), show_all_button=not showing_all
+                    users,
+                    selected_ids=set(selected),
+                    page=page,
+                    show_all_button=not showing_all,
+                    search_query=sq,
                 ),
             )
             break
@@ -420,7 +428,7 @@ async def cb_show_all_users(callback: CallbackQuery, state: FSMContext):
     selected: list[int] = data.get("selected_participant_ids", [])
     await state.update_data(showing_all=True)
 
-    users = await UserDAO.get_all(include_placeholders=True)
+    users = await UserDAO.get_all()
     await callback.message.edit_reply_markup(
         reply_markup=meeting_participants_multiselect_keyboard(
             users, selected_ids=set(selected), show_all_button=False
@@ -433,7 +441,9 @@ async def cb_show_all_users(callback: CallbackQuery, state: FSMContext):
     StateFilter(CreateMeetingFSM.choosing_student),
     ConfirmParticipantSelectionCB.filter(),
 )
-async def cb_confirm_participant_selection(callback: CallbackQuery, state: FSMContext):
+async def cb_confirm_participant_selection(
+    callback: CallbackQuery, state: FSMContext, bot: Bot
+):
     await callback.answer()
     data = await state.get_data()
     selected: list[int] = data.get("selected_participant_ids", [])
@@ -441,6 +451,7 @@ async def cb_confirm_participant_selection(callback: CallbackQuery, state: FSMCo
         await callback.answer("Выберите хотя бы одного участника.", show_alert=True)
         return
 
+    await clear_pagination_ctx(state, bot, callback.message.chat.id)
     await state.update_data(participant_ids=selected)
     await state.set_state(CreateMeetingFSM.choosing_type)
 
@@ -460,8 +471,10 @@ async def cb_choose_meeting_type(
     callback: CallbackQuery,
     callback_data: ChooseMeetingTypeCB,
     state: FSMContext,
+    bot: Bot,
 ):
     await callback.answer()
+    await clear_pagination_ctx(state, bot, callback.message.chat.id)
     from src.bot.keyboards.meeting import MEETING_TYPES
 
     if callback_data.type_idx >= len(MEETING_TYPES):
@@ -488,8 +501,9 @@ async def cb_choose_meeting_type(
     StateFilter(CreateMeetingFSM.choosing_type),
     F.data == "meeting_skip_type",
 )
-async def cb_skip_meeting_type(callback: CallbackQuery, state: FSMContext):
+async def cb_skip_meeting_type(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await callback.answer()
+    await clear_pagination_ctx(state, bot, callback.message.chat.id)
     await state.set_state(CreateMeetingFSM.waiting_description)
 
     await safe_edit_text(
@@ -1180,7 +1194,7 @@ async def cb_edit_toggle_participant(
 
     showing_all = data.get("showing_all", False)
     if showing_all:
-        users = await UserDAO.get_all(include_placeholders=True)
+        users = await UserDAO.get_all()
     else:
         users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     for attempt in range(3):
@@ -1211,7 +1225,7 @@ async def cb_edit_show_all_users(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     selected: list[int] = data.get("selected_participant_ids", [])
     await state.update_data(showing_all=True)
-    users = await UserDAO.get_all(include_placeholders=True)
+    users = await UserDAO.get_all()
     await callback.message.edit_reply_markup(
         reply_markup=meeting_participants_multiselect_keyboard(
             users, selected_ids=set(selected), show_all_button=False
@@ -1508,7 +1522,7 @@ async def cb_participants_page(
     selected: list[int] = data.get("selected_participant_ids", [])
     showing_all = data.get("showing_all", False)
     if showing_all:
-        users = await UserDAO.get_all(include_placeholders=True)
+        users = await UserDAO.get_all()
     else:
         users = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
     await callback.message.edit_reply_markup(

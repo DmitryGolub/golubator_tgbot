@@ -35,7 +35,7 @@ class RecipientResolver:
                 logger.warning("TriggerRule %s: by_role without role_name", rule.id)
                 return []
             users = await UserDAO.get_all(role_name=role_name)
-            return [u.telegram_id for u in users if u.telegram_id > 0]
+            return [u.telegram_id for u in users]
 
         if rt == RecipientType.by_state:
             state = config.get("state")

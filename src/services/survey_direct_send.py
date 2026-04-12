@@ -79,7 +79,7 @@ async def _resolve_recipients(recipient_type: str, config: dict) -> list[int]:
         if not role_name:
             return []
         users = await UserDAO.get_all(role_name=role_name)
-        return [u.telegram_id for u in users if u.telegram_id > 0]
+        return [u.telegram_id for u in users]
 
     if recipient_type == "by_state":
         from src.dao.cohort import CohortDAO

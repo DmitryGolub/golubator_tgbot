@@ -55,6 +55,7 @@ class EditMeetingFieldCB(CallbackData, prefix="mtg_edit_field"):
 
 class ToggleMeetingParticipantCB(CallbackData, prefix="mtg_toggle"):
     user_id: int
+    page: int = 0
 
 
 class ConfirmParticipantSelectionCB(CallbackData, prefix="mtg_confirm_sel"):

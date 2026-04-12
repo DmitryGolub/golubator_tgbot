@@ -100,7 +100,7 @@ class CohortDAO:
                     UserCohort.cohort_id.in_(student_categories),
                     Permission.codename == "receive_direction_notifications",
                     UserCohort.user_telegram_id != student_telegram_id,
-                    User.is_placeholder.is_(False),
+                    User.telegram_id > 0,
                 )
                 .distinct()
             )
@@ -129,7 +129,6 @@ class CohortDAO:
                 .outerjoin(Mentee, Mentee.telegram_id == User.telegram_id)
                 .where(
                     UserCohort.user_telegram_id != lead_telegram_id,
-                    User.is_placeholder.is_(False),
                 )
                 .order_by(lead_cohorts.c.value, User.name)
             )

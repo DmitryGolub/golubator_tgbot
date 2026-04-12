@@ -20,15 +20,12 @@ class UserDAO(BaseDAO):
         role_name: str | None = None,
         registered_from: datetime | None = None,
         registered_to: datetime | None = None,
-        include_placeholders: bool = False,
         **filter_by,
     ):
         async with async_session_maker() as session:
             query = select(cls.model).options(
                 joinedload(cls.model.role_rel),
             )
-            if not include_placeholders:
-                query = query.where(cls.model.is_placeholder.is_(False))
             if filter_by:
                 query = query.filter_by(**filter_by)
             if role_name is not None:
@@ -50,14 +47,11 @@ class UserDAO(BaseDAO):
         page: int = 0,
         page_size: int = 6,
         role_name: str | None = None,
-        include_placeholders: bool = False,
         search: str | None = None,
         **filter_by,
     ) -> tuple[list[User], int]:
         async with async_session_maker() as session:
             base = select(cls.model).options(joinedload(cls.model.role_rel))
-            if not include_placeholders:
-                base = base.where(cls.model.is_placeholder.is_(False))
             if filter_by:
                 base = base.filter_by(**filter_by)
             if role_name is not None:
@@ -105,7 +99,7 @@ class UserDAO(BaseDAO):
                         Permission.codename == permission,
                         Permission.codename == "all_permissions",
                     ),
-                    cls.model.is_placeholder.is_(False),
+                    cls.model.telegram_id > 0,
                 )
             )
             result = await session.execute(query)
@@ -118,7 +112,7 @@ class UserDAO(BaseDAO):
             result = await session.execute(
                 select(cls.model.telegram_id).where(
                     cls.model.role_id == role_id,
-                    cls.model.is_placeholder.is_(False),
+                    cls.model.telegram_id > 0,
                 )
             )
             return list(result.scalars().all())

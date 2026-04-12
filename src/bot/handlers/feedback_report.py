@@ -84,6 +84,8 @@ async def cb_choose_recipient(
 
     recipients = await UserDAO.get_all(role_name=callback_data.role)
     for user in recipients:
+        if user.telegram_id < 0:
+            continue
         try:
             await bot.send_message(user.telegram_id, outgoing)
         except Exception:
@@ -131,6 +133,8 @@ async def _send_bug_report(
 
     admins = await UserDAO.get_all(role_name="admin")
     for admin in admins:
+        if admin.telegram_id < 0:
+            continue
         try:
             if photo_file_id:
                 await bot.send_photo(admin.telegram_id, photo_file_id, caption=outgoing)

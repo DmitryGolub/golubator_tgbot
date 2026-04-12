@@ -29,8 +29,8 @@ class E2ESetup:
     async def ensure_user_record(self, telegram_id: int, name: str = "E2E User"):
         """Create a User record if it doesn't exist (FK dependency for mentors/mentees)."""
         await self._pool.execute(
-            """INSERT INTO iam.users (telegram_id, name, is_placeholder)
-               VALUES ($1, $2, false) ON CONFLICT (telegram_id) DO NOTHING""",
+            """INSERT INTO iam.users (telegram_id, name)
+               VALUES ($1, $2) ON CONFLICT (telegram_id) DO NOTHING""",
             telegram_id,
             name,
         )
@@ -231,11 +231,10 @@ class E2ESetup:
         """Create a non-placeholder user with role=mentor and a mentor record."""
         await self._pool.execute(
             """
-            INSERT INTO iam.users (telegram_id, name, role_id, is_placeholder)
-            VALUES ($1, $2, (SELECT id FROM iam.roles WHERE name = 'mentor'), false)
+            INSERT INTO iam.users (telegram_id, name, role_id)
+            VALUES ($1, $2, (SELECT id FROM iam.roles WHERE name = 'mentor'))
             ON CONFLICT (telegram_id) DO UPDATE SET
-                role_id = (SELECT id FROM iam.roles WHERE name = 'mentor'),
-                is_placeholder = false
+                role_id = (SELECT id FROM iam.roles WHERE name = 'mentor')
             """,
             telegram_id,
             name,
@@ -376,8 +375,8 @@ class E2ESetup:
             tg_id = -(900_000 + i)
             await self._pool.execute(
                 """
-                INSERT INTO iam.users (telegram_id, name, role_id, is_placeholder)
-                VALUES ($1, $2, (SELECT id FROM iam.roles WHERE name = $3), false)
+                INSERT INTO iam.users (telegram_id, name, role_id)
+                VALUES ($1, $2, (SELECT id FROM iam.roles WHERE name = $3))
                 ON CONFLICT (telegram_id) DO NOTHING
                 """,
                 tg_id,

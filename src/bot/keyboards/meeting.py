@@ -295,7 +295,7 @@ def meeting_participants_multiselect_keyboard(
         kb.row(
             InlineKeyboardButton(
                 text=label,
-                callback_data=ToggleMeetingParticipantCB(user_id=tid).pack(),
+                callback_data=ToggleMeetingParticipantCB(user_id=tid, page=page).pack(),
             )
         )
 

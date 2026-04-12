@@ -23,7 +23,7 @@ async def _build_user_list_page(
     page: int = 0, search_query: str | None = None
 ) -> tuple[str, InlineKeyboardMarkup]:
     page_users, total_pages = await UserDAO.get_paginated(
-        page=page, include_placeholders=True, search=search_query
+        page=page, search=search_query
     )
 
     if not page_users:
@@ -72,7 +72,7 @@ async def _build_user_list_page(
             else "—"
         )
 
-        placeholder_badge = " [Нет Telegram]" if user.is_placeholder else ""
+        placeholder_badge = " [Нет Telegram]" if user.telegram_id < 0 else ""
         username_display = f"@{e(user.username)}" if user.username else ""
 
         answer += (

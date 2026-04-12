@@ -71,7 +71,7 @@ async def cmd_start_update_user(callback: CallbackQuery, state: FSMContext):
         return
 
     await callback.answer()
-    users = await UserDAO.get_all(include_placeholders=True)
+    users = await UserDAO.get_all()
     if not users:
         await _msg(callback).edit_text("Пользователи не найдены.")
         return
@@ -540,5 +540,5 @@ async def cb_mentors_page(
 
 async def _load_users_by_filter(users_filter: str) -> list:
     if users_filter == "students":
-        return await UserDAO.get_all(role_name="student", include_placeholders=True)
-    return await UserDAO.get_all(include_placeholders=True)
+        return await UserDAO.get_all(role_name="student")
+    return await UserDAO.get_all()

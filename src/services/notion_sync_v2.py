@@ -120,7 +120,7 @@ async def _ensure_user_exists(
                         result = await session.execute(
                             update(User)
                             .where(User.telegram_id == current_placeholder_id)
-                            .values(telegram_id=telegram_id, is_placeholder=False)
+                            .values(telegram_id=telegram_id)
                             .returning(User.telegram_id)
                         )
                         await session.flush()
@@ -240,7 +240,6 @@ async def _ensure_user_exists(
             telegram_id=placeholder_id,
             name=clean or "Placeholder",
             role_id=role_id,
-            is_placeholder=True,
             registered_at=None,
         )
     )
