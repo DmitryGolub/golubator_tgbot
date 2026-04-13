@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 x-app: &app-base
   build: .
   image: golubator-tgbot:latest
@@ -7,11 +13,17 @@ x-app: &app-base
     DB_HOST: db
     REDIS_HOST: redis
   restart: unless-stopped
+  logging: *default-logging
 
 services:
   db:
     image: postgres:16-alpine
     container_name: tg_bot.db
+    cpus: 1.5
+    mem_limit: 2g
+    mem_reservation: 1g
+    pids_limit: 200
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
@@ -30,6 +42,11 @@ services:
   redis:
     image: redis:7-alpine
     container_name: tg_bot.redis
+    cpus: 0.5
+    mem_limit: 512m
+    mem_reservation: 128m
+    pids_limit: 100
+    logging: *default-logging
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -48,6 +65,9 @@ services:
   migrations:
     <<: *app-base
     container_name: tg_bot.migrations
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 100
     command: ["alembic", "upgrade", "head"]
     restart: "no"
     depends_on:
@@ -58,6 +78,10 @@ services:
   bot:
     <<: *app-base
     container_name: tg_bot.bot
+    cpus: 1.0
+    mem_limit: 768m
+    mem_reservation: 256m
+    pids_limit: 200
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
@@ -76,6 +100,10 @@ services:
   celery_worker:
     <<: *app-base
     container_name: tg_bot.celery_worker
+    cpus: 1.0
+    mem_limit: 1g
+    mem_reservation: 256m
+    pids_limit: 200
     command: ["python", "-m", "src.scripts.celery_worker"]
     depends_on:
       migrations:
@@ -93,6 +121,10 @@ services:
   celery_beat:
     <<: *app-base
     container_name: tg_bot.celery_beat
+    cpus: 0.3
+    mem_limit: 256m
+    mem_reservation: 64m
+    pids_limit: 100
     command: ["python", "-m", "src.scripts.celery_beat"]
     depends_on:
       migrations:
@@ -111,6 +143,11 @@ services:
     profiles: [monitoring]
     image: grafana/loki:3.4.2
     container_name: tg_bot.loki
+    cpus: 0.5
+    mem_limit: 512m
+    mem_reservation: 128m
+    pids_limit: 100
+    logging: *default-logging
     command: -config.file=/etc/loki/loki-config.yaml
     volumes:
       - ./loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
@@ -126,6 +163,11 @@ services:
     profiles: [monitoring]
     image: grafana/promtail:3.4.2
     container_name: tg_bot.promtail
+    cpus: 0.3
+    mem_limit: 256m
+    mem_reservation: 64m
+    pids_limit: 100
+    logging: *default-logging
     command: -config.file=/etc/promtail/promtail-config.yaml -config.expand-env=true
     environment:
       LOKI_TENANT_ID: ${LOKI_TENANT_ID}
@@ -143,6 +185,11 @@ services:
     profiles: [monitoring]
     image: grafana/grafana-oss:11.5.2
     container_name: tg_bot.grafana
+    cpus: 0.5
+    mem_limit: 512m
+    mem_reservation: 128m
+    pids_limit: 100
+    logging: *default-logging
     ports:
       - "127.0.0.1:3000:3000"
     environment:
