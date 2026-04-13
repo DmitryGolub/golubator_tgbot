@@ -29,13 +29,16 @@ scrape_configs:
 
     pipeline_stages:
       - docker: {}
-      - json:
-          expressions:
-            level: level
-            logger: name
-            message: message
-            telegram_id: telegram_id
-            elapsed_ms: elapsed_ms
-            action: action
+      - match:
+          selector: '{service=~"bot|celery_worker|celery_beat"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  logger: name
+                  message: message
+                  telegram_id: telegram_id
+                  elapsed_ms: elapsed_ms
+                  action: action
       - labels:
           level:

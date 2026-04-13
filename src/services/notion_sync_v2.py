@@ -615,11 +615,7 @@ class NotionSyncServiceV2:
                 and mentee.synced_at >= data.last_edited_time
             ):
                 logger.debug("Skipping echo for mentee page %s", page_id)
-                # Still sync cohorts (may have changed independently)
-                cohort_diffs = await self._sync_cohorts(
-                    session, mentee.telegram_id, data, now
-                )
-                return [(TriggerType.cohort_changed, d) for d in cohort_diffs]
+                return []
 
             mentee.doc_name = data.doc_name or mentee.doc_name
             if resolved_mentor_id is not None:
