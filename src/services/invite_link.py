@@ -15,7 +15,11 @@ class InviteLinkService:
     @staticmethod
     async def _create_one_time_link(bot: Bot, chat_id: int) -> str | None:
         try:
-            link = await bot.create_chat_invite_link(chat_id=chat_id, member_limit=1)
+            link = await bot.create_chat_invite_link(
+                chat_id=chat_id,
+                member_limit=1,
+                creates_join_request=False,
+            )
             return link.invite_link
         except TelegramAPIError:
             logger.exception("Failed to create invite link for chat %s", chat_id)

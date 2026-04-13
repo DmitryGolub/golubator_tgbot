@@ -30,6 +30,9 @@ async def test_generate_links_mentor_with_channel():
     assert result["general_chat_link"] == "https://t.me/+abc123"
     assert result["mentor_channel_link"] == "https://t.me/+abc123"
     assert bot.create_chat_invite_link.call_count == 2
+    for call in bot.create_chat_invite_link.call_args_list:
+        assert call.kwargs["member_limit"] == 1
+        assert call.kwargs["creates_join_request"] is False
 
 
 async def test_generate_links_mentor_without_channel():

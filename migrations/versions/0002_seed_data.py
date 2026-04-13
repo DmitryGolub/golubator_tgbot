@@ -683,7 +683,7 @@ LEAD_TO_STUDY_TEXT = (
 )
 
 CONTRACT_SIGNED_TEXT = (
-    "Добро пожаловать в общий чат голубятника! 🎉\nПрисоединяйся: $general_chat_link"
+    "Добро пожаловать в общий чат голубятника! 🎉\n\nОбщий чат: $general_chat_link"
 )
 
 BROADCAST_TEMPLATES = [
