@@ -7,6 +7,7 @@ from src.core.database import async_session_maker
 from src.models.cohort import Cohort, UserCohort
 from src.models.role import Permission, RoleModel, role_permissions
 from src.models.mentee import Mentee
+from src.models.mentor import Mentor
 from src.models.user import User
 
 
@@ -230,6 +231,16 @@ class CohortDAO:
                 await session.execute(
                     update(User)
                     .where(User.telegram_id == user_telegram_id)
+                    .values(updated_at=now)
+                )
+                await session.execute(
+                    update(Mentee)
+                    .where(Mentee.telegram_id == user_telegram_id)
+                    .values(updated_at=now)
+                )
+                await session.execute(
+                    update(Mentor)
+                    .where(Mentor.telegram_id == user_telegram_id)
                     .values(updated_at=now)
                 )
                 from src.models.stage_transition import StageTransition
