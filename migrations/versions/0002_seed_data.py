@@ -1403,7 +1403,7 @@ def upgrade() -> None:
             },
         },
         {
-            "name": "Lead→Study: Welcome",
+            "name": "→Study: Welcome",
             "trigger_type": "cohort_changed",
             "action_type": "send_survey",
             "delay_seconds": 0,
@@ -1415,7 +1415,6 @@ def upgrade() -> None:
             },
             "trigger_config": {
                 "cohort_type": "Status",
-                "from_value": "Lead",
                 "to_value": "Study",
             },
         },
