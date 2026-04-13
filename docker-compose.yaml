@@ -30,12 +30,15 @@ services:
   redis:
     image: redis:7-alpine
     container_name: tg_bot.redis
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     ports:
       - "127.0.0.1:6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -187,10 +190,15 @@ services:
   redis_test:
     image: redis:7-alpine
     container_name: tg_bot.redis_test
+    env_file:
+      - .env.test
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     ports:
       - "127.0.0.1:6381:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping"]
       interval: 5s
       timeout: 3s
       retries: 5

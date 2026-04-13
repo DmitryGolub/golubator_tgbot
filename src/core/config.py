@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +19,7 @@ class Settings(BaseSettings):
 
     REDIS_HOST: str
     REDIS_PORT: int
+    REDIS_PASSWORD: str | None = None
     ADMIN_IDS: str | None = None
     NOTION_TOKEN: str | None = None
     NOTION_DATABASE_ID: str | None = None
@@ -55,7 +58,8 @@ class Settings(BaseSettings):
 
     @property
     def REDIS_URL(self) -> str:
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
+        auth = f":{quote(self.REDIS_PASSWORD, safe='')}@" if self.REDIS_PASSWORD else ""
+        return f"redis://{auth}{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
     @property
     def admin_ids(self) -> set[int]:
