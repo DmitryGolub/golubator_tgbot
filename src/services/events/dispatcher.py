@@ -248,6 +248,10 @@ class EventDispatcher:
             new_value = context.get("new_value", "")
             return f"cohort_changed:{user_id}:{cohort_type}:{new_value}:{rule.id}"
 
+        if trigger == TriggerType.contract_signed:
+            user_id = context.get("user_telegram_id", "")
+            return f"contract_signed:{user_id}:{rule.id}"
+
         if trigger == TriggerType.manual:
             # No dedup for manual triggers
             return None

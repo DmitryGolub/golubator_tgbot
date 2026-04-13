@@ -37,6 +37,7 @@ trigger_type_enum = pgEnum(
     "call_ended",
     "periodic_cron",
     "cohort_changed",
+    "contract_signed",
     "manual",
     name="trigger_type_enum",
     create_type=False,
@@ -49,6 +50,7 @@ recipient_type_enum = pgEnum(
     "event_student",
     "event_mentor",
     "event_user",
+    "event_participants",
     "by_role",
     "by_cohort",
     "by_state",
@@ -238,12 +240,6 @@ def upgrade() -> None:
         sa.Column("telegram_id", sa.BigInteger, primary_key=True),
         sa.Column("username", sa.String(255), unique=True, nullable=True, index=True),
         sa.Column("name", sa.String(255), nullable=False),
-        sa.Column(
-            "is_placeholder",
-            sa.Boolean,
-            server_default=sa.text("false"),
-            nullable=False,
-        ),
         sa.Column("role_id", sa.Integer, sa.ForeignKey("iam.roles.id"), nullable=True),
         sa.Column(
             "lead_source_id",
@@ -433,6 +429,7 @@ def upgrade() -> None:
             ),
             primary_key=True,
         ),
+        sa.Column("accepted", sa.Boolean, nullable=True),
         schema="meetings",
     )
     op.create_index(

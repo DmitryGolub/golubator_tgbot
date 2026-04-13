@@ -679,9 +679,11 @@ REMINDER_TEXT = "<b>Напоминание о созвоне через ~5 ми�
 LEAD_TO_STUDY_TEXT = (
     "Добро пожаловать в Голубятню! 🎉\n\n"
     "Ты подключён(а) к программе сопровождения.\n\n"
-    "Вступай в чаты:\n"
-    "— Общий чат: $general_chat_link\n"
-    "— Канал ментора: $mentor_channel_link"
+    "Канал ментора: $mentor_channel_link"
+)
+
+CONTRACT_SIGNED_TEXT = (
+    "Добро пожаловать в общий чат голубятника! 🎉\nПрисоединяйся: $general_chat_link"
 )
 
 BROADCAST_TEMPLATES = [
@@ -699,6 +701,11 @@ BROADCAST_TEMPLATES = [
         "slug": "lead_to_study_welcome",
         "title": "Lead→Study: Welcome",
         "body": LEAD_TO_STUDY_TEXT,
+    },
+    {
+        "slug": "contract_signed_welcome",
+        "title": "Contract signed: общий чат",
+        "body": CONTRACT_SIGNED_TEXT,
     },
 ]
 
@@ -1269,7 +1276,7 @@ def upgrade() -> None:
             "action_type": "send_survey",
             "delay_seconds": 0,
             "delay_mode": "after_trigger",
-            "recipient_type": "event_student",
+            "recipient_type": "event_participants",
             "action_config": {
                 "survey_template_id": broadcast_ids["meeting_created_notify"],
                 "escalatable": False,
@@ -1281,7 +1288,7 @@ def upgrade() -> None:
             "action_type": "send_survey",
             "delay_seconds": 300,
             "delay_mode": "before_scheduled",
-            "recipient_type": "event_student",
+            "recipient_type": "event_participants",
             "action_config": {
                 "survey_template_id": broadcast_ids["meeting_reminder_5min"],
                 "escalatable": False,
@@ -1410,6 +1417,18 @@ def upgrade() -> None:
                 "cohort_type": "Status",
                 "from_value": "Lead",
                 "to_value": "Study",
+            },
+        },
+        {
+            "name": "Contract signed: общий чат",
+            "trigger_type": "contract_signed",
+            "action_type": "send_survey",
+            "delay_seconds": 0,
+            "delay_mode": "after_trigger",
+            "recipient_type": "event_user",
+            "action_config": {
+                "survey_template_id": broadcast_ids["contract_signed_welcome"],
+                "escalatable": False,
             },
         },
     ]

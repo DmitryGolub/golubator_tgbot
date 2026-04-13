@@ -33,13 +33,17 @@ async def send_broadcast_message(
         return False
 
     ctx = dict(context or {})
-    if "$general_chat_link" in body or "$mentor_channel_link" in body:
+    needs_general = "$general_chat_link" in body
+    needs_mentor = "$mentor_channel_link" in body
+    if needs_general or needs_mentor:
         from src.services.invite_link import InviteLinkService
 
-        invite_links = await InviteLinkService.generate_links_for_mentee(
-            bot, recipient_id
-        )
-        ctx.update(invite_links)
+        if needs_general:
+            ctx["general_chat_link"] = await InviteLinkService.general_chat_link(bot)
+        if needs_mentor:
+            ctx["mentor_channel_link"] = await InviteLinkService.mentor_channel_link(
+                bot, recipient_id
+            )
 
     safe_context = {k: e(v) for k, v in ctx.items()}
     try:

@@ -16,6 +16,7 @@ from src.models.mentee import Mentee
 from src.models.mentor import Mentor
 from src.models.cohort import Cohort, UserCohort
 from src.models.user import User
+from src.models.trigger import TriggerType
 from src.services.notion import (
     NotionClient,
     NotionEventRepo,
@@ -394,19 +395,18 @@ class NotionSyncServiceV2:
         engine, factory = _make_session_factory()
         try:
             async with factory() as session:
-                diffs: list[dict] = []
+                events: list[tuple[TriggerType, dict]] = []
                 if source_db == "mentor":
                     await self._upsert_mentor(session, data, page_id)
                 else:
-                    diffs = await self._upsert_mentee(session, data, page_id)
+                    events = await self._upsert_mentee(session, data, page_id)
                 await session.commit()
 
-                if diffs:
-                    from src.models.trigger import TriggerType
+                if events:
                     from src.services.events.dispatcher import EventDispatcher
 
-                    for diff in diffs:
-                        await EventDispatcher.emit(TriggerType.cohort_changed, diff)
+                    for trigger_type, ctx in events:
+                        await EventDispatcher.emit(trigger_type, ctx)
         finally:
             await engine.dispose()
 
@@ -589,7 +589,7 @@ class NotionSyncServiceV2:
 
     async def _upsert_mentee(
         self, session: AsyncSession, data, page_id: str
-    ) -> list[dict]:
+    ) -> list[tuple[TriggerType, dict]]:
         result = await session.execute(
             select(Mentee).where(Mentee.notion_page_id == page_id)
         )
@@ -603,6 +603,7 @@ class NotionSyncServiceV2:
         )
 
         new_mentee: Mentee | None = None
+        contract_signed_emit = False
         if mentee:
             # Always try to fill missing mentor_id (handles out-of-order sync)
             if resolved_mentor_id is not None and mentee.mentor_id is None:
@@ -615,7 +616,10 @@ class NotionSyncServiceV2:
             ):
                 logger.debug("Skipping echo for mentee page %s", page_id)
                 # Still sync cohorts (may have changed independently)
-                return await self._sync_cohorts(session, mentee.telegram_id, data, now)
+                cohort_diffs = await self._sync_cohorts(
+                    session, mentee.telegram_id, data, now
+                )
+                return [(TriggerType.cohort_changed, d) for d in cohort_diffs]
 
             mentee.doc_name = data.doc_name or mentee.doc_name
             if resolved_mentor_id is not None:
@@ -626,7 +630,15 @@ class NotionSyncServiceV2:
                     data.mentor_name,
                     page_id,
                 )
+            old_contract = bool(mentee.contract)
             mentee.contract = getattr(data, "contract", mentee.contract)
+            if (
+                not old_contract
+                and bool(mentee.contract)
+                and mentee.telegram_id is not None
+                and mentee.telegram_id > 0
+            ):
+                contract_signed_emit = True
             mentee.intern = getattr(data, "intern", mentee.intern)
             mentee.contract_version = getattr(
                 data, "contract_version", mentee.contract_version
@@ -712,13 +724,24 @@ class NotionSyncServiceV2:
                 page_id,
             )
             return []
-        return await self._sync_cohorts(
+        cohort_diffs = await self._sync_cohorts(
             session,
             mentee_record.telegram_id,
             data,
             now,
             page_created_time=getattr(data, "created_time", None),
         )
+        events: list[tuple[TriggerType, dict]] = [
+            (TriggerType.cohort_changed, d) for d in cohort_diffs
+        ]
+        if contract_signed_emit:
+            events.append(
+                (
+                    TriggerType.contract_signed,
+                    {"user_telegram_id": mentee_record.telegram_id},
+                )
+            )
+        return events
 
     async def _sync_cohorts(
         self,
@@ -861,7 +884,6 @@ class NotionSyncServiceV2:
                 await session.commit()
 
                 if diffs:
-                    from src.models.trigger import TriggerType
                     from src.services.events.dispatcher import EventDispatcher
 
                     for diff in diffs:
@@ -903,7 +925,6 @@ class NotionSyncServiceV2:
                 await session.commit()
 
             if all_diffs and not suppress_emit:
-                from src.models.trigger import TriggerType
                 from src.services.events.dispatcher import EventDispatcher
 
                 for diff in all_diffs:
@@ -1279,27 +1300,26 @@ class NotionSyncServiceV2:
 
         mentees_data = await self.mentee_repo.get_all()
         count = 0
-        all_diffs: list[dict] = []
+        all_events: list[tuple[TriggerType, dict]] = []
         engine, factory = _make_session_factory()
         try:
             async with factory() as session:
                 for m in mentees_data:
                     try:
                         async with session.begin_nested():
-                            diffs = await self._upsert_mentee(session, m, m.page_id)
-                            all_diffs.extend(diffs)
+                            events = await self._upsert_mentee(session, m, m.page_id)
+                            all_events.extend(events)
                             count += 1
                     except Exception:
                         logger.exception("Error syncing mentee %s", m.page_id)
 
                 await session.commit()
 
-            if all_diffs and not suppress_emit:
-                from src.models.trigger import TriggerType
+            if all_events and not suppress_emit:
                 from src.services.events.dispatcher import EventDispatcher
 
-                for diff in all_diffs:
-                    await EventDispatcher.emit(TriggerType.cohort_changed, diff)
+                for trigger_type, ctx in all_events:
+                    await EventDispatcher.emit(trigger_type, ctx)
         finally:
             await engine.dispose()
 

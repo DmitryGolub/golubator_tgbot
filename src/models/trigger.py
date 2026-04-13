@@ -31,6 +31,7 @@ class TriggerType(str, enum.Enum):
     call_ended = "call_ended"
     periodic_cron = "periodic_cron"
     cohort_changed = "cohort_changed"
+    contract_signed = "contract_signed"
     manual = "manual"
 
 
