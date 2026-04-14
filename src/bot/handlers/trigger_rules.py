@@ -11,6 +11,13 @@ from src.bot.callbacks.trigger_rules import (
     TriggerCohortTypeCB,
     TriggerCohortValueCB,
     TriggerDelayModeCB,
+    TriggerPickCohortTypeCB,
+    TriggerPickCohortValueCB,
+    TriggerPickRoleCB,
+    TriggerPickStateCB,
+    TriggerPickUserCB,
+    TriggerRecipientBackCB,
+    TriggerRecipientPageCB,
     TriggerRecipientTypeCB,
     TriggerRegularityCB,
     TriggerRuleConfirmDeleteCB,
@@ -22,12 +29,15 @@ from src.bot.callbacks.trigger_rules import (
     TriggerScheduleModeCB,
     TriggerSurveyTemplateCB,
     TriggerTypeCB,
+    TriggerUsersDoneCB,
 )
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.pagination import get_page_slice
 from src.bot.keyboards.trigger_rules import (
     ACTION_TYPE_LABELS,
+    DELAY_MODE_LABELS,
     RECIPIENT_TYPE_LABELS,
+    REGULARITY_LABELS,
     TRIGGER_TYPE_LABELS,
     cancel_keyboard,
     cohort_type_keyboard,
@@ -42,12 +52,21 @@ from src.bot.keyboards.trigger_rules import (
     rules_list_keyboard,
     schedule_mode_keyboard,
     survey_templates_keyboard,
+    trigger_empty_recipient_keyboard,
+    trigger_rcohort_types_keyboard,
+    trigger_rcohort_values_keyboard,
+    trigger_roles_keyboard,
+    trigger_states_keyboard,
     trigger_type_keyboard,
+    trigger_users_keyboard,
 )
 from src.bot.pagination_search import filter_items
 from src.bot.states.trigger_rules import TriggerRuleBuilderFSM, TriggerRuleEditFSM
 from src.bot.utils import safe_edit_text
+from src.dao.cohort import CohortDAO
+from src.dao.role import RoleDAO
 from src.dao.trigger_rule import TriggerRuleDAO
+from src.dao.user import UserDAO
 from src.models.trigger import (
     DelayMode,
     RecipientType,
@@ -58,6 +77,8 @@ from src.models.enums import Regularity
 from src.services.survey_template import SurveyTemplateService
 from src.services.ui_text import UiTextService
 from src.utils.escape import e
+
+USERS_PAGE_SIZE = 6
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +167,47 @@ async def cb_rules_page(
     await callback.answer()
 
 
-def _format_rule_detail(
+async def _format_recipient_config(rule: TriggerRule) -> str | None:
+    cfg = rule.recipient_config
+    if not cfg:
+        return None
+    rt = rule.recipient_type.value
+    if rt == "by_role":
+        role_name = cfg.get("role_name")
+        if not role_name:
+            return None
+        role = await RoleDAO.find_one_or_none(name=role_name)
+        label = (role.display_name or role.name) if role else role_name
+        return f"Роль: {label}"
+    if rt == "by_state":
+        value = cfg.get("state")
+        return f"Статус: {value}" if value else None
+    if rt == "by_cohort":
+        ctype = cfg.get("cohort_type")
+        cvalue = cfg.get("cohort_value")
+        if ctype and cvalue:
+            return f"Когорта: {ctype} — {cvalue}"
+        if cvalue:
+            return f"Когорта: {cvalue}"
+        return None
+    if rt == "specific_users":
+        user_ids = cfg.get("user_ids") or []
+        if not user_ids:
+            return None
+        names: list[str] = []
+        for uid in user_ids:
+            user = await UserDAO.find_one_or_none(telegram_id=uid)
+            if user and user.name:
+                names.append(user.name)
+            elif user and user.username:
+                names.append(f"@{user.username}")
+            else:
+                names.append("Неизвестный пользователь")
+        return "Пользователи: " + ", ".join(names)
+    return None
+
+
+async def _format_rule_detail(
     rule: TriggerRule,
 ) -> tuple[str, InlineKeyboardMarkup]:
     trigger_label = TRIGGER_TYPE_LABELS.get(
@@ -158,6 +219,9 @@ def _format_rule_detail(
     recipient_label = RECIPIENT_TYPE_LABELS.get(
         rule.recipient_type.value, rule.recipient_type.value
     )
+    delay_mode_label = DELAY_MODE_LABELS.get(
+        rule.delay_mode.value, rule.delay_mode.value
+    )
     status = "Активно" if rule.is_active else "Отключено"
 
     text = (
@@ -165,7 +229,7 @@ def _format_rule_detail(
         f"Триггер: {e(trigger_label)}\n"
         f"Действие: {e(action_label)}\n"
         f"Получатели: {e(recipient_label)}\n"
-        f"Задержка: {rule.delay_seconds} сек ({e(rule.delay_mode.value)})\n"
+        f"Задержка: {rule.delay_seconds} сек ({e(delay_mode_label)})\n"
         f"Статус: {status}"
     )
 
@@ -175,12 +239,16 @@ def _format_rule_detail(
     if rule.cron_expression:
         text += f"\nCron: <code>{e(rule.cron_expression)}</code>"
     if rule.regularity:
-        text += f"\nРегулярность: {e(rule.regularity.value)}"
+        regularity_label = REGULARITY_LABELS.get(
+            rule.regularity.value, rule.regularity.value
+        )
+        text += f"\nРегулярность: {e(regularity_label)}"
     if rule.time_of_day:
         text += f"\nВремя: {rule.time_of_day.strftime('%H:%M')}"
 
-    if rule.recipient_config:
-        text += f"\nНастройки получателей: <code>{e(str(rule.recipient_config))}</code>"
+    recipient_info = await _format_recipient_config(rule)
+    if recipient_info:
+        text += f"\n{e(recipient_info)}"
 
     if rule.trigger_config:
         cfg = rule.trigger_config
@@ -211,7 +279,7 @@ async def cb_rule_detail(
     if not rule:
         await callback.answer(await UiTextService.get("trigger.rule_not_found"))
         return
-    text, markup = _format_rule_detail(rule)
+    text, markup = await _format_rule_detail(rule)
     await callback.answer()
     await safe_edit_text(callback, text, reply_markup=markup)
 
@@ -365,8 +433,6 @@ async def cb_cohort_type(
             reply_markup=cohort_wildcard_keyboard(),
         )
     else:
-        from src.dao.cohort import CohortDAO
-
         values = await CohortDAO.get_distinct_values(cohort_type)
         await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_from)
         await safe_edit_text(
@@ -395,8 +461,6 @@ async def cb_cohort_from(
             callback, "Конечное значение (to):", reply_markup=cohort_wildcard_keyboard()
         )
     else:
-        from src.dao.cohort import CohortDAO
-
         values = await CohortDAO.get_distinct_values(cohort_type)
         await state.set_state(TriggerRuleBuilderFSM.choosing_cohort_to)
         await safe_edit_text(
@@ -580,6 +644,94 @@ async def cb_choose_template(
     )
 
 
+async def _show_recipient_picker(
+    callback: CallbackQuery, rt: str, state: FSMContext
+) -> None:
+    if rt == "by_role":
+        roles = list(await RoleDAO.get_all())
+        if not roles:
+            await safe_edit_text(
+                callback,
+                "В базе нет ни одной роли.",
+                reply_markup=trigger_empty_recipient_keyboard(),
+            )
+            return
+        page_items, total_pages = get_page_slice(roles, 0)
+        await safe_edit_text(
+            callback,
+            "Выберите роль:",
+            reply_markup=trigger_roles_keyboard(list(page_items), 0, total_pages),
+        )
+    elif rt == "by_state":
+        states = await CohortDAO.get_distinct_values("Status")
+        if not states:
+            await safe_edit_text(
+                callback,
+                "В базе нет ни одного статуса.",
+                reply_markup=trigger_empty_recipient_keyboard(),
+            )
+            return
+        page_items, total_pages = get_page_slice(states, 0)
+        await safe_edit_text(
+            callback,
+            "Выберите статус:",
+            reply_markup=trigger_states_keyboard(list(page_items), 0, total_pages),
+        )
+    elif rt == "by_cohort":
+        types = await CohortDAO.get_distinct_types()
+        if not types:
+            await safe_edit_text(
+                callback,
+                "В базе нет ни одной когорты.",
+                reply_markup=trigger_empty_recipient_keyboard(),
+            )
+            return
+        page_items, total_pages = get_page_slice(types, 0)
+        await safe_edit_text(
+            callback,
+            "Выберите тип когорты:",
+            reply_markup=trigger_rcohort_types_keyboard(
+                list(page_items), 0, total_pages
+            ),
+        )
+    elif rt == "specific_users":
+        users, total_pages = await UserDAO.get_paginated(
+            page=0, page_size=USERS_PAGE_SIZE, exclude_placeholders=True
+        )
+        if not users and total_pages <= 1:
+            await safe_edit_text(
+                callback,
+                "Нет доступных пользователей.",
+                reply_markup=trigger_empty_recipient_keyboard(),
+            )
+            return
+        await state.update_data(users_selected=[], users_page=0)
+        await safe_edit_text(
+            callback,
+            "Выберите получателей (нажимайте, чтобы отметить/снять), затем «Готово»:",
+            reply_markup=trigger_users_keyboard(users, set(), 0, total_pages),
+        )
+
+
+async def _after_recipient_config(
+    callback: CallbackQuery, state: FSMContext, summary: str
+) -> None:
+    data = await state.get_data()
+    if data.get("edit_rule_id"):
+        # Edit flow: finish immediately
+        config = data.get("recipient_config")
+        await _finish_edit(callback, state, recipient_config=config)
+        return
+    # Create flow: proceed to delay
+    await state.set_state(TriggerRuleBuilderFSM.setting_delay)
+    await safe_edit_text(
+        callback,
+        f"Получатели сохранены: {e(summary)}\n\n"
+        "Задержка отправки в секундах (0 = немедленно):",
+        reply_markup=cancel_keyboard(),
+    )
+
+
 @router.callback_query(
     TriggerRuleBuilderFSM.choosing_recipient_type, TriggerRecipientTypeCB.filter()
 )
@@ -590,16 +742,9 @@ async def cb_recipient_type(
     await state.update_data(recipient_type=rt, recipient_config=None)
     await callback.answer()
 
-    # For types that need config, ask for it
     if rt in ("by_role", "by_state", "by_cohort", "specific_users"):
         await state.set_state(TriggerRuleBuilderFSM.configuring_recipients)
-        hints = {
-            "by_role": "Введите название роли (например: mentor):",
-            "by_state": "Введите статус (greeting/hold/study/search/offer):",
-            "by_cohort": "Введите значение когорты:",
-            "specific_users": "Введите Telegram ID пользователей через запятую:",
-        }
-        await safe_edit_text(callback, hints[rt], reply_markup=cancel_keyboard())
+        await _show_recipient_picker(callback, rt, state)
     else:
         await state.set_state(TriggerRuleBuilderFSM.setting_delay)
         await safe_edit_text(
@@ -609,38 +754,229 @@ async def cb_recipient_type(
         )
 
 
-def _build_recipient_config(rt: str, text: str) -> tuple[dict | None, str | None]:
-    text = text.strip()
-    if rt == "by_role":
-        return {"role_name": text}, None
-    if rt == "by_state":
-        return {"state": text}, None
-    if rt == "by_cohort":
-        return {"cohort_value": text}, None
-    if rt == "specific_users":
-        user_ids = [
-            int(uid.strip()) for uid in text.split(",") if uid.strip().isdigit()
-        ]
-        if not user_ids:
-            return None, "Введите хотя бы один числовой Telegram ID через запятую."
-        return {"user_ids": user_ids}, None
-    return {}, None
+# --- Recipient picker handlers (shared between create and edit flows) ---
 
 
-@router.message(TriggerRuleBuilderFSM.configuring_recipients)
-async def msg_recipient_config(message: Message, state: FSMContext):
-    data = await state.get_data()
-    rt = data["recipient_type"]
-    config, err = _build_recipient_config(rt, message.text or "")
-    if err:
-        await message.answer(err)
-        return
-
-    await state.update_data(recipient_config=config)
-    await state.set_state(TriggerRuleBuilderFSM.setting_delay)
-    await message.answer(
-        "Задержка отправки в секундах (0 = немедленно):", reply_markup=cancel_keyboard()
+def _recipient_picker_states():
+    return (
+        TriggerRuleBuilderFSM.configuring_recipients,
+        TriggerRuleEditFSM.editing_recipient_config,
     )
+
+
+@router.callback_query(TriggerPickRoleCB.filter())
+async def cb_pick_role(
+    callback: CallbackQuery, callback_data: TriggerPickRoleCB, state: FSMContext
+):
+    current = await state.get_state()
+    if current not in {s.state for s in _recipient_picker_states()}:
+        return
+    await callback.answer()
+    role = await RoleDAO.find_one_or_none(id=callback_data.role_id)
+    if role is None:
+        await safe_edit_text(callback, "Роль не найдена.")
+        return
+    await state.update_data(recipient_config={"role_name": role.name})
+    await _after_recipient_config(callback, state, role.display_name or role.name)
+
+
+@router.callback_query(TriggerPickStateCB.filter())
+async def cb_pick_state(
+    callback: CallbackQuery, callback_data: TriggerPickStateCB, state: FSMContext
+):
+    current = await state.get_state()
+    if current not in {s.state for s in _recipient_picker_states()}:
+        return
+    await callback.answer()
+    value = callback_data.value
+    await state.update_data(recipient_config={"state": value})
+    await _after_recipient_config(callback, state, value)
+
+
+@router.callback_query(TriggerPickCohortTypeCB.filter())
+async def cb_pick_cohort_type(
+    callback: CallbackQuery,
+    callback_data: TriggerPickCohortTypeCB,
+    state: FSMContext,
+):
+    current = await state.get_state()
+    if current not in {s.state for s in _recipient_picker_states()}:
+        return
+    await callback.answer()
+    cohort_type = callback_data.type
+    values = await CohortDAO.get_distinct_values(cohort_type)
+    if not values:
+        await safe_edit_text(
+            callback,
+            f"В когорте «{e(cohort_type)}» нет значений.",
+            reply_markup=trigger_empty_recipient_keyboard(),
+        )
+        return
+    await state.update_data(recipient_cohort_type_pending=cohort_type)
+    page_items, total_pages = get_page_slice(values, 0)
+    await safe_edit_text(
+        callback,
+        f"Выберите значение когорты «{e(cohort_type)}»:",
+        reply_markup=trigger_rcohort_values_keyboard(list(page_items), 0, total_pages),
+    )
+
+
+@router.callback_query(TriggerPickCohortValueCB.filter())
+async def cb_pick_cohort_value(
+    callback: CallbackQuery,
+    callback_data: TriggerPickCohortValueCB,
+    state: FSMContext,
+):
+    current = await state.get_state()
+    if current not in {s.state for s in _recipient_picker_states()}:
+        return
+    await callback.answer()
+    data = await state.get_data()
+    cohort_type = data.get("recipient_cohort_type_pending")
+    if not cohort_type:
+        await safe_edit_text(callback, "Тип когорты утерян, начните заново.")
+        return
+    value = callback_data.value
+    await state.update_data(
+        recipient_config={"cohort_type": cohort_type, "cohort_value": value}
+    )
+    await _after_recipient_config(callback, state, f"{cohort_type}: {value}")
+
+
+@router.callback_query(TriggerPickUserCB.filter())
+async def cb_pick_user(
+    callback: CallbackQuery, callback_data: TriggerPickUserCB, state: FSMContext
+):
+    current = await state.get_state()
+    if current not in {s.state for s in _recipient_picker_states()}:
+        return
+    data = await state.get_data()
+    selected: list[int] = list(data.get("users_selected") or [])
+    tid = callback_data.telegram_id
+    if tid in selected:
+        selected.remove(tid)
+    else:
+        selected.append(tid)
+    page = int(data.get("users_page") or 0)
+    users, total_pages = await UserDAO.get_paginated(
+        page=page, page_size=USERS_PAGE_SIZE, exclude_placeholders=True
+    )
+    await state.update_data(users_selected=selected)
+    await callback.answer()
+    await callback.message.edit_reply_markup(
+        reply_markup=trigger_users_keyboard(users, set(selected), page, total_pages)
+    )
+
+
+@router.callback_query(TriggerUsersDoneCB.filter())
+async def cb_users_done(callback: CallbackQuery, state: FSMContext):
+    current = await state.get_state()
+    if current not in {s.state for s in _recipient_picker_states()}:
+        return
+    data = await state.get_data()
+    selected: list[int] = list(data.get("users_selected") or [])
+    if not selected:
+        await callback.answer("Выберите хотя бы одного пользователя", show_alert=True)
+        return
+    await callback.answer()
+    sorted_ids = sorted(selected)
+    await state.update_data(recipient_config={"user_ids": sorted_ids})
+    # Resolve names for summary
+    names: list[str] = []
+    for uid in sorted_ids:
+        user = await UserDAO.find_one_or_none(telegram_id=uid)
+        if user and user.name:
+            names.append(user.name)
+        elif user and user.username:
+            names.append(f"@{user.username}")
+        else:
+            names.append("—")
+    await _after_recipient_config(callback, state, ", ".join(names))
+
+
+@router.callback_query(TriggerRecipientPageCB.filter())
+async def cb_recipient_page(
+    callback: CallbackQuery, callback_data: TriggerRecipientPageCB, state: FSMContext
+):
+    current = await state.get_state()
+    if current not in {s.state for s in _recipient_picker_states()}:
+        return
+    await callback.answer()
+    kind = callback_data.kind
+    page = callback_data.page
+    if kind == "role":
+        roles = list(await RoleDAO.get_all())
+        page_items, total_pages = get_page_slice(roles, page)
+        await callback.message.edit_reply_markup(
+            reply_markup=trigger_roles_keyboard(list(page_items), page, total_pages)
+        )
+    elif kind == "state":
+        states = await CohortDAO.get_distinct_values("Status")
+        page_items, total_pages = get_page_slice(states, page)
+        await callback.message.edit_reply_markup(
+            reply_markup=trigger_states_keyboard(list(page_items), page, total_pages)
+        )
+    elif kind == "ctype":
+        types = await CohortDAO.get_distinct_types()
+        page_items, total_pages = get_page_slice(types, page)
+        await callback.message.edit_reply_markup(
+            reply_markup=trigger_rcohort_types_keyboard(
+                list(page_items), page, total_pages
+            )
+        )
+    elif kind == "cval":
+        data = await state.get_data()
+        cohort_type = data.get("recipient_cohort_type_pending")
+        if not cohort_type:
+            return
+        values = await CohortDAO.get_distinct_values(cohort_type)
+        page_items, total_pages = get_page_slice(values, page)
+        await callback.message.edit_reply_markup(
+            reply_markup=trigger_rcohort_values_keyboard(
+                list(page_items), page, total_pages
+            )
+        )
+    elif kind == "user":
+        data = await state.get_data()
+        selected = set(data.get("users_selected") or [])
+        users, total_pages = await UserDAO.get_paginated(
+            page=page, page_size=USERS_PAGE_SIZE, exclude_placeholders=True
+        )
+        await state.update_data(users_page=page)
+        await callback.message.edit_reply_markup(
+            reply_markup=trigger_users_keyboard(users, selected, page, total_pages)
+        )
+
+
+@router.callback_query(TriggerRecipientBackCB.filter())
+async def cb_recipient_back(
+    callback: CallbackQuery, callback_data: TriggerRecipientBackCB, state: FSMContext
+):
+    current = await state.get_state()
+    if current not in {s.state for s in _recipient_picker_states()}:
+        return
+    await callback.answer()
+    step = callback_data.step
+    data = await state.get_data()
+    if step == "ctype":
+        rt = data.get("recipient_type") or "by_cohort"
+        await _show_recipient_picker(callback, rt, state)
+        return
+    # step == "type": back to recipient type selection
+    if data.get("edit_rule_id"):
+        await state.set_state(TriggerRuleEditFSM.editing_recipient_type)
+        await safe_edit_text(
+            callback,
+            "Выберите новый тип получателей:",
+            reply_markup=recipient_type_keyboard(),
+        )
+    else:
+        await state.set_state(TriggerRuleBuilderFSM.choosing_recipient_type)
+        await safe_edit_text(
+            callback,
+            "Выберите тип получателей:",
+            reply_markup=recipient_type_keyboard(),
+        )
 
 
 @router.message(TriggerRuleBuilderFSM.setting_delay)
@@ -714,7 +1050,7 @@ async def _finish_edit(
     if rule is None:
         text, markup = await _build_rules_list_page(page=0)
     else:
-        text, markup = _format_rule_detail(rule)
+        text, markup = await _format_rule_detail(rule)
     if isinstance(target, CallbackQuery):
         await safe_edit_text(target, text, reply_markup=markup)
     else:
@@ -834,21 +1170,9 @@ async def cb_edit_field(
         )
     elif field == "rc":
         rt = rule.recipient_type.value
-        hints = {
-            "by_role": "Введите название роли (например: mentor):",
-            "by_state": "Введите статус (greeting/hold/study/search/offer):",
-            "by_cohort": "Введите значение когорты:",
-            "specific_users": "Введите Telegram ID пользователей через запятую:",
-        }
         await state.set_state(TriggerRuleEditFSM.editing_recipient_config)
-        await safe_edit_text(
-            callback,
-            hints.get(rt, "Введите новое значение:"),
-            reply_markup=cancel_keyboard(),
-        )
+        await _show_recipient_picker(callback, rt, state)
     elif field == "tc":
-        from src.dao.cohort import CohortDAO
-
         types = await CohortDAO.get_distinct_types()
         await state.set_state(TriggerRuleEditFSM.editing_cohort_type)
         await safe_edit_text(
@@ -884,12 +1208,18 @@ async def cb_edit_recipient_type(
     state: FSMContext,
 ):
     await callback.answer()
-    await _finish_edit(
-        callback,
-        state,
-        recipient_type=RecipientType(callback_data.value),
-        recipient_config=None,
+    rt = callback_data.value
+    data = await state.get_data()
+    rule_id = data.get("edit_rule_id")
+    # Persist the new recipient type first, then let user pick config
+    await TriggerRuleDAO.update(
+        rule_id, recipient_type=RecipientType(rt), recipient_config=None
     )
+    if rt in ("by_role", "by_state", "by_cohort", "specific_users"):
+        await state.set_state(TriggerRuleEditFSM.editing_recipient_config)
+        await _show_recipient_picker(callback, rt, state)
+    else:
+        await _finish_edit(callback, state)
 
 
 @router.message(TriggerRuleEditFSM.editing_cron)
@@ -966,22 +1296,6 @@ async def cb_edit_survey_template(
     await _finish_edit(callback, state, action_config=action_config)
 
 
-@router.message(TriggerRuleEditFSM.editing_recipient_config)
-async def msg_edit_recipient_config(message: Message, state: FSMContext):
-    data = await state.get_data()
-    rule_id = data.get("edit_rule_id")
-    rule = await TriggerRuleDAO.get_by_id(rule_id) if rule_id else None
-    if not rule:
-        await state.clear()
-        await message.answer(await UiTextService.get("trigger.rule_not_found"))
-        return
-    config, err = _build_recipient_config(rule.recipient_type.value, message.text or "")
-    if err:
-        await message.answer(err)
-        return
-    await _finish_edit(message, state, recipient_config=config)
-
-
 @router.callback_query(
     TriggerRuleEditFSM.editing_cohort_type, TriggerCohortTypeCB.filter()
 )
@@ -1001,8 +1315,6 @@ async def cb_edit_cohort_type(
             reply_markup=cohort_wildcard_keyboard(),
         )
     else:
-        from src.dao.cohort import CohortDAO
-
         values = await CohortDAO.get_distinct_values(cohort_type)
         await state.set_state(TriggerRuleEditFSM.editing_cohort_from)
         await safe_edit_text(
@@ -1032,8 +1344,6 @@ async def cb_edit_cohort_from(
             reply_markup=cohort_wildcard_keyboard(),
         )
     else:
-        from src.dao.cohort import CohortDAO
-
         values = await CohortDAO.get_distinct_values(cohort_type)
         await state.set_state(TriggerRuleEditFSM.editing_cohort_to)
         await safe_edit_text(

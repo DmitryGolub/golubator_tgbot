@@ -6,6 +6,13 @@ from src.bot.callbacks.trigger_rules import (
     TriggerCohortTypeCB,
     TriggerCohortValueCB,
     TriggerDelayModeCB,
+    TriggerPickCohortTypeCB,
+    TriggerPickCohortValueCB,
+    TriggerPickRoleCB,
+    TriggerPickStateCB,
+    TriggerPickUserCB,
+    TriggerRecipientBackCB,
+    TriggerRecipientPageCB,
     TriggerRecipientTypeCB,
     TriggerRegularityCB,
     TriggerRuleConfirmDeleteCB,
@@ -17,9 +24,12 @@ from src.bot.callbacks.trigger_rules import (
     TriggerScheduleModeCB,
     TriggerSurveyTemplateCB,
     TriggerTypeCB,
+    TriggerUsersDoneCB,
 )
 from src.bot.keyboards.pagination import DEFAULT_PAGE_SIZE, build_paginated_keyboard
+from src.models.role import RoleModel
 from src.models.trigger import TriggerRule
+from src.models.user import User
 
 
 TRIGGER_TYPE_LABELS = {
@@ -264,3 +274,168 @@ def cancel_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
     return builder.as_markup()
+
+
+# --- Recipient picker keyboards ---
+
+
+def _tr_nav_row(kind: str, page: int, total_pages: int) -> list[InlineKeyboardButton]:
+    if total_pages <= 1:
+        return []
+    buttons: list[InlineKeyboardButton] = []
+    if page > 0:
+        buttons.append(
+            InlineKeyboardButton(
+                text="←",
+                callback_data=TriggerRecipientPageCB(kind=kind, page=page - 1).pack(),
+            )
+        )
+    else:
+        buttons.append(InlineKeyboardButton(text=" ", callback_data="noop"))
+    buttons.append(
+        InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop")
+    )
+    if page < total_pages - 1:
+        buttons.append(
+            InlineKeyboardButton(
+                text="→",
+                callback_data=TriggerRecipientPageCB(kind=kind, page=page + 1).pack(),
+            )
+        )
+    else:
+        buttons.append(InlineKeyboardButton(text=" ", callback_data="noop"))
+    return buttons
+
+
+def _tr_back_row(step: str) -> list[InlineKeyboardButton]:
+    return [
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=TriggerRecipientBackCB(step=step).pack(),
+        )
+    ]
+
+
+def _tr_cancel_row() -> list[InlineKeyboardButton]:
+    return [
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data=TriggerActionCB(action="cancel").pack(),
+        )
+    ]
+
+
+def trigger_roles_keyboard(
+    roles: list[RoleModel], page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    nav = _tr_nav_row("role", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    for role in roles:
+        kb.row(
+            InlineKeyboardButton(
+                text=role.display_name or role.name,
+                callback_data=TriggerPickRoleCB(role_id=role.id).pack(),
+            )
+        )
+    kb.row(*_tr_back_row("type"))
+    kb.row(*_tr_cancel_row())
+    return kb.as_markup()
+
+
+def trigger_states_keyboard(
+    states: list[str], page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    nav = _tr_nav_row("state", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    items_kb = InlineKeyboardBuilder()
+    for value in states:
+        items_kb.add(
+            InlineKeyboardButton(
+                text=value,
+                callback_data=TriggerPickStateCB(value=value).pack(),
+            )
+        )
+    items_kb.adjust(2)
+    kb.attach(items_kb)
+    kb.row(*_tr_back_row("type"))
+    kb.row(*_tr_cancel_row())
+    return kb.as_markup()
+
+
+def trigger_rcohort_types_keyboard(
+    types: list[str], page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    nav = _tr_nav_row("ctype", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    for type_ in types:
+        kb.row(
+            InlineKeyboardButton(
+                text=type_,
+                callback_data=TriggerPickCohortTypeCB(type=type_).pack(),
+            )
+        )
+    kb.row(*_tr_back_row("type"))
+    kb.row(*_tr_cancel_row())
+    return kb.as_markup()
+
+
+def trigger_rcohort_values_keyboard(
+    values: list[str], page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    nav = _tr_nav_row("cval", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    for value in values:
+        kb.row(
+            InlineKeyboardButton(
+                text=value,
+                callback_data=TriggerPickCohortValueCB(value=value).pack(),
+            )
+        )
+    kb.row(*_tr_back_row("ctype"))
+    kb.row(*_tr_cancel_row())
+    return kb.as_markup()
+
+
+def trigger_users_keyboard(
+    users: list[User],
+    selected_ids: set[int],
+    page: int,
+    total_pages: int,
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    nav = _tr_nav_row("user", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    for user in users:
+        handle = f"@{user.username}" if user.username else (user.name or "Без имени")
+        prefix = "✅ " if user.telegram_id in selected_ids else ""
+        kb.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{handle}",
+                callback_data=TriggerPickUserCB(telegram_id=user.telegram_id).pack(),
+            )
+        )
+    kb.row(
+        InlineKeyboardButton(
+            text=f"Готово ({len(selected_ids)})",
+            callback_data=TriggerUsersDoneCB().pack(),
+        )
+    )
+    kb.row(*_tr_back_row("type"))
+    kb.row(*_tr_cancel_row())
+    return kb.as_markup()
+
+
+def trigger_empty_recipient_keyboard() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.row(*_tr_back_row("type"))
+    kb.row(*_tr_cancel_row())
+    return kb.as_markup()

@@ -59,3 +59,36 @@ class TriggerRuleEditFieldCB(CallbackData, prefix="tr_edf"):
 
 class TriggerDelayModeCB(CallbackData, prefix="tr_dmd"):
     value: str
+
+
+class TriggerPickRoleCB(CallbackData, prefix="tr_pick_role"):
+    role_id: int
+
+
+class TriggerPickStateCB(CallbackData, prefix="tr_pick_state"):
+    value: str
+
+
+class TriggerPickCohortTypeCB(CallbackData, prefix="tr_pick_ct"):
+    type: str
+
+
+class TriggerPickCohortValueCB(CallbackData, prefix="tr_pick_cv"):
+    value: str
+
+
+class TriggerPickUserCB(CallbackData, prefix="tr_pick_user"):
+    telegram_id: int
+
+
+class TriggerUsersDoneCB(CallbackData, prefix="tr_users_done"):
+    pass
+
+
+class TriggerRecipientPageCB(CallbackData, prefix="tr_rpage"):
+    kind: str
+    page: int
+
+
+class TriggerRecipientBackCB(CallbackData, prefix="tr_rback"):
+    step: str

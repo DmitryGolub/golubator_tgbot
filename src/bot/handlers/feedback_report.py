@@ -48,7 +48,10 @@ async def cb_choose_type(
 @router.message(FeedbackReportFSM.entering_text, F.text)
 async def msg_enter_text(message: Message, state: FSMContext):
     sender = message.from_user
-    username = f"@{sender.username}" if sender.username else f"id{sender.id}"
+    if sender.username:
+        username = f"@{sender.username}"
+    else:
+        username = sender.full_name or "Аноним"
     await state.update_data(
         text=message.text,
         sender={"username": username, "full_name": sender.full_name},
@@ -79,7 +82,10 @@ async def cb_choose_recipient(
     text = data["text"]
 
     sender = callback.from_user
-    username = f"@{sender.username}" if sender.username else f"id{sender.id}"
+    if sender.username:
+        username = f"@{sender.username}"
+    else:
+        username = sender.full_name or "Аноним"
     full_name = sender.full_name
     outgoing = f"📩 Обращение от {username} ({full_name}):\n{text}"
 

@@ -43,6 +43,7 @@ from src.bot.callbacks.survey_builder import (
 )
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.pagination import get_page_slice
+from src.bot.labels import SESSION_STATUS_LABELS
 from src.bot.keyboards.survey_builder import (
     QUESTION_TYPE_LABELS,
     TEMPLATE_KIND_LABELS,
@@ -815,18 +816,29 @@ async def cb_results_session_detail(
 
     respondent_list = await UserDAO.get_all(telegram_id=session.respondent_id)
     respondent = respondent_list[0] if respondent_list else None
-    respondent_name = e(respondent.name) if respondent else str(session.respondent_id)
+    respondent_name = (
+        e(respondent.name)
+        if respondent and respondent.name
+        else "Пользователь не найден"
+    )
+
+    template = getattr(session, "template", None)
+    template_title = e(template.title) if template else "Опрос"
+    completed_at = (
+        session.completed_at.strftime("%d.%m.%Y %H:%M") if session.completed_at else "—"
+    )
+    status_label = SESSION_STATUS_LABELS.get(session.status.value, session.status.value)
 
     lines = [
-        f"<b>Результаты сессии #{session.id}</b>",
-        f"Респондент: {respondent_name}",
-        f"Статус: {session.status.value}",
+        f"<b>Ответы на опрос «{template_title}»</b>",
+        f"{respondent_name}, {completed_at}",
+        f"Статус: {status_label}",
         "",
     ]
 
     for answer in session.answers:
         q = answer.question
-        q_title = e(q.title) if q else f"Вопрос #{answer.question_id}"
+        q_title = e(q.title) if q else "Удалённый вопрос"
         if answer.value_text is not None:
             val = e(answer.value_text)
         elif answer.value_int is not None:

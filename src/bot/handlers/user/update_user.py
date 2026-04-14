@@ -460,7 +460,7 @@ async def cb_choose_mentor(
     if mentor_record and mentee:
         is_new_mentor = mentee.mentor_id != mentor_record.id
         await MenteeDAO.update(mentee.id, mentor_id=mentor_record.id)
-        value_human = mentor_record.name or f"id={mentor_id}"
+        value_human = mentor_record.name or "Имя ментора не указано"
 
         cohort_tids = await CohortDAO.get_telegram_ids_in_cohort("Status", "Greetings")
         if target_user_id in cohort_tids:
@@ -470,7 +470,7 @@ async def cb_choose_mentor(
         if mentor_user and is_new_mentor:
             await notify_student_new_mentor(user, mentor_user)
     elif not mentor_record:
-        value_human = f"Ментор id={mentor_id} не найден в таблице менторов"
+        value_human = "Выбранный ментор не найден в системе."
     else:
         value_human = "Профиль менти не найден для пользователя"
 

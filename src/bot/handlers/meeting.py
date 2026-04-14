@@ -54,6 +54,7 @@ from src.models.meeting import CallStatus, ProposalStatus
 from src.services.auth import AuthService
 from src.bot.handlers.pagination_input import clear_pagination_ctx
 from src.bot.keyboards.utils import format_username_display
+from src.bot.labels import MEETING_FIELD_LABELS
 from src.bot.utils import safe_edit_text
 from src.utils.escape import e
 import logging
@@ -839,7 +840,7 @@ async def _finalize_reschedule(user_id: int, state: FSMContext, reply_func, bot)
         return
 
     proposer = await UserDAO.find_one_or_none(telegram_id=user_id)
-    proposer_name = proposer.name if proposer else f"id={user_id}"
+    proposer_name = proposer.name if proposer else "Неизвестный участник"
 
     for p in meeting.participants:
         if p.telegram_id == user_id:
@@ -924,7 +925,7 @@ async def _finalize_meeting(
 
     # Get proposer name for notification
     proposer = await UserDAO.find_one_or_none(telegram_id=user_id)
-    proposer_name = proposer.name if proposer else f"id={user_id}"
+    proposer_name = proposer.name if proposer else "Неизвестный участник"
 
     # Send proposal to ALL participants except the initiator
     all_ids = set(participant_ids)
@@ -951,6 +952,22 @@ async def _finalize_meeting(
     )
 
 
+def _format_meeting_ref(meeting) -> str:
+    """Short human-readable reference to a meeting for notifications."""
+    date_str = ""
+    if meeting.scheduled_at:
+        try:
+            date_str = meeting.scheduled_at.astimezone(MOSCOW_TZ).strftime(
+                "%d.%m.%Y %H:%M MSK"
+            )
+        except Exception:
+            pass
+    topic = meeting.description or meeting.event_type or "созвон"
+    if date_str:
+        return f"созвон «{e(topic)}» на {date_str}"
+    return f"созвон «{e(topic)}»"
+
+
 def _format_edit_header(meeting) -> str:
     date_str = "—"
     if meeting.scheduled_at:
@@ -972,7 +989,7 @@ def _format_edit_header(meeting) -> str:
     else:
         participants_str = "—"
     return (
-        f"✏️ <b>Редактирование созвона #{meeting.id}</b>\n\n"
+        f"✏️ <b>Редактирование созвона</b>\n\n"
         f"📅 Дата и время: {date_str}\n"
         f"📝 Описание: {desc}\n"
         f"🔗 Ссылка: {link}\n"
@@ -991,16 +1008,19 @@ async def _save_edit_and_return(user_id, state, reply_func, bot, **update_values
     meeting = await MeetingDAO.get_with_participants(meeting_id)
     if meeting:
         editor = await UserDAO.find_one_or_none(telegram_id=user_id)
-        editor_name = editor.name if editor else f"id={user_id}"
-        changed_fields = ", ".join(update_values.keys())
+        editor_name = editor.name if editor else "Неизвестный участник"
+        human_fields = ", ".join(
+            MEETING_FIELD_LABELS.get(k, k) for k in update_values.keys()
+        )
+        meeting_ref = _format_meeting_ref(meeting)
         for p in meeting.participants:
             if p.telegram_id == user_id:
                 continue
             try:
                 await bot.send_message(
                     p.telegram_id,
-                    f"✏️ <b>{e(editor_name)}</b> изменил(а) созвон #{meeting_id} "
-                    f"(поля: {changed_fields}).",
+                    f"✏️ <b>{e(editor_name)}</b> изменил(а) {meeting_ref}: "
+                    f"{e(human_fields)}.",
                 )
             except Exception as exc:
                 logger.error(
@@ -1013,7 +1033,7 @@ async def _save_edit_and_return(user_id, state, reply_func, bot, **update_values
     view = await prepare_meetings_view(
         user_id,
         hide_past=True,
-        text_prefix=f"✅ Созвон #{meeting_id} обновлён.\n\n",
+        text_prefix="✅ Созвон обновлён.\n\n",
     )
     await reply_func(
         view.text,
@@ -1272,14 +1292,15 @@ async def cb_edit_confirm_participants(callback: CallbackQuery, state: FSMContex
     user_id = callback.from_user.id
     if meeting:
         editor = await UserDAO.find_one_or_none(telegram_id=user_id)
-        editor_name = editor.name if editor else f"id={user_id}"
+        editor_name = editor.name if editor else "Неизвестный участник"
+        meeting_ref = _format_meeting_ref(meeting)
         for p in meeting.participants:
             if p.telegram_id == user_id:
                 continue
             try:
                 await callback.bot.send_message(
                     p.telegram_id,
-                    f"✏️ <b>{e(editor_name)}</b> ��бновил(а) участников созвона #{meeting_id}.",
+                    f"✏️ <b>{e(editor_name)}</b> обновил(а) участников: {meeting_ref}.",
                 )
             except Exception as exc:
                 logger.error(
@@ -1292,7 +1313,7 @@ async def cb_edit_confirm_participants(callback: CallbackQuery, state: FSMContex
     view = await prepare_meetings_view(
         user_id,
         hide_past=True,
-        text_prefix=f"✅ Созвон #{meeting_id} обновлён.\n\n",
+        text_prefix="✅ Созвон обновлён.\n\n",
     )
     await safe_edit_text(
         callback,
