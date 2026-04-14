@@ -16,6 +16,10 @@ class SessionAlreadyCompletedError(Exception):
     pass
 
 
+class SessionNotOwnedError(Exception):
+    pass
+
+
 class TemplateNotFoundError(Exception):
     pass
 
@@ -71,8 +75,10 @@ class SurveySessionService:
 
     async def start_session(self, session_id: int, caller_id: int) -> SurveySession:
         session = await SurveySessionDAO.get_by_id(session_id)
-        if not session or session.respondent_id != caller_id:
+        if not session:
             raise SessionNotFoundError
+        if session.respondent_id != caller_id:
+            raise SessionNotOwnedError
         if session.status == SessionStatus.completed:
             raise SessionAlreadyCompletedError
 

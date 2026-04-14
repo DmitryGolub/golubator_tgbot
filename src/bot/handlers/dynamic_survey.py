@@ -1,6 +1,7 @@
 import logging
 
 from aiogram import Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.fsm.context import FSMContext
 
@@ -12,6 +13,7 @@ from src.bot.middlewares.survey_block_middleware import invalidate_pending_cache
 from src.services.survey_session import (
     SessionAlreadyCompletedError,
     SessionNotFoundError,
+    SessionNotOwnedError,
     SurveySessionService,
 )
 
@@ -69,7 +71,19 @@ async def cb_start_survey(
     except SessionNotFoundError:
         logger.warning("Survey session %s not found", callback_data.session_id)
         await state.clear()
-        await callback.answer("Опрос не найден")
+        await callback.answer("Опрос не найден", show_alert=True)
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except TelegramBadRequest:
+            pass
+        return
+    except SessionNotOwnedError:
+        await state.clear()
+        await callback.answer("Этот опрос не для вас", show_alert=True)
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except TelegramBadRequest:
+            pass
         return
     except SessionAlreadyCompletedError:
         await state.clear()

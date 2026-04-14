@@ -1,6 +1,7 @@
 import logging
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
@@ -88,6 +89,20 @@ async def cb_choose_recipient(
             continue
         try:
             await bot.send_message(user.telegram_id, outgoing)
+        except TelegramForbiddenError:
+            logger.info("User %s blocked the bot, skipping feedback", user.telegram_id)
+        except TelegramBadRequest as exc:
+            if "chat not found" in str(exc).lower():
+                logger.info(
+                    "Chat not found for user %s, skipping feedback", user.telegram_id
+                )
+            else:
+                logger.warning(
+                    "Failed to send feedback to %s: %s",
+                    user.telegram_id,
+                    exc,
+                    exc_info=True,
+                )
         except Exception:
             logger.warning(
                 "Failed to send feedback to %s", user.telegram_id, exc_info=True

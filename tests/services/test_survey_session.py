@@ -6,6 +6,7 @@ import pytest
 from src.services.survey_session import (
     SessionAlreadyCompletedError,
     SessionNotFoundError,
+    SessionNotOwnedError,
     SurveySessionService,
     TemplateNotFoundError,
 )
@@ -75,7 +76,7 @@ class TestStartSession:
             id=1, status=SessionStatus.pending, respondent_id=99, template_id=1
         )
         mock_sess_dao.get_by_id = AsyncMock(return_value=session)
-        with pytest.raises(SessionNotFoundError):
+        with pytest.raises(SessionNotOwnedError):
             await SurveySessionService().start_session(1, caller_id=42)
 
     async def test_already_completed(self, mock_tmpl_dao, mock_sess_dao):
