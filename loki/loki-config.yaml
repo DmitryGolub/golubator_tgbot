@@ -26,6 +26,17 @@ schema_config:
 
 limits_config:
   retention_period: 336h  # 14 days
+  max_query_length: 168h
+  max_query_parallelism: 4
+  max_entries_limit_per_query: 1000
+  split_queries_by_interval: 1h
+
+query_range:
+  align_queries_with_step: true
+  parallelise_shardable_queries: true
+
+frontend:
+  max_outstanding_per_tenant: 256
 
 compactor:
   working_directory: /loki/compactor
