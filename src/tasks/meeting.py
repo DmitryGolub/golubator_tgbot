@@ -129,12 +129,28 @@ async def _notify_reminder_async(meeting_id: int) -> None:
         bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
         try:
             when = _format_dt(meeting.scheduled_at)
-            text = (
-                "<b>Напоминание о созвоне через ~5 минут.</b>\n"
-                f"Когда: {when}\n"
-                f"Ссылка: {e(meeting.meeting_link) or '—'}"
-            )
+            link = e(meeting.meeting_link) or "—"
             for p in meeting.participants:
+                partners = [
+                    other
+                    for other in meeting.participants
+                    if other.telegram_id != p.telegram_id
+                ]
+                if partners:
+                    partners_line = ", ".join(
+                        f"<b>{e(other.name)}</b> @{e(other.username)}"
+                        if other.username
+                        else f"<b>{e(other.name)}</b>"
+                        for other in partners
+                    )
+                else:
+                    partners_line = "—"
+                text = (
+                    "<b>Напоминание о созвоне через ~5 минут.</b>\n"
+                    f"С кем: {partners_line}\n"
+                    f"Когда: {when}\n"
+                    f"Ссылка: {link}"
+                )
                 await _send_to_user(bot, p.telegram_id, text)
         finally:
             await bot.session.close()
