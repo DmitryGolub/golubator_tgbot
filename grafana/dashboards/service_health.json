@@ -202,12 +202,12 @@
       "type": "logs",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
       "datasource": { "uid": "loki-logs", "type": "loki" },
-      "maxDataPoints": 500,
+      "maxDataPoints": 200,
       "targets": [
         {
           "refId": "A",
-          "expr": "{service=~\"$service\", level=\"ERROR\"} | json | __error__=\"\"",
-          "maxLines": 500
+          "expr": "{service=~\"$service\", level=\"ERROR\"}",
+          "maxLines": 200
         }
       ],
       "options": {
@@ -227,12 +227,12 @@
       "type": "logs",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
       "datasource": { "uid": "loki-logs", "type": "loki" },
-      "maxDataPoints": 500,
+      "maxDataPoints": 200,
       "targets": [
         {
           "refId": "A",
-          "expr": "{service=~\"$service\", level=\"WARNING\"} | json | __error__=\"\"",
-          "maxLines": 500
+          "expr": "{service=~\"$service\", level=\"WARNING\"}",
+          "maxLines": 200
         }
       ],
       "options": {
@@ -256,7 +256,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service=~\"$service\"} | json | __error__=\"\"",
+          "expr": "{service=~\"$service\"}",
           "maxLines": 1000
         }
       ],

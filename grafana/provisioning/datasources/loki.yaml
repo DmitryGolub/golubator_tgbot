@@ -10,5 +10,7 @@ datasources:
     editable: false
     jsonData:
       httpHeaderName1: X-Scope-OrgID
+      timeout: 180
+      maxLines: 1000
     secureJsonData:
       httpHeaderValue1: ${LOKI_TENANT_ID}

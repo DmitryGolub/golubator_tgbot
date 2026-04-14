@@ -30,6 +30,7 @@ limits_config:
   max_query_parallelism: 4
   max_entries_limit_per_query: 1000
   split_queries_by_interval: 1h
+  query_timeout: 3m
 
 query_range:
   align_queries_with_step: true
