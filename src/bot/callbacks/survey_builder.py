@@ -37,6 +37,39 @@ class SurveySendRecipientCB(CallbackData, prefix="ss_rtype"):
     value: str
 
 
+class SurveySendPickRoleCB(CallbackData, prefix="ss_prole"):
+    role_id: int
+
+
+class SurveySendPickStateCB(CallbackData, prefix="ss_pstate"):
+    value: str
+
+
+class SurveySendPickCohortTypeCB(CallbackData, prefix="ss_pctype"):
+    type: str
+
+
+class SurveySendPickCohortValueCB(CallbackData, prefix="ss_pcval"):
+    value: str
+
+
+class SurveySendPickUserCB(CallbackData, prefix="ss_puser"):
+    telegram_id: int
+
+
+class SurveySendUsersDoneCB(CallbackData, prefix="ss_udone"):
+    pass
+
+
+class SurveySendPageCB(CallbackData, prefix="ss_page"):
+    kind: str  # "role" | "state" | "ctype" | "cval" | "user"
+    page: int
+
+
+class SurveySendBackCB(CallbackData, prefix="ss_back"):
+    step: str  # "type" | "ctype"
+
+
 # --- Edit template / questions / options ---
 
 

@@ -18,15 +18,25 @@ from src.bot.callbacks.survey_builder import (
     SurveyReorderQCB,
     SurveyResultsSessionCB,
     SurveyResultsTemplateCB,
+    SurveySendBackCB,
+    SurveySendPageCB,
+    SurveySendPickCohortTypeCB,
+    SurveySendPickCohortValueCB,
+    SurveySendPickRoleCB,
+    SurveySendPickStateCB,
+    SurveySendPickUserCB,
     SurveySendRecipientCB,
     SurveySendSelectCB,
+    SurveySendUsersDoneCB,
     SurveyTemplateDeleteCB,
     SurveyTemplateDetailCB,
     SurveyTemplateToggleCB,
 )
 from src.bot.keyboards.pagination import DEFAULT_PAGE_SIZE, build_paginated_keyboard
+from src.models.role import RoleModel
 from src.models.survey_session import SurveySession
 from src.models.survey_template import SurveyQuestion, SurveyTemplate
+from src.models.user import User
 
 
 QUESTION_TYPE_LABELS = {
@@ -356,6 +366,168 @@ def survey_send_recipient_type_keyboard() -> InlineKeyboardMarkup:
     )
     builder.adjust(1)
     return builder.as_markup()
+
+
+def _ss_nav_row(kind: str, page: int, total_pages: int) -> list[InlineKeyboardButton]:
+    if total_pages <= 1:
+        return []
+    buttons: list[InlineKeyboardButton] = []
+    if page > 0:
+        buttons.append(
+            InlineKeyboardButton(
+                text="←",
+                callback_data=SurveySendPageCB(kind=kind, page=page - 1).pack(),
+            )
+        )
+    else:
+        buttons.append(InlineKeyboardButton(text=" ", callback_data="noop"))
+    buttons.append(
+        InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop")
+    )
+    if page < total_pages - 1:
+        buttons.append(
+            InlineKeyboardButton(
+                text="→",
+                callback_data=SurveySendPageCB(kind=kind, page=page + 1).pack(),
+            )
+        )
+    else:
+        buttons.append(InlineKeyboardButton(text=" ", callback_data="noop"))
+    return buttons
+
+
+def _ss_back_row(step: str) -> list[InlineKeyboardButton]:
+    return [
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=SurveySendBackCB(step=step).pack(),
+        )
+    ]
+
+
+def _ss_cancel_row() -> list[InlineKeyboardButton]:
+    return [
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data=SurveyBuilderActionCB(action="cancel").pack(),
+        )
+    ]
+
+
+def survey_send_roles_keyboard(
+    roles: list[RoleModel], page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    nav = _ss_nav_row("role", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    for role in roles:
+        kb.row(
+            InlineKeyboardButton(
+                text=role.display_name or role.name,
+                callback_data=SurveySendPickRoleCB(role_id=role.id).pack(),
+            )
+        )
+    kb.row(*_ss_back_row("type"))
+    kb.row(*_ss_cancel_row())
+    return kb.as_markup()
+
+
+def survey_send_states_keyboard(
+    states: list[str], page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    nav = _ss_nav_row("state", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    items_kb = InlineKeyboardBuilder()
+    for value in states:
+        items_kb.add(
+            InlineKeyboardButton(
+                text=value,
+                callback_data=SurveySendPickStateCB(value=value).pack(),
+            )
+        )
+    items_kb.adjust(2)
+    kb.attach(items_kb)
+    kb.row(*_ss_back_row("type"))
+    kb.row(*_ss_cancel_row())
+    return kb.as_markup()
+
+
+def survey_send_cohort_types_keyboard(
+    types: list[str], page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    nav = _ss_nav_row("ctype", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    for type_ in types:
+        kb.row(
+            InlineKeyboardButton(
+                text=type_,
+                callback_data=SurveySendPickCohortTypeCB(type=type_).pack(),
+            )
+        )
+    kb.row(*_ss_back_row("type"))
+    kb.row(*_ss_cancel_row())
+    return kb.as_markup()
+
+
+def survey_send_cohort_values_keyboard(
+    values: list[str], page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    nav = _ss_nav_row("cval", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    for value in values:
+        kb.row(
+            InlineKeyboardButton(
+                text=value,
+                callback_data=SurveySendPickCohortValueCB(value=value).pack(),
+            )
+        )
+    kb.row(*_ss_back_row("ctype"))
+    kb.row(*_ss_cancel_row())
+    return kb.as_markup()
+
+
+def survey_send_users_keyboard(
+    users: list[User],
+    selected_ids: set[int],
+    page: int,
+    total_pages: int,
+) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    nav = _ss_nav_row("user", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    for user in users:
+        handle = f"@{user.username}" if user.username else str(user.telegram_id)
+        prefix = "✅ " if user.telegram_id in selected_ids else ""
+        kb.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{handle}",
+                callback_data=SurveySendPickUserCB(telegram_id=user.telegram_id).pack(),
+            )
+        )
+    kb.row(
+        InlineKeyboardButton(
+            text=f"Готово ({len(selected_ids)})",
+            callback_data=SurveySendUsersDoneCB().pack(),
+        )
+    )
+    kb.row(*_ss_back_row("type"))
+    kb.row(*_ss_cancel_row())
+    return kb.as_markup()
+
+
+def survey_send_empty_keyboard() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.row(*_ss_back_row("type"))
+    kb.row(*_ss_cancel_row())
+    return kb.as_markup()
 
 
 def survey_send_confirm_keyboard() -> InlineKeyboardMarkup:

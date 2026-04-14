@@ -27,8 +27,16 @@ from src.bot.callbacks.survey_builder import (
     SurveyReorderQCB,
     SurveyResultsSessionCB,
     SurveyResultsTemplateCB,
+    SurveySendBackCB,
+    SurveySendPageCB,
+    SurveySendPickCohortTypeCB,
+    SurveySendPickCohortValueCB,
+    SurveySendPickRoleCB,
+    SurveySendPickStateCB,
+    SurveySendPickUserCB,
     SurveySendRecipientCB,
     SurveySendSelectCB,
+    SurveySendUsersDoneCB,
     SurveyTemplateDeleteCB,
     SurveyTemplateDetailCB,
     SurveyTemplateToggleCB,
@@ -48,12 +56,20 @@ from src.bot.keyboards.survey_builder import (
     question_type_keyboard,
     questions_list_keyboard,
     results_sessions_keyboard,
+    survey_send_cohort_types_keyboard,
+    survey_send_cohort_values_keyboard,
     survey_send_confirm_keyboard,
+    survey_send_empty_keyboard,
     survey_send_recipient_type_keyboard,
+    survey_send_roles_keyboard,
+    survey_send_states_keyboard,
+    survey_send_users_keyboard,
     template_detail_keyboard,
     template_kind_choice_keyboard,
     templates_list_keyboard,
 )
+from src.dao.cohort import CohortDAO
+from src.dao.role import RoleDAO
 from src.models.survey_template import TemplateKind
 from src.bot.pagination_search import filter_items
 from src.bot.states.survey_builder import (
@@ -853,12 +869,76 @@ RECIPIENT_TYPE_LABELS = {
     "specific_users": "Конкретные пользователи",
 }
 
-RECIPIENT_HINTS = {
-    "by_role": "Введите название роли (например: mentor):",
-    "by_state": "Введите статус (greeting/hold/study/search/offer):",
-    "by_cohort": "Введите значение когорты:",
-    "specific_users": "Введите Telegram ID пользователей через запятую:",
-}
+USERS_PAGE_SIZE = 6
+
+
+async def _show_recipient_step(
+    callback: CallbackQuery, rt: str, state: FSMContext
+) -> None:
+    if rt == "by_role":
+        roles = await RoleDAO.get_all()
+        if not roles:
+            await safe_edit_text(
+                callback,
+                "В базе нет ни одной роли.",
+                reply_markup=survey_send_empty_keyboard(),
+            )
+            return
+        page_items, total_pages = get_page_slice(list(roles), 0)
+        await safe_edit_text(
+            callback,
+            "Выберите роль:",
+            reply_markup=survey_send_roles_keyboard(list(page_items), 0, total_pages),
+        )
+    elif rt == "by_state":
+        states = await CohortDAO.get_distinct_values("Status")
+        if not states:
+            await safe_edit_text(
+                callback,
+                "В базе нет ни одного статуса.",
+                reply_markup=survey_send_empty_keyboard(),
+            )
+            return
+        page_items, total_pages = get_page_slice(states, 0)
+        await safe_edit_text(
+            callback,
+            "Выберите статус:",
+            reply_markup=survey_send_states_keyboard(list(page_items), 0, total_pages),
+        )
+    elif rt == "by_cohort":
+        types = await CohortDAO.get_distinct_types()
+        if not types:
+            await safe_edit_text(
+                callback,
+                "В базе нет ни одной когорты.",
+                reply_markup=survey_send_empty_keyboard(),
+            )
+            return
+        page_items, total_pages = get_page_slice(types, 0)
+        await safe_edit_text(
+            callback,
+            "Выберите тип когорты:",
+            reply_markup=survey_send_cohort_types_keyboard(
+                list(page_items), 0, total_pages
+            ),
+        )
+    elif rt == "specific_users":
+        users, total_pages = await UserDAO.get_paginated(
+            page=0, page_size=USERS_PAGE_SIZE, exclude_placeholders=True
+        )
+        if not users and total_pages <= 1:
+            await safe_edit_text(
+                callback,
+                "Нет доступных пользователей.",
+                reply_markup=survey_send_empty_keyboard(),
+            )
+            return
+        await state.update_data(users_selected=[], users_page=0)
+        await safe_edit_text(
+            callback,
+            "Выберите получателей (нажимайте, чтобы отметить/снять), затем «Готово»:",
+            reply_markup=survey_send_users_keyboard(users, set(), 0, total_pages),
+        )
 
 
 @router.callback_query(SurveySendSelectCB.filter())
@@ -895,47 +975,212 @@ async def cb_send_recipient_type(
     await state.update_data(send_recipient_type=rt)
     await callback.answer()
     await state.set_state(SurveySendFSM.configuring_recipients)
-    await safe_edit_text(callback, RECIPIENT_HINTS[rt], reply_markup=cancel_keyboard())
+    await _show_recipient_step(callback, rt, state)
 
 
-@router.message(SurveySendFSM.configuring_recipients)
-async def msg_send_recipient_config(message: Message, state: FSMContext):
+async def _show_confirm(callback: CallbackQuery, state: FSMContext, config_str: str):
     data = await state.get_data()
     rt = data["send_recipient_type"]
-    text = message.text.strip()
-
-    config = {}
-    if rt == "by_role":
-        config = {"role_name": text}
-    elif rt == "by_state":
-        config = {"state": text}
-    elif rt == "by_cohort":
-        config = {"cohort_value": text}
-    elif rt == "specific_users":
-        user_ids = [
-            int(uid.strip()) for uid in text.split(",") if uid.strip().isdigit()
-        ]
-        if not user_ids:
-            await message.answer(
-                "Введите хотя бы один числовой Telegram ID через запятую."
-            )
-            return
-        config = {"user_ids": user_ids}
-
-    await state.update_data(send_recipient_config=config)
-    await state.set_state(SurveySendFSM.confirming)
-
     template_title = e(data["send_template_title"])
     rt_label = RECIPIENT_TYPE_LABELS.get(rt, rt)
-    config_str = text
-
-    await message.answer(
+    await state.set_state(SurveySendFSM.confirming)
+    await safe_edit_text(
+        callback,
         f"<b>Подтверждение отправки</b>\n\n"
         f"Опрос: <b>{template_title}</b>\n"
         f"Получатели: {rt_label}\n"
         f"Конфигурация: <code>{e(config_str)}</code>",
         reply_markup=survey_send_confirm_keyboard(),
-        parse_mode="HTML",
+    )
+
+
+@router.callback_query(
+    SurveySendFSM.configuring_recipients, SurveySendPickRoleCB.filter()
+)
+async def cb_send_pick_role(
+    callback: CallbackQuery, callback_data: SurveySendPickRoleCB, state: FSMContext
+):
+    await callback.answer()
+    role = await RoleDAO.find_one_or_none(id=callback_data.role_id)
+    if role is None:
+        await safe_edit_text(callback, "Роль не найдена.")
+        return
+    await state.update_data(send_recipient_config={"role_name": role.name})
+    await _show_confirm(callback, state, role.display_name or role.name)
+
+
+@router.callback_query(
+    SurveySendFSM.configuring_recipients, SurveySendPickStateCB.filter()
+)
+async def cb_send_pick_state(
+    callback: CallbackQuery, callback_data: SurveySendPickStateCB, state: FSMContext
+):
+    await callback.answer()
+    value = callback_data.value
+    await state.update_data(send_recipient_config={"state": value})
+    await _show_confirm(callback, state, value)
+
+
+@router.callback_query(
+    SurveySendFSM.configuring_recipients, SurveySendPickCohortTypeCB.filter()
+)
+async def cb_send_pick_cohort_type(
+    callback: CallbackQuery,
+    callback_data: SurveySendPickCohortTypeCB,
+    state: FSMContext,
+):
+    await callback.answer()
+    cohort_type = callback_data.type
+    values = await CohortDAO.get_distinct_values(cohort_type)
+    if not values:
+        await safe_edit_text(
+            callback,
+            f"В когорте «{e(cohort_type)}» нет значений.",
+            reply_markup=survey_send_empty_keyboard(),
+        )
+        return
+    await state.update_data(cohort_type_pending=cohort_type)
+    page_items, total_pages = get_page_slice(values, 0)
+    await safe_edit_text(
+        callback,
+        f"Выберите значение когорты «{e(cohort_type)}»:",
+        reply_markup=survey_send_cohort_values_keyboard(
+            list(page_items), 0, total_pages
+        ),
+    )
+
+
+@router.callback_query(
+    SurveySendFSM.configuring_recipients, SurveySendPickCohortValueCB.filter()
+)
+async def cb_send_pick_cohort_value(
+    callback: CallbackQuery,
+    callback_data: SurveySendPickCohortValueCB,
+    state: FSMContext,
+):
+    await callback.answer()
+    data = await state.get_data()
+    cohort_type = data.get("cohort_type_pending")
+    if not cohort_type:
+        await safe_edit_text(callback, "Тип когорты утерян, начните заново.")
+        return
+    value = callback_data.value
+    await state.update_data(
+        send_recipient_config={"cohort_type": cohort_type, "cohort_value": value}
+    )
+    await _show_confirm(callback, state, f"{cohort_type}: {value}")
+
+
+@router.callback_query(
+    SurveySendFSM.configuring_recipients, SurveySendPickUserCB.filter()
+)
+async def cb_send_pick_user(
+    callback: CallbackQuery, callback_data: SurveySendPickUserCB, state: FSMContext
+):
+    data = await state.get_data()
+    selected: list[int] = list(data.get("users_selected") or [])
+    tid = callback_data.telegram_id
+    if tid in selected:
+        selected.remove(tid)
+    else:
+        selected.append(tid)
+    page = int(data.get("users_page") or 0)
+    users, total_pages = await UserDAO.get_paginated(
+        page=page, page_size=USERS_PAGE_SIZE, exclude_placeholders=True
+    )
+    await state.update_data(users_selected=selected)
+    await callback.answer()
+    await callback.message.edit_reply_markup(
+        reply_markup=survey_send_users_keyboard(users, set(selected), page, total_pages)
+    )
+
+
+@router.callback_query(
+    SurveySendFSM.configuring_recipients, SurveySendUsersDoneCB.filter()
+)
+async def cb_send_users_done(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    selected: list[int] = list(data.get("users_selected") or [])
+    if not selected:
+        await callback.answer("Выберите хотя бы одного пользователя", show_alert=True)
+        return
+    await callback.answer()
+    await state.update_data(send_recipient_config={"user_ids": sorted(selected)})
+    await _show_confirm(callback, state, ", ".join(str(u) for u in sorted(selected)))
+
+
+@router.callback_query(SurveySendFSM.configuring_recipients, SurveySendPageCB.filter())
+async def cb_send_page(
+    callback: CallbackQuery, callback_data: SurveySendPageCB, state: FSMContext
+):
+    await callback.answer()
+    kind = callback_data.kind
+    page = callback_data.page
+    if kind == "role":
+        roles = list(await RoleDAO.get_all())
+        page_items, total_pages = get_page_slice(roles, page)
+        await callback.message.edit_reply_markup(
+            reply_markup=survey_send_roles_keyboard(list(page_items), page, total_pages)
+        )
+    elif kind == "state":
+        states = await CohortDAO.get_distinct_values("Status")
+        page_items, total_pages = get_page_slice(states, page)
+        await callback.message.edit_reply_markup(
+            reply_markup=survey_send_states_keyboard(
+                list(page_items), page, total_pages
+            )
+        )
+    elif kind == "ctype":
+        types = await CohortDAO.get_distinct_types()
+        page_items, total_pages = get_page_slice(types, page)
+        await callback.message.edit_reply_markup(
+            reply_markup=survey_send_cohort_types_keyboard(
+                list(page_items), page, total_pages
+            )
+        )
+    elif kind == "cval":
+        data = await state.get_data()
+        cohort_type = data.get("cohort_type_pending")
+        if not cohort_type:
+            return
+        values = await CohortDAO.get_distinct_values(cohort_type)
+        page_items, total_pages = get_page_slice(values, page)
+        await callback.message.edit_reply_markup(
+            reply_markup=survey_send_cohort_values_keyboard(
+                list(page_items), page, total_pages
+            )
+        )
+    elif kind == "user":
+        data = await state.get_data()
+        selected = set(data.get("users_selected") or [])
+        users, total_pages = await UserDAO.get_paginated(
+            page=page, page_size=USERS_PAGE_SIZE, exclude_placeholders=True
+        )
+        await state.update_data(users_page=page)
+        await callback.message.edit_reply_markup(
+            reply_markup=survey_send_users_keyboard(users, selected, page, total_pages)
+        )
+
+
+@router.callback_query(SurveySendBackCB.filter())
+async def cb_send_back(
+    callback: CallbackQuery, callback_data: SurveySendBackCB, state: FSMContext
+):
+    await callback.answer()
+    step = callback_data.step
+    if step == "ctype":
+        data = await state.get_data()
+        rt = data.get("send_recipient_type", "by_cohort")
+        await _show_recipient_step(callback, rt, state)
+        return
+    # default: back to recipient type selection
+    data = await state.get_data()
+    title = data.get("send_template_title", "")
+    await state.set_state(SurveySendFSM.choosing_recipient_type)
+    await safe_edit_text(
+        callback,
+        f"Опрос: <b>{e(title)}</b>\n\nВыберите тип получателей:",
+        reply_markup=survey_send_recipient_type_keyboard(),
     )
 
 

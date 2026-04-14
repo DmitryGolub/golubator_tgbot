@@ -48,6 +48,7 @@ class UserDAO(BaseDAO):
         page_size: int = 6,
         role_name: str | None = None,
         search: str | None = None,
+        exclude_placeholders: bool = False,
         **filter_by,
     ) -> tuple[list[User], int]:
         async with async_session_maker() as session:
@@ -58,6 +59,8 @@ class UserDAO(BaseDAO):
                 base = base.join(RoleModel, cls.model.role_id == RoleModel.id).where(
                     RoleModel.name == role_name
                 )
+            if exclude_placeholders:
+                base = base.where(cls.model.telegram_id > 0)
             if search:
                 pattern = f"%{search}%"
                 base = base.where(
