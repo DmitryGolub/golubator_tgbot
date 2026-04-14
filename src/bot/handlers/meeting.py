@@ -369,9 +369,13 @@ async def cb_student_propose_meeting(callback: CallbackQuery, state: FSMContext)
         return
 
     mentor_tg_id = mentee.mentor.telegram_id
+    username = callback.from_user.username
+    default_topic = f"Созвон с @{username}" if username else "Созвон"
     await state.update_data(
         mentor_id=mentor_tg_id,
         student_id=user_id,
+        event_type="Обучение",
+        description=default_topic,
     )
     await state.set_state(CreateMeetingFSM.waiting_date)
     await safe_edit_text(
