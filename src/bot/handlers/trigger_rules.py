@@ -1,7 +1,7 @@
 import logging
 from datetime import time
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from aiogram.fsm.context import FSMContext
 
@@ -11,6 +11,7 @@ from src.bot.callbacks.trigger_rules import (
     TriggerCohortTypeCB,
     TriggerCohortValueCB,
     TriggerDelayModeCB,
+    TriggerDelayPresetCB,
     TriggerPickCohortTypeCB,
     TriggerPickCohortValueCB,
     TriggerPickRoleCB,
@@ -25,9 +26,14 @@ from src.bot.callbacks.trigger_rules import (
     TriggerRuleDetailCB,
     TriggerRuleEditFieldCB,
     TriggerRuleEditMenuCB,
+    TriggerRuleFireCB,
+    TriggerRuleFireConfirmCB,
     TriggerRuleToggleCB,
     TriggerScheduleModeCB,
     TriggerSurveyTemplateCB,
+    TriggerTimeBackCB,
+    TriggerTimeHourCB,
+    TriggerTimeMinuteCB,
     TriggerTypeCB,
     TriggerUsersDoneCB,
 )
@@ -44,7 +50,9 @@ from src.bot.keyboards.trigger_rules import (
     cohort_value_keyboard,
     cohort_wildcard_keyboard,
     confirm_delete_rule_keyboard,
+    confirm_fire_rule_keyboard,
     delay_mode_keyboard,
+    delay_presets_keyboard,
     recipient_type_keyboard,
     regularity_keyboard,
     rule_detail_keyboard,
@@ -52,6 +60,8 @@ from src.bot.keyboards.trigger_rules import (
     rules_list_keyboard,
     schedule_mode_keyboard,
     survey_templates_keyboard,
+    time_of_day_hour_keyboard,
+    time_of_day_minute_keyboard,
     trigger_empty_recipient_keyboard,
     trigger_rcohort_types_keyboard,
     trigger_rcohort_values_keyboard,
@@ -335,6 +345,58 @@ async def cb_delete_rule(
         await safe_edit_text(callback, text, reply_markup=markup)
 
 
+@router.callback_query(TriggerRuleFireCB.filter())
+async def cb_fire_rule_confirm(
+    callback: CallbackQuery, callback_data: TriggerRuleFireCB
+):
+    await callback.answer()
+    rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
+    if not rule:
+        await callback.answer(await UiTextService.get("trigger.rule_not_found"))
+        return
+    if rule.trigger_type != TriggerType.manual:
+        await callback.answer("Это действие доступно только для ручных правил.")
+        return
+    await safe_edit_text(
+        callback,
+        f"Запустить правило <b>{e(rule.name)}</b> сейчас?",
+        reply_markup=confirm_fire_rule_keyboard(rule.id),
+    )
+
+
+@router.callback_query(TriggerRuleFireConfirmCB.filter())
+async def cb_fire_rule(
+    callback: CallbackQuery,
+    callback_data: TriggerRuleFireConfirmCB,
+    bot: Bot,
+):
+    rule = await TriggerRuleDAO.get_by_id(callback_data.rule_id)
+    if not rule:
+        await callback.answer(await UiTextService.get("trigger.rule_not_found"))
+        return
+    if rule.trigger_type != TriggerType.manual:
+        await callback.answer("Это действие доступно только для ручных правил.")
+        return
+    if not rule.is_active:
+        await callback.answer("Правило отключено — включите его перед отправкой.")
+        return
+
+    from src.services.events.dispatcher import EventDispatcher
+
+    try:
+        await EventDispatcher.fire_rule(rule, {"manual_trigger": True}, bot=bot)
+    except Exception:
+        logger.exception("Manual fire failed for rule %s", rule.id)
+        await callback.answer(
+            "Ошибка при отправке. Подробности в логах.", show_alert=True
+        )
+        return
+
+    await callback.answer("Отправлено")
+    text, markup = await _format_rule_detail(rule)
+    await safe_edit_text(callback, text, reply_markup=markup)
+
+
 # --- Create rule FSM ---
 
 
@@ -572,31 +634,63 @@ async def cb_regularity(
     await state.set_state(TriggerRuleBuilderFSM.entering_time_of_day)
     await callback.answer()
     await safe_edit_text(
-        callback, "Введите время отправки (HH:MM, UTC):", reply_markup=cancel_keyboard()
+        callback,
+        "Выберите час отправки (UTC):",
+        reply_markup=time_of_day_hour_keyboard(),
     )
 
 
-def _parse_time_of_day(text: str) -> tuple[time | None, str | None]:
-    parts = text.strip().split(":")
-    if len(parts) != 2:
-        return None, "Формат: HH:MM (например, 09:30). Попробуйте снова:"
-    try:
-        h, m = int(parts[0]), int(parts[1])
-    except ValueError:
-        return None, "Формат: HH:MM (например, 09:30). Попробуйте снова:"
-    if not (0 <= h <= 23 and 0 <= m <= 59):
-        return None, "Часы: 0-23, минуты: 0-59. Попробуйте снова:"
-    return time(h, m), None
+_TIME_PICKER_STATES = {
+    TriggerRuleBuilderFSM.entering_time_of_day.state,
+    TriggerRuleEditFSM.editing_time_of_day.state,
+}
 
 
-@router.message(TriggerRuleBuilderFSM.entering_time_of_day)
-async def msg_time_of_day(message: Message, state: FSMContext):
-    t, err = _parse_time_of_day(message.text or "")
-    if err:
-        await message.answer(err)
+@router.callback_query(TriggerTimeHourCB.filter())
+async def cb_time_hour(
+    callback: CallbackQuery, callback_data: TriggerTimeHourCB, state: FSMContext
+):
+    current = await state.get_state()
+    if current not in _TIME_PICKER_STATES:
         return
-    await state.update_data(time_of_day=f"{t.hour:02d}:{t.minute:02d}")
-    await _prompt_survey_templates_msg(message, state)
+    await callback.answer()
+    await state.update_data(time_hour=callback_data.hour)
+    await safe_edit_text(
+        callback,
+        f"Выберите минуты ({callback_data.hour:02d}:MM, UTC):",
+        reply_markup=time_of_day_minute_keyboard(callback_data.hour),
+    )
+
+
+@router.callback_query(TriggerTimeMinuteCB.filter())
+async def cb_time_minute(
+    callback: CallbackQuery, callback_data: TriggerTimeMinuteCB, state: FSMContext
+):
+    current = await state.get_state()
+    if current not in _TIME_PICKER_STATES:
+        return
+    await callback.answer()
+    data = await state.get_data()
+    hour = int(data.get("time_hour") or 0)
+    minute = callback_data.minute
+    if current == TriggerRuleEditFSM.editing_time_of_day.state:
+        await _finish_edit(callback, state, time_of_day=time(hour, minute))
+        return
+    await state.update_data(time_of_day=f"{hour:02d}:{minute:02d}")
+    await _prompt_survey_templates(callback, state)
+
+
+@router.callback_query(TriggerTimeBackCB.filter())
+async def cb_time_back(callback: CallbackQuery, state: FSMContext):
+    current = await state.get_state()
+    if current not in _TIME_PICKER_STATES:
+        return
+    await callback.answer()
+    await safe_edit_text(
+        callback,
+        "Выберите час отправки (UTC):",
+        reply_markup=time_of_day_hour_keyboard(),
+    )
 
 
 async def _prompt_survey_templates(callback: CallbackQuery, state: FSMContext) -> None:
@@ -726,9 +820,8 @@ async def _after_recipient_config(
     await state.set_state(TriggerRuleBuilderFSM.setting_delay)
     await safe_edit_text(
         callback,
-        f"Получатели сохранены: {e(summary)}\n\n"
-        "Задержка отправки в секундах (0 = немедленно):",
-        reply_markup=cancel_keyboard(),
+        f"Получатели сохранены: {e(summary)}\n\nВыберите задержку отправки:",
+        reply_markup=delay_presets_keyboard(),
     )
 
 
@@ -749,8 +842,8 @@ async def cb_recipient_type(
         await state.set_state(TriggerRuleBuilderFSM.setting_delay)
         await safe_edit_text(
             callback,
-            "Задержка отправки в секундах (0 = немедленно):",
-            reply_markup=cancel_keyboard(),
+            "Выберите задержку отправки:",
+            reply_markup=delay_presets_keyboard(),
         )
 
 
@@ -979,22 +1072,11 @@ async def cb_recipient_back(
         )
 
 
-@router.message(TriggerRuleBuilderFSM.setting_delay)
-async def msg_delay(message: Message, state: FSMContext):
-    try:
-        delay = int(message.text.strip())
-    except ValueError:
-        await message.answer("Введите число:")
-        return
-
-    if delay < 0:
-        await message.answer("Задержка не может быть отрицательной:")
-        return
-
-    await state.update_data(delay_seconds=delay)
-
-    # Create rule
+async def _finalize_create(
+    callback: CallbackQuery, state: FSMContext, created_by: int
+) -> None:
     data = await state.get_data()
+    delay = int(data.get("delay_seconds") or 0)
     create_kwargs = dict(
         name=data["name"],
         trigger_type=data["trigger_type"],
@@ -1003,7 +1085,7 @@ async def msg_delay(message: Message, state: FSMContext):
         recipient_config=data.get("recipient_config"),
         action_config=data["action_config"],
         delay_seconds=delay,
-        created_by=message.from_user.id,
+        created_by=created_by,
     )
     if data.get("trigger_config"):
         create_kwargs["trigger_config"] = data["trigger_config"]
@@ -1026,13 +1108,33 @@ async def msg_delay(message: Message, state: FSMContext):
     )
 
     text, markup = await _build_rules_list_page(page=0)
-    await message.answer(
+    await safe_edit_text(
+        callback,
         f"Правило <b>{e(rule.name)}</b> создано.\n\n"
         f"Триггер: {e(trigger_label)}\n"
         f"Действие: {e(action_label)}\n"
         f"Задержка: {delay} сек\n\n{text}",
         reply_markup=markup,
     )
+
+
+@router.callback_query(TriggerDelayPresetCB.filter())
+async def cb_delay_preset(
+    callback: CallbackQuery, callback_data: TriggerDelayPresetCB, state: FSMContext
+):
+    current = await state.get_state()
+    if current not in {
+        TriggerRuleBuilderFSM.setting_delay.state,
+        TriggerRuleEditFSM.editing_delay.state,
+    }:
+        return
+    await callback.answer()
+    delay = callback_data.seconds
+    if current == TriggerRuleEditFSM.editing_delay.state:
+        await _finish_edit(callback, state, delay_seconds=delay)
+        return
+    await state.update_data(delay_seconds=delay)
+    await _finalize_create(callback, state, created_by=callback.from_user.id)
 
 
 # --- Edit rule FSM ---
@@ -1135,15 +1237,15 @@ async def cb_edit_field(
         await state.set_state(TriggerRuleEditFSM.editing_time_of_day)
         await safe_edit_text(
             callback,
-            "Введите новое время отправки (HH:MM, UTC):",
-            reply_markup=cancel_keyboard(),
+            "Выберите новый час отправки (UTC):",
+            reply_markup=time_of_day_hour_keyboard(),
         )
     elif field == "dl":
         await state.set_state(TriggerRuleEditFSM.editing_delay)
         await safe_edit_text(
             callback,
-            "Введите новую задержку в секундах (0 = немедленно):",
-            reply_markup=cancel_keyboard(),
+            "Выберите новую задержку отправки:",
+            reply_markup=delay_presets_keyboard(),
         )
     elif field == "dm":
         await state.set_state(TriggerRuleEditFSM.editing_delay_mode)
@@ -1240,28 +1342,6 @@ async def cb_edit_regularity(
 ):
     await callback.answer()
     await _finish_edit(callback, state, regularity=Regularity(callback_data.value))
-
-
-@router.message(TriggerRuleEditFSM.editing_time_of_day)
-async def msg_edit_time_of_day(message: Message, state: FSMContext):
-    t, err = _parse_time_of_day(message.text or "")
-    if err:
-        await message.answer(err)
-        return
-    await _finish_edit(message, state, time_of_day=t)
-
-
-@router.message(TriggerRuleEditFSM.editing_delay)
-async def msg_edit_delay(message: Message, state: FSMContext):
-    try:
-        delay = int((message.text or "").strip())
-    except ValueError:
-        await message.answer("Введите число:")
-        return
-    if delay < 0:
-        await message.answer("Задержка не может быть отрицательной:")
-        return
-    await _finish_edit(message, state, delay_seconds=delay)
 
 
 @router.callback_query(

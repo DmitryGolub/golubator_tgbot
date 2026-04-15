@@ -6,6 +6,7 @@ from src.bot.callbacks.trigger_rules import (
     TriggerCohortTypeCB,
     TriggerCohortValueCB,
     TriggerDelayModeCB,
+    TriggerDelayPresetCB,
     TriggerPickCohortTypeCB,
     TriggerPickCohortValueCB,
     TriggerPickRoleCB,
@@ -20,13 +21,19 @@ from src.bot.callbacks.trigger_rules import (
     TriggerRuleDetailCB,
     TriggerRuleEditFieldCB,
     TriggerRuleEditMenuCB,
+    TriggerRuleFireCB,
+    TriggerRuleFireConfirmCB,
     TriggerRuleToggleCB,
     TriggerScheduleModeCB,
     TriggerSurveyTemplateCB,
+    TriggerTimeBackCB,
+    TriggerTimeHourCB,
+    TriggerTimeMinuteCB,
     TriggerTypeCB,
     TriggerUsersDoneCB,
 )
 from src.bot.keyboards.pagination import DEFAULT_PAGE_SIZE, build_paginated_keyboard
+from src.bot.labels import DELAY_PRESETS
 from src.models.role import RoleModel
 from src.models.trigger import TriggerRule
 from src.models.user import User
@@ -138,6 +145,11 @@ def rule_detail_keyboard(rule: TriggerRule) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     toggle_text = "Выключить" if rule.is_active else "Включить"
     builder.button(text=toggle_text, callback_data=TriggerRuleToggleCB(rule_id=rule.id))
+    if rule.trigger_type.value == "manual":
+        builder.button(
+            text="📤 Отправить",
+            callback_data=TriggerRuleFireCB(rule_id=rule.id),
+        )
     builder.button(
         text="✏️ Изменить",
         callback_data=TriggerRuleEditMenuCB(rule_id=rule.id),
@@ -212,6 +224,20 @@ def rule_edit_menu_keyboard(rule: TriggerRule) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def confirm_fire_rule_keyboard(rule_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="Да, отправить",
+        callback_data=TriggerRuleFireConfirmCB(rule_id=rule_id),
+    )
+    builder.button(
+        text="❌ Отмена",
+        callback_data=TriggerRuleDetailCB(rule_id=rule_id),
+    )
+    builder.adjust(2)
+    return builder.as_markup()
+
+
 def confirm_delete_rule_keyboard(rule_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
@@ -273,6 +299,52 @@ def cancel_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="❌ Отмена", callback_data=TriggerActionCB(action="cancel"))
     builder.adjust(1)
+    return builder.as_markup()
+
+
+def time_of_day_hour_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for hour in range(24):
+        builder.button(text=f"{hour:02d}", callback_data=TriggerTimeHourCB(hour=hour))
+    builder.adjust(6, 6, 6, 6)
+    builder.row(
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data=TriggerActionCB(action="cancel").pack(),
+        )
+    )
+    return builder.as_markup()
+
+
+def time_of_day_minute_keyboard(hour: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for minute in (0, 15, 30, 45):
+        builder.button(
+            text=f"{hour:02d}:{minute:02d}",
+            callback_data=TriggerTimeMinuteCB(minute=minute),
+        )
+    builder.adjust(4)
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data=TriggerTimeBackCB().pack()),
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data=TriggerActionCB(action="cancel").pack(),
+        ),
+    )
+    return builder.as_markup()
+
+
+def delay_presets_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for label, seconds in DELAY_PRESETS:
+        builder.button(text=label, callback_data=TriggerDelayPresetCB(seconds=seconds))
+    builder.adjust(2)
+    builder.row(
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data=TriggerActionCB(action="cancel").pack(),
+        )
+    )
     return builder.as_markup()
 
 

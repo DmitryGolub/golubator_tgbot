@@ -29,6 +29,14 @@ class TriggerRuleConfirmDeleteCB(CallbackData, prefix="tr_cdel"):
     rule_id: int
 
 
+class TriggerRuleFireCB(CallbackData, prefix="tr_fire"):
+    rule_id: int
+
+
+class TriggerRuleFireConfirmCB(CallbackData, prefix="tr_cfire"):
+    rule_id: int
+
+
 class TriggerSurveyTemplateCB(CallbackData, prefix="tr_survey"):
     template_id: int
 
@@ -92,3 +100,19 @@ class TriggerRecipientPageCB(CallbackData, prefix="tr_rpage"):
 
 class TriggerRecipientBackCB(CallbackData, prefix="tr_rback"):
     step: str
+
+
+class TriggerTimeHourCB(CallbackData, prefix="tr_thour"):
+    hour: int
+
+
+class TriggerTimeMinuteCB(CallbackData, prefix="tr_tmin"):
+    minute: int
+
+
+class TriggerTimeBackCB(CallbackData, prefix="tr_tback"):
+    pass
+
+
+class TriggerDelayPresetCB(CallbackData, prefix="tr_dprst"):
+    seconds: int
