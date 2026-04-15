@@ -45,7 +45,7 @@ from src.bot.keyboards.meeting import (
 )
 from src.bot.keyboards.menu import menu_keyboard
 from src.bot.keyboards.pagination import DEFAULT_PAGE_SIZE
-from src.bot.states.meeting import CreateMeetingFSM, EditMeetingFSM
+from src.bot.states.meeting import ApproveMeetingFSM, CreateMeetingFSM, EditMeetingFSM
 from src.dao.meeting import MeetingDAO
 from src.dao.mentor import MentorDAO
 from src.dao.user import UserDAO
@@ -376,6 +376,7 @@ async def cb_student_propose_meeting(callback: CallbackQuery, state: FSMContext)
         student_id=user_id,
         event_type="Обучение",
         description=default_topic,
+        is_student_proposal=True,
     )
     await state.set_state(CreateMeetingFSM.waiting_date)
     await safe_edit_text(
@@ -678,6 +679,14 @@ async def msg_meeting_time(message: Message, state: FSMContext):
             await _finalize_reschedule(
                 message.from_user.id, state, message.answer, message.bot
             )
+        elif data.get("is_student_proposal"):
+            await _finalize_meeting(
+                user_id=message.from_user.id,
+                state=state,
+                link=None,
+                reply_func=message.answer,
+                bot=message.bot,
+            )
         else:
             await state.set_state(CreateMeetingFSM.waiting_link)
             await message.answer(
@@ -739,6 +748,14 @@ async def cb_meeting_choose_time(
                 state,
                 lambda text, **kw: safe_edit_text(callback, text, **kw),
                 callback.bot,
+            )
+        elif data.get("is_student_proposal"):
+            await _finalize_meeting(
+                user_id=callback.from_user.id,
+                state=state,
+                link=None,
+                reply_func=lambda text, **kw: safe_edit_text(callback, text, **kw),
+                bot=callback.bot,
             )
         else:
             await state.set_state(CreateMeetingFSM.waiting_link)
@@ -1392,47 +1409,100 @@ async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetin
         )
 
 
-@router.callback_query(ConfirmMeetingCB.filter())
-async def cb_confirm_meeting(callback: CallbackQuery, callback_data: ConfirmMeetingCB):
-    await callback.answer()
-    user_id = callback.from_user.id
-
-    meeting, all_confirmed = await MeetingDAO.confirm_meeting(
-        callback_data.meeting_id, user_id
-    )
+async def _finalize_confirmation(
+    meeting_id: int, user_id: int, bot: Bot, reply_func, state: FSMContext
+) -> None:
+    meeting, all_confirmed = await MeetingDAO.confirm_meeting(meeting_id, user_id)
     if not meeting:
-        await callback.answer("Вы уже подтвердили или нет прав.", show_alert=True)
+        await reply_func(
+            "Вы уже подтвердили или нет прав.",
+            reply_markup=await _menu_kb(user_id),
+        )
         return
 
     if meeting.original_scheduled_at and all_confirmed:
-        # This was a reschedule proposal — clear original_scheduled_at
         meeting = await MeetingDAO.confirm_reschedule(meeting.id, user_id)
 
     if all_confirmed and meeting:
         await _schedule_meeting_tasks(meeting)
-
-        # Notify all other participants that meeting is fully confirmed
         for p in meeting.participants:
             if p.telegram_id == user_id:
                 continue
             try:
-                await callback.bot.send_message(p.telegram_id, "✅ Созвон подтверждён!")
+                await bot.send_message(p.telegram_id, "✅ Созвон подтверждён!")
             except Exception as exc:
                 logger.error(
                     "Failed to notify %s about confirmation: %s", p.telegram_id, exc
                 )
-
-        await safe_edit_text(
-            callback,
+        await reply_func(
             "✅ Созвон подтверждён.",
             reply_markup=await _menu_kb(user_id),
         )
     else:
-        await safe_edit_text(
-            callback,
+        await reply_func(
             "✅ Ваше подтверждение принято, ожидаем остальных участников.",
             reply_markup=await _menu_kb(user_id),
         )
+
+
+@router.callback_query(ConfirmMeetingCB.filter())
+async def cb_confirm_meeting(
+    callback: CallbackQuery, callback_data: ConfirmMeetingCB, state: FSMContext
+):
+    await callback.answer()
+    user_id = callback.from_user.id
+
+    meeting = await MeetingDAO.get_with_participants(callback_data.meeting_id)
+    if (
+        meeting
+        and meeting.proposal_status == ProposalStatus.pending_confirmation
+        and meeting.meeting_link is None
+        and meeting.original_scheduled_at is None
+        and user_id == meeting.mentor_telegram_id
+    ):
+        await state.update_data(approve_meeting_id=meeting.id)
+        await state.set_state(ApproveMeetingFSM.entering_link)
+        await safe_edit_text(
+            callback,
+            "Введите ссылку на встречу (Telemost, Zoom, Google Meet и т.д.):",
+            reply_markup=meeting_link_cancel_keyboard(),
+        )
+        return
+
+    await _finalize_confirmation(
+        callback_data.meeting_id,
+        user_id,
+        callback.bot,
+        lambda text, **kw: safe_edit_text(callback, text, **kw),
+        state,
+    )
+
+
+@router.message(
+    PermissionFilter("manage_meetings"),
+    StateFilter(ApproveMeetingFSM.entering_link),
+)
+async def msg_approve_meeting_link(message: Message, state: FSMContext):
+    data = await state.get_data()
+    meeting_id = data.get("approve_meeting_id")
+    link = message.text.strip() if message.text else ""
+    if not meeting_id or not link:
+        await state.clear()
+        await message.answer(
+            "Не удалось подтвердить созвон. Попробуйте ещё раз.",
+            reply_markup=await _menu_kb(message.from_user.id),
+        )
+        return
+
+    await MeetingDAO.update(meeting_id, meeting_link=link)
+    await state.clear()
+    await _finalize_confirmation(
+        meeting_id,
+        message.from_user.id,
+        message.bot,
+        message.answer,
+        state,
+    )
 
 
 @router.callback_query(DeclineMeetingCB.filter())
@@ -1526,6 +1596,7 @@ async def cb_propose_new_time(
         CreateMeetingFSM.waiting_date,
         CreateMeetingFSM.waiting_time,
         CreateMeetingFSM.waiting_link,
+        ApproveMeetingFSM.entering_link,
         EditMeetingFSM.choosing_field,
         EditMeetingFSM.editing_datetime_date,
         EditMeetingFSM.editing_datetime_time,

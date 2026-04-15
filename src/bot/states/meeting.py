@@ -10,6 +10,10 @@ class CreateMeetingFSM(StatesGroup):
     waiting_link = State()
 
 
+class ApproveMeetingFSM(StatesGroup):
+    entering_link = State()
+
+
 class EditMeetingFSM(StatesGroup):
     choosing_field = State()
     editing_datetime_date = State()
