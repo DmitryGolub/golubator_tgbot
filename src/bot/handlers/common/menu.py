@@ -35,7 +35,7 @@ router = Router(name="menu")
 
 
 ACTIVE_MENTEE_STATUSES = frozenset(
-    {"Greetings", "Study", "Search", "Offer", "Probationary period"}
+    {"greetings", "study", "search", "offer", "probationary period"}
 )
 
 
@@ -248,7 +248,9 @@ async def _prepare_mentor_students_view(
     active: list[Mentee] = []
     archive_list: list[Mentee] = []
     for m in mentees:
-        if any(s in ACTIVE_MENTEE_STATUSES for s in statuses_of(m)):
+        if any(
+            (s or "").strip().lower() in ACTIVE_MENTEE_STATUSES for s in statuses_of(m)
+        ):
             active.append(m)
         else:
             archive_list.append(m)
