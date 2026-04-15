@@ -1,4 +1,5 @@
-from aiogram import Router, F
+from aiogram import Bot, Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
@@ -44,41 +45,67 @@ async def _ensure_user(tg_user):
     return await _start_ensure_user(tg_user)
 
 
-async def _render_menu(
-    message_or_callback,
-    permissions: set[str],
+async def _send_or_edit(
+    bot: Bot,
+    chat_id: int,
+    msg_id: int | None,
+    text: str,
+    markup,
+    edit: bool,
+) -> None:
+    if edit and msg_id is not None:
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=msg_id,
+                text=text,
+                reply_markup=markup,
+            )
+            return
+        except TelegramBadRequest:
+            pass
+    await bot.send_message(chat_id=chat_id, text=text, reply_markup=markup)
+
+
+async def render_menu_to(
+    bot: Bot,
+    chat_id: int,
+    msg_id: int | None,
+    user_id: int,
     *,
-    has_mentor: bool = True,
-    has_directions: bool = True,
-):
+    tg_user=None,
+    edit: bool = True,
+) -> None:
+    permissions = await AuthService.get_user_permissions(user_id)
+    if not permissions and tg_user is not None:
+        await _ensure_user(tg_user)
+        await AuthService.invalidate_user(user_id)
+        permissions = await AuthService.get_user_permissions(user_id)
+
+    if not permissions:
+        text = await UiTextService.get("menu.access_denied")
+        await _send_or_edit(bot, chat_id, msg_id, text, None, edit)
+        return
+
+    has_mentor = await _check_has_mentor(user_id, permissions)
+    has_directions = await _check_has_directions(user_id, permissions)
     text = await UiTextService.get("menu.title")
     markup = await menu_keyboard(
         permissions, has_mentor=has_mentor, has_directions=has_directions
     )
-
-    if isinstance(message_or_callback, Message):
-        await message_or_callback.answer(text=text, reply_markup=markup)
-    else:
-        await safe_edit_text(message_or_callback, text, reply_markup=markup)
+    await _send_or_edit(bot, chat_id, msg_id, text, markup, edit)
 
 
 @router.message(Command("menu"))
 async def cmd_menu(message: Message, state: FSMContext):
     await state.clear()
-    permissions = await AuthService.get_user_permissions(message.from_user.id)
-    if not permissions:
-        await _ensure_user(message.from_user)
-        await AuthService.invalidate_user(message.from_user.id)
-        permissions = await AuthService.get_user_permissions(message.from_user.id)
-    if not permissions:
-        text = await UiTextService.get("menu.access_denied")
-        await message.answer(text)
-        return
-
-    has_mentor = await _check_has_mentor(message.from_user.id, permissions)
-    has_directions = await _check_has_directions(message.from_user.id, permissions)
-    await _render_menu(
-        message, permissions, has_mentor=has_mentor, has_directions=has_directions
+    await render_menu_to(
+        message.bot,
+        message.chat.id,
+        None,
+        message.from_user.id,
+        tg_user=message.from_user,
+        edit=False,
     )
 
 
@@ -86,21 +113,13 @@ async def cmd_menu(message: Message, state: FSMContext):
 async def cb_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-
-    permissions = await AuthService.get_user_permissions(callback.from_user.id)
-    if not permissions:
-        await _ensure_user(callback.from_user)
-        await AuthService.invalidate_user(callback.from_user.id)
-        permissions = await AuthService.get_user_permissions(callback.from_user.id)
-    if not permissions:
-        text = await UiTextService.get("menu.access_denied")
-        await safe_edit_text(callback, text)
-        return
-
-    has_mentor = await _check_has_mentor(callback.from_user.id, permissions)
-    has_directions = await _check_has_directions(callback.from_user.id, permissions)
-    await _render_menu(
-        callback, permissions, has_mentor=has_mentor, has_directions=has_directions
+    await render_menu_to(
+        callback.bot,
+        callback.message.chat.id,
+        callback.message.message_id,
+        callback.from_user.id,
+        tg_user=callback.from_user,
+        edit=True,
     )
 
 

@@ -4,6 +4,7 @@ from collections import OrderedDict
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, TelegramObject
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -20,12 +21,19 @@ _MAX_CACHE = 10_000
 # user_id -> (has_pending, timestamp)
 _pending_cache: OrderedDict[int, tuple[bool, float]] = OrderedDict()
 
+# user_id -> (chat_id, message_id) of the latest block-notice message
+_block_msg: OrderedDict[int, tuple[int, int]] = OrderedDict()
+
 _SURVEY_CALLBACK_PREFIXES = ("ds_start:", "ds_ans:")
 _SURVEY_CALLBACK_EXACT = {"my_surveys"}
 
 
 def invalidate_pending_cache(user_id: int) -> None:
     _pending_cache.pop(user_id, None)
+
+
+def pop_block_message(user_id: int) -> tuple[int, int] | None:
+    return _block_msg.pop(user_id, None)
 
 
 class SurveyBlockMiddleware(BaseMiddleware):
@@ -63,6 +71,16 @@ class SurveyBlockMiddleware(BaseMiddleware):
 
         # Block: send message with button to surveys
         logger.info("Blocking user %s: has pending survey(s)", user_id)
+
+        # Delete previous block-notice (if any) to avoid accumulation
+        bot = data.get("bot")
+        old = _block_msg.pop(user_id, None)
+        if old is not None and bot is not None:
+            try:
+                await bot.delete_message(chat_id=old[0], message_id=old[1])
+            except TelegramBadRequest:
+                pass
+
         kb = InlineKeyboardBuilder()
         kb.button(text="Перейти к опросам", callback_data="my_surveys")
         text = (
@@ -70,11 +88,18 @@ class SurveyBlockMiddleware(BaseMiddleware):
             "Пожалуйста, завершите его, прежде чем продолжить."
         )
 
+        sent: Message | None = None
         if isinstance(event, CallbackQuery):
             await event.answer()
-            await event.message.answer(text, reply_markup=kb.as_markup())
+            sent = await event.message.answer(text, reply_markup=kb.as_markup())
         elif isinstance(event, Message):
-            await event.answer(text, reply_markup=kb.as_markup())
+            sent = await event.answer(text, reply_markup=kb.as_markup())
+
+        if sent is not None:
+            _block_msg[user_id] = (sent.chat.id, sent.message_id)
+            _block_msg.move_to_end(user_id)
+            while len(_block_msg) > _MAX_CACHE:
+                _block_msg.popitem(last=False)
 
         return None
 
