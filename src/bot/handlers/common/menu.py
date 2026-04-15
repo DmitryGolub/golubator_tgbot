@@ -2,13 +2,20 @@ from aiogram import Bot, Router, F
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    CallbackQuery,
+)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from src.bot.callbacks.pagination import PageNavCB
 from src.bot.filters.permission import PermissionFilter
 from src.bot.keyboards.menu import menu_keyboard
 from src.bot.keyboards.menu import back_to_menu_keyboard
 from src.bot.keyboards.cohort import cohort_empty_keyboard, cohort_types_keyboard
+from src.bot.keyboards.pagination import get_page_slice, paginate_buttons
 from src.bot.utils import safe_edit_text
 from src.services.auth import AuthService
 from src.services.ui_text import UiTextService
@@ -17,6 +24,7 @@ from src.dao.mentee import MenteeDAO
 from src.dao.mentor import MentorDAO
 from src.dao.mentor_stats import MentorStatsDAO
 from src.dao.cohort import CohortDAO
+from src.models.mentee import Mentee
 
 from src.bot.keyboards.meeting import mentor_meetings_keyboard
 from src.services.call_flow import ActiveCallNotFoundError, CallFlowService
@@ -24,6 +32,11 @@ from src.bot.keyboards.utils import format_username_display
 from src.utils.escape import e
 
 router = Router(name="menu")
+
+
+ACTIVE_MENTEE_STATUSES = frozenset(
+    {"Greetings", "Study", "Search", "Offer", "Probationary period"}
+)
 
 
 async def _check_has_mentor(user_id: int, permissions: set[str]) -> bool:
@@ -150,21 +163,116 @@ async def cb_menu_mailings(callback: CallbackQuery):
 # ==== MENTOR ====
 
 
-async def _mentor_students_menu_kb():
+async def _mentor_students_main_kb(
+    page: int, total_pages: int, has_archive: bool
+) -> InlineKeyboardMarkup:
     texts = await UiTextService.get_many(
         [
             "menu.mentor_students.btn.update",
+            "menu.mentor_students.btn.archive",
             "menu.back",
         ]
     )
     kb = InlineKeyboardBuilder()
-    kb.button(
-        text=texts["menu.mentor_students.btn.update"],
-        callback_data="mentor_update_student",
+    nav = paginate_buttons("mentor_students", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    kb.row(
+        InlineKeyboardButton(
+            text=texts["menu.mentor_students.btn.update"],
+            callback_data="mentor_update_student",
+        )
     )
-    kb.button(text=texts["menu.back"], callback_data="back_to_menu")
-    kb.adjust(1)
+    if has_archive:
+        kb.row(
+            InlineKeyboardButton(
+                text=texts["menu.mentor_students.btn.archive"],
+                callback_data="mentor_students_archive",
+            )
+        )
+    kb.row(InlineKeyboardButton(text=texts["menu.back"], callback_data="back_to_menu"))
     return kb.as_markup()
+
+
+async def _mentor_students_archive_kb(
+    page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    texts = await UiTextService.get_many(["menu.mentor_students.btn.back_to_active"])
+    kb = InlineKeyboardBuilder()
+    nav = paginate_buttons("mentor_students_archive", page, total_pages)
+    if nav:
+        kb.row(*nav)
+    kb.row(
+        InlineKeyboardButton(
+            text=texts["menu.mentor_students.btn.back_to_active"],
+            callback_data="mentor_students_menu",
+        )
+    )
+    return kb.as_markup()
+
+
+def _format_mentee_line(mentee: Mentee, cohorts) -> str:
+    display_name = mentee.doc_name or (mentee.user.name if mentee.user else "—")
+    username = mentee.user.username if mentee.user else None
+    username_display = format_username_display(username, prefix="@")
+    categories = [c.cohort.value for c in cohorts if c.cohort.type == "Category"]
+    cohort_display = ", ".join(categories) if categories else "Отсутствует"
+    statuses = [c.cohort.value for c in cohorts if c.cohort.type == "Status"]
+    status_display = ", ".join(statuses) if statuses else "—"
+    return (
+        f"👤 <b>{e(display_name)}</b> {username_display}\n"
+        f"   • Направления: <b>{e(cohort_display)}</b>\n"
+        f"   • Состояние: <b>{e(status_display)}</b>\n"
+    )
+
+
+def _sort_key(mentee: Mentee) -> str:
+    name = mentee.doc_name or (mentee.user.name if mentee.user else "")
+    return (name or "").lower()
+
+
+async def _prepare_mentor_students_view(
+    mentor_telegram_id: int,
+    *,
+    archive: bool,
+    page: int,
+) -> tuple[str, list[Mentee], int, int, bool]:
+    mentees = await MenteeDAO.get_by_mentor_telegram_id(mentor_telegram_id)
+    mentee_tids = [m.telegram_id for m in mentees if m.telegram_id is not None]
+    cohorts_map = await CohortDAO.get_cohorts_batch(mentee_tids)
+
+    def statuses_of(m: Mentee) -> list[str]:
+        uc = cohorts_map.get(m.telegram_id, []) if m.telegram_id else []
+        return [c.cohort.value for c in uc if c.cohort.type == "Status"]
+
+    active: list[Mentee] = []
+    archive_list: list[Mentee] = []
+    for m in mentees:
+        if any(s in ACTIVE_MENTEE_STATUSES for s in statuses_of(m)):
+            active.append(m)
+        else:
+            archive_list.append(m)
+
+    has_archive = bool(archive_list)
+    source = archive_list if archive else active
+    source.sort(key=_sort_key)
+
+    page_items, total_pages = get_page_slice(source, page)
+    page = max(0, min(page, total_pages - 1))
+
+    header_key = "menu.students.archive.header" if archive else "menu.students.header"
+    empty_key = "menu.students.archive.empty" if archive else "menu.students.empty"
+    texts = await UiTextService.get_many([header_key, empty_key])
+
+    if not source:
+        return texts[empty_key], [], 0, 1, has_archive
+
+    lines = [texts[header_key], ""]
+    for mentee in page_items:
+        uc = cohorts_map.get(mentee.telegram_id, []) if mentee.telegram_id else []
+        lines.append(_format_mentee_line(mentee, uc))
+
+    return "\n".join(lines), list(page_items), page, total_pages, has_archive
 
 
 async def _finish_active_call_text(mentor_id: int) -> str:
@@ -199,40 +307,62 @@ async def _finish_active_call_text(mentor_id: int) -> str:
 )
 async def cb_mentor_students_menu(callback: CallbackQuery):
     await callback.answer()
-
-    mentees = await MenteeDAO.get_by_mentor_telegram_id(callback.from_user.id)
-    if not mentees:
-        text = await UiTextService.get("menu.students.empty")
-        await safe_edit_text(
-            callback,
-            text,
-            reply_markup=await _mentor_students_menu_kb(),
-        )
-        return
-
-    header = await UiTextService.get("menu.students.header")
-    lines = [header, ""]
-    mentee_tids = [m.telegram_id for m in mentees if m.telegram_id is not None]
-    cohorts_map = await CohortDAO.get_cohorts_batch(mentee_tids)
-    for mentee in mentees:
-        display_name = mentee.doc_name or (mentee.user.name if mentee.user else "—")
-        username = mentee.user.username if mentee.user else None
-        username_display = format_username_display(username, prefix="@")
-        cohorts = cohorts_map.get(mentee.telegram_id, []) if mentee.telegram_id else []
-        categories = [c.cohort.value for c in cohorts if c.cohort.type == "Category"]
-        cohort_display = ", ".join(categories) if categories else "Отсутствует"
-        statuses = [c.cohort.value for c in cohorts if c.cohort.type == "Status"]
-        status_display = ", ".join(statuses) if statuses else "—"
-        lines.append(
-            f"👤 <b>{e(display_name)}</b> {username_display}\n"
-            f"   • Направления: <b>{e(cohort_display)}</b>\n"
-            f"   • Состояние: <b>{e(status_display)}</b>\n"
-        )
-
+    text, _items, page, total_pages, has_archive = await _prepare_mentor_students_view(
+        callback.from_user.id, archive=False, page=0
+    )
     await safe_edit_text(
         callback,
-        "\n".join(lines),
-        reply_markup=await _mentor_students_menu_kb(),
+        text,
+        reply_markup=await _mentor_students_main_kb(page, total_pages, has_archive),
+    )
+
+
+@router.callback_query(
+    PermissionFilter("view_students"), F.data == "mentor_students_archive"
+)
+async def cb_mentor_students_archive(callback: CallbackQuery):
+    await callback.answer()
+    text, _items, page, total_pages, _has_archive = await _prepare_mentor_students_view(
+        callback.from_user.id, archive=True, page=0
+    )
+    await safe_edit_text(
+        callback,
+        text,
+        reply_markup=await _mentor_students_archive_kb(page, total_pages),
+    )
+
+
+@router.callback_query(
+    PermissionFilter("view_students"),
+    PageNavCB.filter(F.menu == "mentor_students"),
+)
+async def cb_mentor_students_page(callback: CallbackQuery, callback_data: PageNavCB):
+    await callback.answer()
+    text, _items, page, total_pages, has_archive = await _prepare_mentor_students_view(
+        callback.from_user.id, archive=False, page=callback_data.page
+    )
+    await safe_edit_text(
+        callback,
+        text,
+        reply_markup=await _mentor_students_main_kb(page, total_pages, has_archive),
+    )
+
+
+@router.callback_query(
+    PermissionFilter("view_students"),
+    PageNavCB.filter(F.menu == "mentor_students_archive"),
+)
+async def cb_mentor_students_archive_page(
+    callback: CallbackQuery, callback_data: PageNavCB
+):
+    await callback.answer()
+    text, _items, page, total_pages, _has_archive = await _prepare_mentor_students_view(
+        callback.from_user.id, archive=True, page=callback_data.page
+    )
+    await safe_edit_text(
+        callback,
+        text,
+        reply_markup=await _mentor_students_archive_kb(page, total_pages),
     )
 
 
