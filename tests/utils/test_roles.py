@@ -60,3 +60,8 @@ class TestIsMentor:
         role = make_role(name="mentor", permissions=[])
         user = make_user(role_rel=role)
         assert is_mentor(user) is False
+
+    def test_true_admin_all_permissions(self):
+        role = make_role(name="admin", permissions=[_perm("all_permissions")])
+        user = make_user(role_rel=role)
+        assert is_mentor(user) is True

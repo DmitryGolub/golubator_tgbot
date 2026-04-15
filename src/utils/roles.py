@@ -12,4 +12,6 @@ def is_admin(user: User) -> bool:
 
 
 def is_mentor(user: User) -> bool:
-    return _has_permission(user, "mentor_role")
+    return _has_permission(user, "mentor_role") or _has_permission(
+        user, "all_permissions"
+    )
