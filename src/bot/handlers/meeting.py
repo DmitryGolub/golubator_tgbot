@@ -600,6 +600,12 @@ async def cb_meeting_choose_date(
 ):
     await callback.answer()
     chosen_date = date(callback_data.year, callback_data.month, callback_data.day)
+    today_msk = datetime.now(MOSCOW_TZ).date()
+    if chosen_date < today_msk:
+        await callback.answer(
+            "Выберите сегодняшнюю или более позднюю дату.", show_alert=True
+        )
+        return
     await state.update_data(chosen_date=chosen_date.isoformat())
 
     current_state = await state.get_state()
@@ -662,6 +668,13 @@ async def msg_meeting_time(message: Message, state: FSMContext):
         if not scheduled_at:
             await message.answer(
                 "Не удалось сохранить дату/время.",
+                reply_markup=await _menu_kb(message.from_user.id),
+            )
+            await state.clear()
+            return
+        if _is_past(scheduled_at):
+            await message.answer(
+                "Нельзя сохранить время в прошлом. Выберите дату и время в будущем.",
                 reply_markup=await _menu_kb(message.from_user.id),
             )
             await state.clear()
@@ -733,6 +746,14 @@ async def cb_meeting_choose_time(
             )
             await state.clear()
             return
+        if _is_past(scheduled_at):
+            await safe_edit_text(
+                callback,
+                "Нельзя сохранить время в прошлом. Выберите дату и время в будущем.",
+                reply_markup=await _menu_kb(callback.from_user.id),
+            )
+            await state.clear()
+            return
         await _save_edit_and_return(
             callback.from_user.id,
             state,
@@ -794,6 +815,12 @@ def _to_utc_assuming_msk(dt: datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
+def _is_past(scheduled_at: datetime | None) -> bool:
+    if scheduled_at is None:
+        return False
+    return scheduled_at <= datetime.now(timezone.utc)
+
+
 async def _schedule_meeting_tasks(meeting) -> None:
     meeting_id = meeting.id
     scheduled_at = meeting.scheduled_at
@@ -840,6 +867,15 @@ async def _finalize_reschedule(user_id: int, state: FSMContext, reply_func, bot)
     if not scheduled_at or not meeting_id:
         await reply_func(
             "Не удалось сохранить дату/время. Попробуйте заново.",
+            reply_markup=await _menu_kb(user_id),
+        )
+        await state.clear()
+        return
+
+    if _is_past(scheduled_at):
+        await reply_func(
+            "Нельзя перенести созвон на прошедшее время. "
+            "Выберите дату и время в будущем.",
             reply_markup=await _menu_kb(user_id),
         )
         await state.clear()
@@ -913,6 +949,15 @@ async def _finalize_meeting(
     if not scheduled_at:
         await reply_func(
             "Не удалось сохранить дату/время. Попробуйте создать созвон заново.",
+            reply_markup=await _menu_kb(user_id),
+        )
+        await state.clear()
+        return
+
+    if _is_past(scheduled_at):
+        await reply_func(
+            "Нельзя назначить созвон на прошедшее время. "
+            "Выберите дату и время в будущем.",
             reply_markup=await _menu_kb(user_id),
         )
         await state.clear()
