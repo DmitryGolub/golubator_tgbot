@@ -68,10 +68,11 @@ async def _build_user_list_page(
         categories = [c.cohort.value for c in cohorts if c.cohort.type == "Category"]
         cohort_display = ", ".join(categories) if categories else "Отсутствует"
 
-        statuses = [c.cohort.value for c in cohorts if c.cohort.type == "Status"]
         state_line = ""
-        if statuses:
-            state_line = f"   • Состояние: <b>{e(', '.join(statuses))}</b>\n"
+        if not is_mentor(user):
+            statuses = [c.cohort.value for c in cohorts if c.cohort.type == "Status"]
+            if statuses:
+                state_line = f"   • Состояние: <b>{e(', '.join(statuses))}</b>\n"
 
         reg_date = (
             f"{user.registered_at.astimezone(MSK):%d.%m.%Y %H:%M}"
