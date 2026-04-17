@@ -192,6 +192,12 @@
       },
       "transformations": [
         {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": { "names": ["level", "Value"] }
+          }
+        },
+        {
           "id": "rowsToFields",
           "options": {
             "mappings": [
