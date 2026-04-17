@@ -131,7 +131,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (service)(rate({service=~\"$service\", level=\"ERROR\"} [5m]))",
+          "expr": "sum by (service)(rate({service=~\"$service\"} | json | level=\"ERROR\" [5m]))",
           "legendFormat": "{{service}}"
         }
       ],
@@ -184,7 +184,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (service)(count_over_time({service=~\"$service\", level=\"ERROR\"} [$__interval]))",
+          "expr": "sum by (service)(count_over_time({service=~\"$service\"} | json | level=\"ERROR\" [$__interval]))",
           "legendFormat": "{{service}}"
         }
       ],
@@ -210,7 +210,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (service)(count_over_time({service=~\"$service\", level=\"WARNING\"} [$__interval]))",
+          "expr": "sum by (service)(count_over_time({service=~\"$service\"} | json | level=\"WARNING\" [$__interval]))",
           "legendFormat": "{{service}}"
         }
       ],
@@ -238,7 +238,7 @@
         {
           "refId": "A",
           "queryType": "instant",
-          "expr": "sum by (level)(count_over_time({service=~\"$service\", level=~\".+\"} [$__range]))",
+          "expr": "sum by (level)(count_over_time({service=~\"$service\"} | json | level=~\".+\" [$__range]))",
           "legendFormat": "{{level}}"
         }
       ],
@@ -282,7 +282,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service=~\"$service\", level=\"ERROR\"}",
+          "expr": "{service=~\"$service\"} | json | level=\"ERROR\"",
           "maxLines": 200
         }
       ],
@@ -290,6 +290,7 @@
         "showTime": true,
         "showLabels": true,
         "showCommonLabels": false,
+        "displayedFields": ["service"],
         "wrapLogMessage": true,
         "prettifyLogMessage": false,
         "enableLogDetails": true,
@@ -307,7 +308,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service=~\"$service\", level=\"WARNING\"}",
+          "expr": "{service=~\"$service\"} | json | level=\"WARNING\"",
           "maxLines": 200
         }
       ],
@@ -315,6 +316,7 @@
         "showTime": true,
         "showLabels": true,
         "showCommonLabels": false,
+        "displayedFields": ["service"],
         "wrapLogMessage": true,
         "prettifyLogMessage": false,
         "enableLogDetails": true,
@@ -340,6 +342,7 @@
         "showTime": true,
         "showLabels": true,
         "showCommonLabels": false,
+        "displayedFields": ["service"],
         "wrapLogMessage": true,
         "prettifyLogMessage": false,
         "enableLogDetails": true,
