@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
@@ -85,7 +85,7 @@ class TriggerRuleDAO:
                 return None
             for key, value in fields.items():
                 setattr(rule, key, value)
-            rule.updated_at = datetime.now(tz=UTC)
+            rule.updated_at = datetime.now(timezone.utc)
             await session.commit()
             await session.refresh(rule)
             return rule

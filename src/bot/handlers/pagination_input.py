@@ -15,6 +15,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.pagination import PageJumpCB, PageSearchCB, PageSearchResetCB
 from src.bot.utils import safe_edit_text
+from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
 
@@ -716,7 +717,7 @@ async def _refresh_channel_links_msg(
             label = link.label or "—"
             count = await LeadSourceDAO.count_referrals(link.id)
             lines.append(
-                f"• <b>{label}</b> — переходов: {count}\n  <code>{link.code}</code>"
+                f"• <b>{e(label)}</b> — переходов: {count}\n  <code>{e(link.code)}</code>"
             )
         text = "\n".join(lines)
 

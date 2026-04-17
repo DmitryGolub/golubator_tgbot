@@ -13,6 +13,7 @@ from src.bot.utils import safe_edit_text
 from src.dao.lead_source import LeadSourceDAO
 from src.services.lead_source import LeadSourceService
 from src.services.ui_text import UiTextService
+from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ async def _show_channel_links_page(
             label = link.label or "—"
             count = await LeadSourceDAO.count_referrals(link.id)
             lines.append(
-                f"• <b>{label}</b> — переходов: {count}\n  <code>{link.code}</code>"
+                f"• <b>{e(label)}</b> — переходов: {count}\n  <code>{e(link.code)}</code>"
             )
         text = "\n".join(lines)
 
@@ -119,9 +120,9 @@ async def show_channel_link_detail(callback: CallbackQuery):
 
     text = (
         f"📢 <b>Канальная ссылка</b>\n\n"
-        f"Описание: {source.label or '—'}\n"
-        f"Код: <code>{source.code}</code>\n"
-        f"Ссылка: <code>{link}</code>\n"
+        f"Описание: {e(source.label) if source.label else '—'}\n"
+        f"Код: <code>{e(source.code)}</code>\n"
+        f"Ссылка: <code>{e(link)}</code>\n"
         f"Переходов: <b>{count}</b>"
     )
     await safe_edit_text(callback, text, reply_markup=await back_to_menu_keyboard())
@@ -140,7 +141,7 @@ async def start_create_channel_link(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ChannelLinkFSM.entering_label)
 async def process_channel_label(message: Message, state: FSMContext):
-    label = message.text.strip()
+    label = (message.text or "").strip()
     if not label:
         await message.answer("Описание не может быть пустым. Попробуйте ещё раз:")
         return

@@ -380,12 +380,22 @@ async def cb_mentor_end_call(callback: CallbackQuery):
 
     view = await prepare_meetings_view(callback.from_user.id, hide_past=True)
     await safe_edit_text(callback, text)
-    await callback.message.answer(
-        view.text,
-        reply_markup=mentor_meetings_keyboard(
-            view.visible, page=0, viewer_id=callback.from_user.id
-        ),
-    )
+    msg = callback.message
+    if isinstance(msg, Message):
+        await msg.answer(
+            view.text,
+            reply_markup=mentor_meetings_keyboard(
+                view.visible, page=0, viewer_id=callback.from_user.id
+            ),
+        )
+    else:
+        await callback.bot.send_message(
+            chat_id=callback.from_user.id,
+            text=view.text,
+            reply_markup=mentor_meetings_keyboard(
+                view.visible, page=0, viewer_id=callback.from_user.id
+            ),
+        )
 
 
 @router.message(PermissionFilter("end_call"), Command("end_call"))

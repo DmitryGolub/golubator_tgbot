@@ -88,10 +88,30 @@ async def main():
 
     dp.startup.register(_set_bot_commands)
     dp.startup.register(_initial_sync)
+    dp.shutdown.register(_shutdown)
     try:
         await dp.start_polling(bot)
     finally:
         await health_runner.cleanup()
+
+
+async def _shutdown(bot: Bot, dispatcher: Dispatcher) -> None:
+    logger.info("Shutting down: closing FSM storage, bot session and DB engine")
+    try:
+        await dispatcher.storage.close()
+    except Exception:
+        logger.exception("Error closing FSM storage")
+    try:
+        await bot.session.close()
+    except Exception:
+        logger.exception("Error closing bot session")
+    try:
+        from src.core.database import get_engine
+
+        engine = get_engine()
+        await engine.dispose()
+    except Exception:
+        logger.exception("Error disposing DB engine")
 
 
 async def _initial_sync(**kwargs) -> None:

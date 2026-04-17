@@ -91,7 +91,12 @@ class SurveyBlockMiddleware(BaseMiddleware):
         sent: Message | None = None
         if isinstance(event, CallbackQuery):
             await event.answer()
-            sent = await event.message.answer(text, reply_markup=kb.as_markup())
+            msg = event.message
+            if isinstance(msg, Message):
+                sent = await msg.answer(text, reply_markup=kb.as_markup())
+            else:
+                await event.answer(text, show_alert=True)
+                return None
         elif isinstance(event, Message):
             sent = await event.answer(text, reply_markup=kb.as_markup())
 

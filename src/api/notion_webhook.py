@@ -6,6 +6,8 @@ import logging
 
 from aiohttp import web
 
+from src.core.redis_lock import try_page_lock
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,22 +34,36 @@ async def _handle_automation(request: web.Request, source_db: str) -> web.Respon
     logger.info("Notion automation webhook: source=%s", source_db)
     logger.debug("Payload: %s", json.dumps(payload, ensure_ascii=False)[:500])
 
-    from src.services.notion_sync_v2 import get_sync_service
+    page_id = (payload.get("data") or {}).get("id")
+    if not page_id:
+        return web.json_response({"error": "missing page id"}, status=400)
 
-    sync = get_sync_service()
-    if not sync:
-        return web.json_response({"status": "sync not configured"})
+    lock_key = f"notion:wh:{source_db}:{page_id}"
+    async with try_page_lock(lock_key) as acquired:
+        if not acquired:
+            logger.info(
+                "Skip duplicate Notion webhook: source=%s page_id=%s",
+                source_db,
+                page_id,
+            )
+            return web.json_response({"status": "already_processing"}, status=202)
 
-    try:
-        if source_db in ("mentor", "mentee"):
-            await sync.handle_automation_user(payload, source_db)
-        elif source_db == "event":
-            await sync.handle_automation_event(payload)
-        elif source_db == "cohort":
-            await sync.handle_automation_cohort(payload)
-    except Exception:
-        logger.exception("Error handling automation webhook (source=%s)", source_db)
-        return web.json_response({"error": "processing failed"}, status=500)
+        from src.services.notion_sync_v2 import get_sync_service
+
+        sync = get_sync_service()
+        if not sync:
+            return web.json_response({"status": "sync not configured"})
+
+        try:
+            if source_db in ("mentor", "mentee"):
+                await sync.handle_automation_user(payload, source_db)
+            elif source_db == "event":
+                await sync.handle_automation_event(payload)
+            elif source_db == "cohort":
+                await sync.handle_automation_cohort(payload)
+        except Exception:
+            logger.exception("Error handling automation webhook (source=%s)", source_db)
+            return web.json_response({"error": "processing failed"}, status=500)
 
     return web.json_response({"status": "ok"})
 

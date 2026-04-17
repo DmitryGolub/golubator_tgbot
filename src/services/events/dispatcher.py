@@ -273,8 +273,8 @@ class EventDispatcher:
                     scheduled_at = scheduled_at.replace(tzinfo=MSK)
                 eta = scheduled_at - timedelta(seconds=rule.delay_seconds)
                 if eta > now:
-                    return eta
+                    return eta.astimezone(timezone.utc)
                 # If eta is in the past, execute immediately
                 return now
 
-        return now + timedelta(seconds=rule.delay_seconds)
+        return (now + timedelta(seconds=rule.delay_seconds)).astimezone(timezone.utc)

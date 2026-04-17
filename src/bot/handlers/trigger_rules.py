@@ -254,7 +254,7 @@ async def _format_rule_detail(
         )
         text += f"\nРегулярность: {e(regularity_label)}"
     if rule.time_of_day:
-        text += f"\nВремя: {rule.time_of_day.strftime('%H:%M')}"
+        text += f"\nВремя: {rule.time_of_day.strftime('%H:%M')} MSK"
 
     recipient_info = await _format_recipient_config(rule)
     if recipient_info:
@@ -412,7 +412,7 @@ async def cb_start_create(callback: CallbackQuery, state: FSMContext):
 
 @router.message(TriggerRuleBuilderFSM.entering_name)
 async def msg_name(message: Message, state: FSMContext):
-    name = message.text.strip()
+    name = (message.text or "").strip()
     if not name:
         await message.answer("Название не может быть пустым:")
         return
@@ -615,7 +615,7 @@ async def _prompt_survey_templates_msg(message: Message, state: FSMContext) -> N
 
 @router.message(TriggerRuleBuilderFSM.entering_cron_expression)
 async def msg_cron_expression(message: Message, state: FSMContext):
-    expr = message.text.strip()
+    expr = (message.text or "").strip()
     error = _validate_cron(expr)
     if error:
         await message.answer(f"{error} Попробуйте снова:")

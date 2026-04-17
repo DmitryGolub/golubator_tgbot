@@ -37,6 +37,7 @@ from src.models.role import RoleModel
 from src.models.survey_session import SurveySession
 from src.models.survey_template import SurveyQuestion, SurveyTemplate
 from src.models.user import User
+from src.utils.tz import MSK
 
 
 QUESTION_TYPE_LABELS = {
@@ -338,7 +339,11 @@ def question_type_edit_keyboard(question_id: int) -> InlineKeyboardMarkup:
 def results_sessions_keyboard(sessions: list[SurveySession]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for s in sessions:
-        date_str = s.completed_at.strftime("%d.%m.%Y %H:%M") if s.completed_at else "—"
+        date_str = (
+            s.completed_at.astimezone(MSK).strftime("%d.%m.%Y %H:%M")
+            if s.completed_at
+            else "—"
+        )
         builder.button(
             text=f"#{s.id} ({date_str})",
             callback_data=SurveyResultsSessionCB(session_id=s.id),

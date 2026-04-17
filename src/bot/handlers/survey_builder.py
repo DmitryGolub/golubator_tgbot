@@ -90,6 +90,7 @@ from src.services.survey_template import (
     TemplateNotFoundError,
 )
 from src.utils.escape import e
+from src.utils.tz import MSK
 
 logger = logging.getLogger(__name__)
 
@@ -387,7 +388,7 @@ async def cb_toggle_template(
     status = "включен" if template.is_active else "выключен"
     await safe_edit_text(
         callback,
-        f"Опрос <b>{template.title}</b> — {status}.",
+        f"Опрос <b>{e(template.title)}</b> — {status}.",
         reply_markup=template_detail_keyboard(template),
     )
 
@@ -454,7 +455,7 @@ async def cb_choose_kind(
 
 @router.message(SurveyBuilderFSM.entering_title)
 async def msg_title(message: Message, state: FSMContext):
-    title = message.text.strip()
+    title = (message.text or "").strip()
     if not title:
         await message.answer("Название не может быть пустым. Попробуйте снова:")
         return
@@ -511,7 +512,7 @@ async def msg_broadcast_body(message: Message, state: FSMContext):
 
 @router.message(SurveyBuilderFSM.entering_description)
 async def msg_description(message: Message, state: FSMContext):
-    text = message.text.strip()
+    text = (message.text or "").strip()
     description = None if text == "-" else text
     await state.update_data(description=description)
 
@@ -527,7 +528,7 @@ async def msg_description(message: Message, state: FSMContext):
 
 @router.message(SurveyBuilderFSM.adding_question_title)
 async def msg_question_title(message: Message, state: FSMContext):
-    title = message.text.strip()
+    title = (message.text or "").strip()
     if not title:
         await message.answer("Текст вопроса не может быть пустым.")
         return
@@ -572,7 +573,7 @@ async def cb_question_type(
 @router.message(SurveyBuilderFSM.configuring_rating_min)
 async def msg_rating_min(message: Message, state: FSMContext):
     try:
-        min_val = int(message.text.strip())
+        min_val = int((message.text or "").strip())
     except ValueError:
         await message.answer("Введите число:")
         return
@@ -589,7 +590,7 @@ async def msg_rating_min(message: Message, state: FSMContext):
 async def msg_rating_max(message: Message, state: FSMContext):
     data = await state.get_data()
     try:
-        max_val = int(message.text.strip())
+        max_val = int((message.text or "").strip())
     except ValueError:
         await message.answer("Введите число:")
         return
@@ -610,7 +611,7 @@ async def msg_rating_max(message: Message, state: FSMContext):
 
 @router.message(SurveyBuilderFSM.adding_option_label)
 async def msg_option_label(message: Message, state: FSMContext):
-    label = message.text.strip()
+    label = (message.text or "").strip()
     if not label:
         await message.answer("Метка не может быть пустой:")
         return
@@ -740,13 +741,13 @@ async def cb_finish_create(callback: CallbackQuery, state: FSMContext):
         type_label = QUESTION_TYPE_LABELS.get(
             q.question_type.value, q.question_type.value
         )
-        questions_text += f"\n  {q.sort_order}. {q.title} [{type_label}]"
+        questions_text += f"\n  {q.sort_order}. {e(q.title)} [{type_label}]"
 
     text, markup = await _build_surveys_list_page(page=0)
     await safe_edit_text(
         callback,
-        f"Опрос <b>{template.title}</b> создан.\n"
-        f"Slug: <code>{template.slug}</code>\n"
+        f"Опрос <b>{e(template.title)}</b> создан.\n"
+        f"Slug: <code>{e(template.slug)}</code>\n"
         f"Вопросов: {len(template.questions)}{questions_text}\n\n{text}",
         reply_markup=markup,
     )
@@ -825,7 +826,9 @@ async def cb_results_session_detail(
     template = getattr(session, "template", None)
     template_title = e(template.title) if template else "Опрос"
     completed_at = (
-        session.completed_at.strftime("%d.%m.%Y %H:%M") if session.completed_at else "—"
+        session.completed_at.astimezone(MSK).strftime("%d.%m.%Y %H:%M MSK")
+        if session.completed_at
+        else "—"
     )
     status_label = SESSION_STATUS_LABELS.get(session.status.value, session.status.value)
 
@@ -1324,7 +1327,7 @@ async def msg_edit_template_body(message: Message, state: FSMContext):
 
 @router.message(SurveyEditFSM.editing_title)
 async def msg_edit_template_title(message: Message, state: FSMContext):
-    title = message.text.strip()
+    title = (message.text or "").strip()
     if not title:
         await message.answer("Название не может быть пустым.")
         return
@@ -1343,7 +1346,7 @@ async def msg_edit_template_title(message: Message, state: FSMContext):
 
 @router.message(SurveyEditFSM.editing_description)
 async def msg_edit_template_description(message: Message, state: FSMContext):
-    text = message.text.strip()
+    text = (message.text or "").strip()
     description = None if text == "-" else text
     data = await state.get_data()
     template_id = data["edit_template_id"]
@@ -1360,7 +1363,7 @@ async def msg_edit_template_description(message: Message, state: FSMContext):
 
 @router.message(SurveyEditFSM.editing_slug)
 async def msg_edit_template_slug(message: Message, state: FSMContext):
-    slug = message.text.strip()
+    slug = (message.text or "").strip()
     if not slug:
         await message.answer("Slug не может быть пустым.")
         return
@@ -1480,7 +1483,7 @@ async def cb_edit_question_field(
 
 @router.message(SurveyEditFSM.editing_question_title)
 async def msg_edit_question_title(message: Message, state: FSMContext):
-    title = message.text.strip()
+    title = (message.text or "").strip()
     if not title:
         await message.answer("Текст вопроса не может быть пустым.")
         return
@@ -1549,7 +1552,7 @@ async def cb_edit_question_type(
 @router.message(SurveyEditFSM.editing_rating_min)
 async def msg_edit_rating_min(message: Message, state: FSMContext):
     try:
-        min_val = int(message.text.strip())
+        min_val = int((message.text or "").strip())
     except ValueError:
         await message.answer("Введите число:")
         return
@@ -1564,7 +1567,7 @@ async def msg_edit_rating_min(message: Message, state: FSMContext):
 @router.message(SurveyEditFSM.editing_rating_max)
 async def msg_edit_rating_max(message: Message, state: FSMContext):
     try:
-        max_val = int(message.text.strip())
+        max_val = int((message.text or "").strip())
     except ValueError:
         await message.answer("Введите число:")
         return
@@ -1613,7 +1616,7 @@ async def cb_edit_option(
 
 @router.message(SurveyEditFSM.editing_option_label)
 async def msg_edit_option_label(message: Message, state: FSMContext):
-    label = message.text.strip()
+    label = (message.text or "").strip()
     if not label:
         await message.answer("Метка не может быть пустой.")
         return
@@ -1678,7 +1681,7 @@ async def cb_add_option(
 
 @router.message(SurveyEditFSM.adding_option_label)
 async def msg_add_option_label(message: Message, state: FSMContext):
-    label = message.text.strip()
+    label = (message.text or "").strip()
     if not label:
         await message.answer("Метка не может быть пустой.")
         return
@@ -1740,7 +1743,7 @@ async def cb_add_question_to_template(
 
 @router.message(SurveyEditFSM.adding_question_title)
 async def msg_add_question_title(message: Message, state: FSMContext):
-    title = message.text.strip()
+    title = (message.text or "").strip()
     if not title:
         await message.answer("Текст вопроса не может быть пустым.")
         return
@@ -1782,7 +1785,7 @@ async def cb_add_question_type(
 @router.message(SurveyEditFSM.adding_question_rating_min)
 async def msg_add_q_rating_min(message: Message, state: FSMContext):
     try:
-        min_val = int(message.text.strip())
+        min_val = int((message.text or "").strip())
     except ValueError:
         await message.answer("Введите число:")
         return
@@ -1797,7 +1800,7 @@ async def msg_add_q_rating_min(message: Message, state: FSMContext):
 @router.message(SurveyEditFSM.adding_question_rating_max)
 async def msg_add_q_rating_max(message: Message, state: FSMContext):
     try:
-        max_val = int(message.text.strip())
+        max_val = int((message.text or "").strip())
     except ValueError:
         await message.answer("Введите число:")
         return
@@ -1814,7 +1817,7 @@ async def msg_add_q_rating_max(message: Message, state: FSMContext):
 
 @router.message(SurveyEditFSM.adding_question_option)
 async def msg_add_q_option(message: Message, state: FSMContext):
-    label = message.text.strip()
+    label = (message.text or "").strip()
     if not label:
         await message.answer("Метка не может быть пустой:")
         return

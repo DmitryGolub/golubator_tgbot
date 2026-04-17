@@ -1,5 +1,6 @@
 import logging
 import sys
+import time
 from contextvars import ContextVar
 
 ctx_telegram_id: ContextVar[int | None] = ContextVar("telegram_id", default=None)
@@ -44,6 +45,7 @@ def setup_logging(level: str = "INFO", fmt: str = "dev") -> None:
     else:
         formatter = logging.Formatter(_DEV_FORMAT)
 
+    formatter.converter = time.gmtime
     handler.setFormatter(formatter)
     root.addHandler(handler)
 

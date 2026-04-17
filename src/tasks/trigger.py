@@ -147,33 +147,41 @@ def _should_fire_now(rule, now: datetime) -> bool:
 
 
 def _match_cron(expr: str, now: datetime) -> bool:
+    from src.utils.tz import MSK
+
     try:
-        return croniter.match(expr, now)
+        return croniter.match(expr, now.astimezone(MSK))
     except (ValueError, KeyError):
         logger.warning("Invalid cron expression: %s", expr)
         return False
 
 
 def _match_regularity(rule, now: datetime) -> bool:
-    """Match regularity enum + time_of_day."""
+    """Match regularity enum + time_of_day. Times are interpreted as MSK."""
     from src.models.enums import Regularity
+    from src.utils.tz import MSK
+
+    now_msk = now.astimezone(MSK)
 
     if rule.time_of_day:
-        if now.hour != rule.time_of_day.hour or now.minute != rule.time_of_day.minute:
+        if (
+            now_msk.hour != rule.time_of_day.hour
+            or now_msk.minute != rule.time_of_day.minute
+        ):
             return False
     else:
-        # Default: fire at 09:00 UTC
-        if now.hour != 9 or now.minute != 0:
+        # Default: fire at 09:00 MSK
+        if now_msk.hour != 9 or now_msk.minute != 0:
             return False
 
     if rule.regularity == Regularity.day:
         return True
     if rule.regularity == Regularity.week:
-        return now.weekday() == 0  # Monday
+        return now_msk.weekday() == 0  # Monday
     if rule.regularity == Regularity.fortnight:
         # Fire on even ISO weeks
-        return now.weekday() == 0 and now.isocalendar()[1] % 2 == 0
+        return now_msk.weekday() == 0 and now_msk.isocalendar()[1] % 2 == 0
     if rule.regularity == Regularity.month:
-        return now.day == 1
+        return now_msk.day == 1
 
     return False
