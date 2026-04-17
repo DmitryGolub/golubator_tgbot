@@ -47,5 +47,13 @@ def setup_logging(level: str = "INFO", fmt: str = "dev") -> None:
     handler.setFormatter(formatter)
     root.addHandler(handler)
 
-    for noisy in ("aiogram.event", "httpx", "httpcore", "asyncio"):
+    for noisy in (
+        "aiogram.event",
+        "httpx",
+        "httpcore",
+        "asyncio",
+        "celery.beat",
+        "celery.worker.strategy",
+        "celery.app.trace",
+    ):
         logging.getLogger(noisy).setLevel(logging.WARNING)

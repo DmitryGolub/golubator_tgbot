@@ -5,6 +5,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
+    InputMediaDocument,
     InputMediaPhoto,
     InputMediaVideo,
     Message,
@@ -60,12 +61,11 @@ async def msg_enter_text(
     bot: Bot,
     album: list[Message] | None = None,
 ):
-    source_msgs = album if album else [message]
-
     if album:
         source_msgs = sorted(album, key=lambda m: m.message_id)
         text = next((m.caption for m in source_msgs if m.caption), "")
     else:
+        source_msgs = [message]
         text = message.caption or message.text or ""
 
     attachments: list[dict] = []
@@ -74,9 +74,13 @@ async def msg_enter_text(
             attachments.append({"type": "photo", "file_id": m.photo[-1].file_id})
         elif m.video:
             attachments.append({"type": "video", "file_id": m.video.file_id})
+        elif m.document:
+            attachments.append({"type": "document", "file_id": m.document.file_id})
 
     if not text and not attachments:
-        await message.answer("Отправьте текст обращения или приложите фото/видео.")
+        await message.answer(
+            "Отправьте текст обращения или приложите фото, видео или файл."
+        )
         return
 
     sender = message.from_user
@@ -174,6 +178,35 @@ async def _deliver_safe(
         logger.warning("Failed to send feedback to %s", chat_id, exc_info=True)
 
 
+async def _send_single(bot: Bot, chat_id: int, item: dict, caption: str | None) -> None:
+    if item["type"] == "photo":
+        await bot.send_photo(chat_id, item["file_id"], caption=caption)
+    elif item["type"] == "video":
+        await bot.send_video(chat_id, item["file_id"], caption=caption)
+    else:
+        await bot.send_document(chat_id, item["file_id"], caption=caption)
+
+
+async def _send_group(
+    bot: Bot, chat_id: int, group: list[dict], caption: str | None
+) -> None:
+    if len(group) == 1:
+        await _send_single(bot, chat_id, group[0], caption)
+        return
+    media: list[InputMediaPhoto | InputMediaVideo | InputMediaDocument] = []
+    for i, item in enumerate(group):
+        first_caption = caption if i == 0 else None
+        if item["type"] == "photo":
+            media.append(InputMediaPhoto(media=item["file_id"], caption=first_caption))
+        elif item["type"] == "video":
+            media.append(InputMediaVideo(media=item["file_id"], caption=first_caption))
+        else:
+            media.append(
+                InputMediaDocument(media=item["file_id"], caption=first_caption)
+            )
+    await bot.send_media_group(chat_id, media)
+
+
 async def _deliver(bot: Bot, chat_id: int, text: str, attachments: list[dict]) -> None:
     if not attachments:
         await bot.send_message(chat_id, text)
@@ -181,30 +214,16 @@ async def _deliver(bot: Bot, chat_id: int, text: str, attachments: list[dict]) -
 
     attachments = attachments[:MEDIA_GROUP_LIMIT]
 
-    if len(attachments) == 1:
-        item = attachments[0]
-        if len(text) <= CAPTION_LIMIT:
-            if item["type"] == "photo":
-                await bot.send_photo(chat_id, item["file_id"], caption=text)
-            else:
-                await bot.send_video(chat_id, item["file_id"], caption=text)
-        else:
-            await bot.send_message(chat_id, text)
-            if item["type"] == "photo":
-                await bot.send_photo(chat_id, item["file_id"])
-            else:
-                await bot.send_video(chat_id, item["file_id"])
-        return
+    # Telegram requires documents to live in their own media group — they can't
+    # be mixed with photos/videos in a single send_media_group call.
+    media = [a for a in attachments if a["type"] in ("photo", "video")]
+    docs = [a for a in attachments if a["type"] == "document"]
+    groups = [g for g in (media, docs) if g]
 
-    media: list[InputMediaPhoto | InputMediaVideo] = []
     use_caption = len(text) <= CAPTION_LIMIT
-    for i, item in enumerate(attachments):
-        caption = text if (use_caption and i == 0) else None
-        if item["type"] == "photo":
-            media.append(InputMediaPhoto(media=item["file_id"], caption=caption))
-        else:
-            media.append(InputMediaVideo(media=item["file_id"], caption=caption))
-
     if not use_caption:
         await bot.send_message(chat_id, text)
-    await bot.send_media_group(chat_id, media)
+
+    for gi, group in enumerate(groups):
+        group_caption = text if (use_caption and gi == 0) else None
+        await _send_group(bot, chat_id, group, group_caption)
