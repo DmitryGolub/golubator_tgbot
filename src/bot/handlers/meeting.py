@@ -81,10 +81,7 @@ router.callback_query.filter(
 
 async def _menu_kb(user_id: int):
     perms = await AuthService.get_user_permissions(user_id)
-    from src.bot.handlers.common.menu import _check_has_mentor
-
-    has_mentor = await _check_has_mentor(user_id, perms)
-    return await menu_keyboard(perms, has_mentor=has_mentor)
+    return await menu_keyboard(perms)
 
 
 def _resolve_participants(meeting, mentor_tg_ids: set[int]):
@@ -266,11 +263,16 @@ async def cb_student_meetings(callback: CallbackQuery):
     view = await prepare_meetings_view(
         callback.from_user.id, hide_past=True, viewer_is_mentor=False
     )
+    mentee = await MenteeDAO.find_by_telegram_id(callback.from_user.id)
+    has_mentor = bool(mentee and mentee.mentor and mentee.mentor.telegram_id)
     await safe_edit_text(
         callback,
         view.text,
-        reply_markup=student_meetings_keyboard(
-            view.visible, page=0, viewer_id=callback.from_user.id
+        reply_markup=await student_meetings_keyboard(
+            view.visible,
+            page=0,
+            viewer_id=callback.from_user.id,
+            has_mentor=has_mentor,
         ),
     )
 

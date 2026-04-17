@@ -39,13 +39,6 @@ ACTIVE_MENTEE_STATUSES = frozenset(
 )
 
 
-async def _check_has_mentor(user_id: int, permissions: set[str]) -> bool:
-    if "propose_meetings" not in permissions:
-        return True
-    mentee = await MenteeDAO.find_by_telegram_id(user_id)
-    return bool(mentee and mentee.mentor and mentee.mentor.telegram_id)
-
-
 async def _check_has_directions(user_id: int, permissions: set[str]) -> bool:
     if "view_direction_students" not in permissions:
         return True
@@ -100,12 +93,9 @@ async def render_menu_to(
         await _send_or_edit(bot, chat_id, msg_id, text, None, edit)
         return
 
-    has_mentor = await _check_has_mentor(user_id, permissions)
     has_directions = await _check_has_directions(user_id, permissions)
     text = await UiTextService.get("menu.title")
-    markup = await menu_keyboard(
-        permissions, has_mentor=has_mentor, has_directions=has_directions
-    )
+    markup = await menu_keyboard(permissions, has_directions=has_directions)
     await _send_or_edit(bot, chat_id, msg_id, text, markup, edit)
 
 
@@ -374,14 +364,11 @@ async def cb_mentor_students_archive_page(
 async def cb_mentor_students_add(callback: CallbackQuery):
     await callback.answer()
     permissions = await AuthService.get_user_permissions(callback.from_user.id)
-    has_mentor = await _check_has_mentor(callback.from_user.id, permissions)
     has_directions = await _check_has_directions(callback.from_user.id, permissions)
     await safe_edit_text(
         callback,
         "Выберите менти для изменения статуса.",
-        reply_markup=await menu_keyboard(
-            permissions, has_mentor=has_mentor, has_directions=has_directions
-        ),
+        reply_markup=await menu_keyboard(permissions, has_directions=has_directions),
     )
 
 

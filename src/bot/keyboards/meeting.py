@@ -27,6 +27,7 @@ from src.bot.keyboards.pagination import (
 )
 from src.bot.keyboards.utils import format_user_label
 from src.models.meeting import Meeting, ProposalStatus
+from src.services.ui_text import UiTextService
 
 
 def pending_meeting_keyboard(meeting_id: int) -> InlineKeyboardMarkup:
@@ -187,11 +188,12 @@ def mentor_meetings_keyboard(
     return kb.as_markup()
 
 
-def student_meetings_keyboard(
+async def student_meetings_keyboard(
     meetings: list[Meeting] | None = None,
     page: int = 0,
     viewer_id: int | None = None,
     search_query: str | None = None,
+    has_mentor: bool = True,
 ) -> InlineKeyboardMarkup:
     from src.bot.pagination_search import filter_items
 
@@ -244,6 +246,13 @@ def student_meetings_keyboard(
                     ),
                 )
 
+    if has_mentor:
+        propose_text = await UiTextService.get("menu.btn.propose_meeting")
+        kb.row(
+            InlineKeyboardButton(
+                text=propose_text, callback_data="student_propose_meeting"
+            )
+        )
     kb.row(
         InlineKeyboardButton(
             text="📋 Завершённые созвоны", callback_data="past_meetings_student"

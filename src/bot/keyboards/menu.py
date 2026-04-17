@@ -42,10 +42,6 @@ _EDUCATION_BUTTONS = [
     ),
 ]
 
-_STUDENT_BUTTONS = [
-    ("propose_meetings", "menu.btn.propose_meeting", "student_propose_meeting"),
-]
-
 _REFERRAL_BUTTONS = [
     ("view_referral_link", "menu.btn.referral_link", "menu_referral_link"),
 ]
@@ -58,7 +54,6 @@ _CHANNEL_LINK_BUTTONS = [
 async def menu_keyboard(
     permissions: set[str],
     *,
-    has_mentor: bool = True,
     has_directions: bool = True,
 ) -> InlineKeyboardMarkup:
     needed_keys: list[str] = []
@@ -88,13 +83,6 @@ async def menu_keyboard(
 
     for perm, key, cb in _EDUCATION_BUTTONS:
         if perm in permissions:
-            needed_keys.append(key)
-            buttons_spec.append((key, cb))
-
-    for perm, key, cb in _STUDENT_BUTTONS:
-        if perm in permissions:
-            if perm == "propose_meetings" and not has_mentor:
-                continue
             needed_keys.append(key)
             buttons_spec.append((key, cb))
 

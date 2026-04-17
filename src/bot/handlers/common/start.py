@@ -6,7 +6,6 @@ from aiogram.filters import Command, CommandStart
 from aiogram.filters.command import CommandObject
 from aiogram.types import Message
 
-from src.bot.handlers.common.menu import _check_has_mentor
 from src.bot.keyboards.menu import menu_keyboard
 from src.core.config import settings
 from src.dao.mentee import MenteeDAO
@@ -89,11 +88,8 @@ async def cmd_start(message: Message, command: CommandObject):
 
     permissions = await AuthService.get_user_permissions(user.id)
     if permissions:
-        has_mentor = await _check_has_mentor(user.id, permissions)
         title = await UiTextService.get("menu.title")
-        await message.answer(
-            title, reply_markup=await menu_keyboard(permissions, has_mentor=has_mentor)
-        )
+        await message.answer(title, reply_markup=await menu_keyboard(permissions))
 
 
 @router.message(Command("help"))
@@ -104,11 +100,8 @@ async def cmd_help(message: Message):
         await message.answer(text)
         return
 
-    has_mentor = await _check_has_mentor(message.from_user.id, permissions)
     title = await UiTextService.get("menu.title")
-    await message.answer(
-        title, reply_markup=await menu_keyboard(permissions, has_mentor=has_mentor)
-    )
+    await message.answer(title, reply_markup=await menu_keyboard(permissions))
 
 
 async def _merge_placeholder(telegram_id: int, placeholder_id: int) -> None:
