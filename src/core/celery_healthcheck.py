@@ -1,7 +1,10 @@
 import http.server
 import logging
+import os
 import sys
 import threading
+import time
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -11,8 +14,13 @@ _CLIENT_DISCONNECT_ERRORS = (
     ConnectionAbortedError,
 )
 
+_BEAT_SCHEDULE_DB = "/tmp/celerybeat-schedule"
+# Minimum schedule interval is 30s (NOTION_PUSH_INTERVAL); 120s gives a safe
+# cushion that still catches a genuinely stuck beat loop.
+_BEAT_MAX_STALE_SECONDS = 120.0
 
-def _worker_alive(timeout: float = 0.5) -> bool:
+
+def _worker_alive(timeout: float = 3.0) -> bool:
     """Ping the local Celery worker via control inspect."""
     try:
         from src.celery_app import celery_app
@@ -22,6 +30,38 @@ def _worker_alive(timeout: float = 0.5) -> bool:
     except Exception as exc:
         logger.warning("Celery healthcheck ping failed: %r", exc)
         return False
+
+
+def _beat_alive(max_stale_seconds: float = _BEAT_MAX_STALE_SECONDS) -> bool:
+    """Check beat health by mtime of the schedule DB file.
+
+    Beat persists its schedule via shelve; depending on the backend the file
+    can be either the bare path or one with a `.db` suffix. We accept either.
+    """
+    candidates = [_BEAT_SCHEDULE_DB, f"{_BEAT_SCHEDULE_DB}.db"]
+    now = time.time()
+    newest_age: float | None = None
+    for path in candidates:
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue
+        age = now - mtime
+        if newest_age is None or age < newest_age:
+            newest_age = age
+    if newest_age is None:
+        logger.warning(
+            "Celery beat healthcheck: schedule file %s not found", _BEAT_SCHEDULE_DB
+        )
+        return False
+    if newest_age > max_stale_seconds:
+        logger.warning(
+            "Celery beat healthcheck: schedule file stale (%.1fs > %.1fs)",
+            newest_age,
+            max_stale_seconds,
+        )
+        return False
+    return True
 
 
 class _HealthHTTPServer(http.server.HTTPServer):
@@ -42,13 +82,22 @@ class _HealthHTTPServer(http.server.HTTPServer):
         logger.exception("Celery health server request failed from %s", client_address)
 
 
-def start_celery_health_server(port: int = 8081) -> None:
+def start_celery_health_server(
+    port: int = 8081, mode: Literal["worker", "beat"] = "worker"
+) -> None:
     """Start a lightweight HTTP health server in a daemon thread."""
+
+    if mode == "worker":
+        check = _worker_alive
+    elif mode == "beat":
+        check = _beat_alive
+    else:
+        raise ValueError(f"Unknown celery health mode: {mode!r}")
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path == "/health":
-                alive = _worker_alive()
+                alive = check()
                 status = 200 if alive else 503
                 body = b'{"status":"healthy"}' if alive else b'{"status":"unhealthy"}'
                 self.send_response(status)

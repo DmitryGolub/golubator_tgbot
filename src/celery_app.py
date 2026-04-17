@@ -32,6 +32,13 @@ celery_app.conf.update(
     enable_utc=True,
     task_acks_late=True,
     task_reject_on_worker_lost=True,
+    # Hard guard so -P solo can't be pinned forever by a hung external I/O.
+    task_soft_time_limit=180,
+    task_time_limit=240,
+    worker_max_tasks_per_child=0,
+    broker_connection_retry_on_startup=True,
+    broker_connection_retry=True,
+    broker_connection_max_retries=None,
     broker_transport_options={
         "fanout_prefix": True,
         "fanout_patterns": True,

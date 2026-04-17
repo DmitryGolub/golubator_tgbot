@@ -4,8 +4,12 @@ import asyncio
 import logging
 import time
 
+import httpx
 from notion_client import AsyncClient
 from notion_client.errors import APIResponseError
+
+# Cut off hung Notion calls well before task_soft_time_limit (180s) kicks in.
+_NOTION_HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=30.0, pool=5.0)
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +100,10 @@ class NotionClient:
                 except Exception:
                     logger.warning("Failed to close stale Notion client", exc_info=True)
             self._client = AsyncClient(auth=self._token)
+            # notion_client's setter copies options.timeout_ms onto the httpx
+            # client; override it afterwards so a hung remote can't pin the
+            # worker for the SDK default (60s).
+            self._client.client.timeout = _NOTION_HTTP_TIMEOUT
             self._client_loop_id = current_loop_id
             self._data_source_id = None
         return self._client

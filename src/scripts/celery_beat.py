@@ -8,7 +8,7 @@ def main() -> None:
     # BOT_TOKEN / REDIS_* must be set in environment
     # use default scheduler but store state in container tmpfs so files aren't persisted
     port = int(os.environ.get("CELERY_HEALTH_PORT", "8082"))
-    start_celery_health_server(port)
+    start_celery_health_server(port, mode="beat")
     celery_app.start(argv=["beat", "-l", "info", "-s", "/tmp/celerybeat-schedule"])
 
 
