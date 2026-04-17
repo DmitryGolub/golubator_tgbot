@@ -1,7 +1,9 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import calendar
-from datetime import date
+from datetime import date, datetime
+
+from src.utils.tz import MSK
 
 from src.bot.callbacks.meeting import (
     ChooseMeetingStudentCB,
@@ -383,17 +385,23 @@ def meeting_students_keyboard(
 def meeting_calendar_keyboard(current: date) -> InlineKeyboardMarkup:
     year = current.year
     month = current.month
+    today = datetime.now(MSK).date()
+    is_current_month = year == today.year and month == today.month
 
     builder = InlineKeyboardBuilder()
 
     # nav row
-    builder.row(
-        InlineKeyboardButton(
+    if is_current_month:
+        prev_button = InlineKeyboardButton(text=" ", callback_data="noop")
+    else:
+        prev_button = InlineKeyboardButton(
             text="<==",
             callback_data=NavigateMeetingMonthCB(
                 year=year, month=month, delta=-1
             ).pack(),
-        ),
+        )
+    builder.row(
+        prev_button,
         InlineKeyboardButton(text=current.strftime("%B %Y"), callback_data="noop"),
         InlineKeyboardButton(
             text="==>",
@@ -416,7 +424,7 @@ def meeting_calendar_keyboard(current: date) -> InlineKeyboardMarkup:
     for week in month_calendar:
         row_buttons: list[InlineKeyboardButton] = []
         for day in week:
-            if day == 0:
+            if day == 0 or date(year, month, day) < today:
                 row_buttons.append(InlineKeyboardButton(text=" ", callback_data="noop"))
             else:
                 row_buttons.append(

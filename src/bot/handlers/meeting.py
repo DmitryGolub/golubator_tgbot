@@ -662,21 +662,21 @@ async def msg_meeting_time(message: Message, state: FSMContext):
         return
 
     scheduled_iso = f"{chosen_date} {parsed}"
+    scheduled_at_utc = _to_utc_assuming_msk(_parse_datetime(scheduled_iso))
+    if scheduled_at_utc and _is_past(scheduled_at_utc):
+        await message.answer(
+            "Это время уже прошло. Введите время в будущем в формате HH:MM:",
+            reply_markup=meeting_time_keyboard(),
+        )
+        return
+
     await state.update_data(scheduled_at=scheduled_iso)
 
     current_state = await state.get_state()
     if current_state == EditMeetingFSM.editing_datetime_time.state:
-        scheduled_at = _to_utc_assuming_msk(_parse_datetime(scheduled_iso))
-        if not scheduled_at:
+        if not scheduled_at_utc:
             await message.answer(
                 "Не удалось сохранить дату/время.",
-                reply_markup=await _menu_kb(message.from_user.id),
-            )
-            await state.clear()
-            return
-        if _is_past(scheduled_at):
-            await message.answer(
-                "Нельзя сохранить время в прошлом. Выберите дату и время в будущем.",
                 reply_markup=await _menu_kb(message.from_user.id),
             )
             await state.clear()
@@ -686,7 +686,7 @@ async def msg_meeting_time(message: Message, state: FSMContext):
             state,
             message.answer,
             message.bot,
-            scheduled_at=scheduled_at,
+            scheduled_at=scheduled_at_utc,
         )
     else:
         data = await state.get_data()
@@ -735,23 +735,23 @@ async def cb_meeting_choose_time(
     hhmm = callback_data.t
     hh, mm = hhmm[:2], hhmm[2:]
     scheduled_iso = f"{chosen_date} {hh}:{mm}"
+    scheduled_at_utc = _to_utc_assuming_msk(_parse_datetime(scheduled_iso))
+    if scheduled_at_utc and _is_past(scheduled_at_utc):
+        await safe_edit_text(
+            callback,
+            "Это время уже прошло. Выберите будущее время или введите HH:MM:",
+            reply_markup=meeting_time_keyboard(),
+        )
+        return
+
     await state.update_data(scheduled_at=scheduled_iso)
 
     current_state = await state.get_state()
     if current_state == EditMeetingFSM.editing_datetime_time.state:
-        scheduled_at = _to_utc_assuming_msk(_parse_datetime(scheduled_iso))
-        if not scheduled_at:
+        if not scheduled_at_utc:
             await safe_edit_text(
                 callback,
                 "Не удалось сохранить дату/время.",
-                reply_markup=await _menu_kb(callback.from_user.id),
-            )
-            await state.clear()
-            return
-        if _is_past(scheduled_at):
-            await safe_edit_text(
-                callback,
-                "Нельзя сохранить время в прошлом. Выберите дату и время в будущем.",
                 reply_markup=await _menu_kb(callback.from_user.id),
             )
             await state.clear()
@@ -761,7 +761,7 @@ async def cb_meeting_choose_time(
             state,
             lambda text, **kw: safe_edit_text(callback, text, **kw),
             callback.bot,
-            scheduled_at=scheduled_at,
+            scheduled_at=scheduled_at_utc,
         )
     else:
         data = await state.get_data()
