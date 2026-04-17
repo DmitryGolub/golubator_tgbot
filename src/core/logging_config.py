@@ -50,12 +50,33 @@ def setup_logging(level: str = "INFO", fmt: str = "dev") -> None:
     root.addHandler(handler)
 
     for noisy in (
+        "aiogram",
         "aiogram.event",
         "httpx",
         "httpcore",
+        "urllib3",
         "asyncio",
+        "celery",
         "celery.beat",
+        "celery.bootsteps",
+        "celery.concurrency",
+        "celery.pool",
+        "celery.redirected",
+        "celery.utils.functional",
+        "celery.worker",
+        "celery.worker.consumer",
+        "celery.worker.control",
+        "celery.worker.heart",
+        "celery.worker.pidbox",
         "celery.worker.strategy",
         "celery.app.trace",
+        "kombu",
+        "amqp",
+        "redis",
+        "sqlalchemy.engine",
+        "sqlalchemy.pool",
+        "sqlalchemy.dialects",
+        "sqlalchemy.orm",
+        "asyncpg",
     ):
         logging.getLogger(noisy).setLevel(logging.WARNING)
