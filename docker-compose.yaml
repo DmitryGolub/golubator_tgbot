@@ -208,25 +208,6 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
-    container_name: tg_bot.cadvisor
-    cpus: 0.3
-    mem_limit: 256m
-    mem_reservation: 64m
-    pids_limit: 100
-    logging: *default-logging
-    privileged: true
-    devices:
-      - /dev/kmsg:/dev/kmsg
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    restart: unless-stopped
-
   blackbox_exporter:
     image: prom/blackbox-exporter:v0.25.0
     container_name: tg_bot.blackbox_exporter

@@ -48,16 +48,16 @@
         {
           "refId": "A",
           "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
-          "expr": "max(container_last_seen{name=\"tg_bot.$service\"}) > bool (time() - 60)",
+          "expr": "max(probe_success{service=\"$service\"})",
           "instant": true,
-          "legendFormat": "running"
+          "legendFormat": "health"
         },
         {
           "refId": "B",
           "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
-          "expr": "max(probe_success{service=\"$service\"})",
+          "expr": "max(probe_http_status_code{service=\"$service\"}) > bool 0",
           "instant": true,
-          "legendFormat": "health"
+          "legendFormat": "running"
         },
         {
           "refId": "C",
