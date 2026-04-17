@@ -192,9 +192,11 @@
       },
       "transformations": [
         {
-          "id": "filterFieldsByName",
+          "id": "organize",
           "options": {
-            "include": { "names": ["level", "Value"] }
+            "excludeByName": { "Time": true },
+            "indexByName": {},
+            "renameByName": {}
           }
         },
         {
