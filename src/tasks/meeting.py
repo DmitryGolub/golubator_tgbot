@@ -175,20 +175,20 @@ def notify_meeting_reminder(meeting_id: int) -> None:
 
 
 async def _archive_notion_page_async(notion_page_id: str) -> None:
-    async with celery_db():
-        from src.services.notion_sync_v2 import get_sync_service
+    from src.services.notion_sync_v2 import sync_service_scope
 
-        sync = get_sync_service()
-        if sync and sync.event_repo:
+    async with sync_service_scope() as sync:
+        if sync is None or sync.event_repo is None:
+            logger.warning(
+                "No sync service available to archive page %s", notion_page_id
+            )
+            return
+        async with celery_db():
             archived = await sync.event_repo._client.archive_page(notion_page_id)
             if archived:
                 logger.info("Archived Notion page %s", notion_page_id)
             else:
                 logger.warning("Failed to archive Notion page %s", notion_page_id)
-        else:
-            logger.warning(
-                "No sync service available to archive page %s", notion_page_id
-            )
 
 
 @celery_app.task(name="meeting.archive_notion_page", ignore_result=True)

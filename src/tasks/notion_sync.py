@@ -2,6 +2,7 @@ import logging
 
 from src.celery_app import celery_app
 from src.services.notion.client import NotionDatabaseUnavailableError
+from src.services.notion_sync_v2 import sync_service_scope
 from src.tasks._db import celery_db, run_async
 
 logger = logging.getLogger(__name__)
@@ -10,30 +11,23 @@ logger = logging.getLogger(__name__)
 # ── Bidirectional sync tasks ───────────────────────────────────────
 
 
-def _get_sync_v2():
-    from src.services.notion_sync_v2 import get_sync_service
-
-    return get_sync_service()
-
-
 @celery_app.task(name="notion.push_changes")
 def push_changes() -> None:
-    sync = _get_sync_v2()
-    if not sync:
-        return
-
     async def _push():
-        async with celery_db():
-            mentors = await sync.push_mentors()
-            mentees = await sync.push_mentees()
-            events = await sync.push_events()
-            if mentors or mentees or events:
-                logger.info(
-                    "Push complete: %d mentors, %d mentees, %d events",
-                    mentors,
-                    mentees,
-                    events,
-                )
+        async with sync_service_scope() as sync:
+            if sync is None:
+                return
+            async with celery_db():
+                mentors = await sync.push_mentors()
+                mentees = await sync.push_mentees()
+                events = await sync.push_events()
+                if mentors or mentees or events:
+                    logger.info(
+                        "Push complete: %d mentors, %d mentees, %d events",
+                        mentors,
+                        mentees,
+                        events,
+                    )
 
     try:
         run_async(_push())
@@ -43,18 +37,19 @@ def push_changes() -> None:
 
 @celery_app.task(name="notion.backup_pull_users")
 def backup_pull_users(suppress_emit: bool = False) -> None:
-    sync = _get_sync_v2()
-    if not sync:
-        return
-
     async def _pull():
-        async with celery_db():
-            mentors = await sync.backup_pull_mentors()
-            mentees = await sync.backup_pull_mentees(suppress_emit=suppress_emit)
-            if mentors or mentees:
-                logger.info(
-                    "Backup pull complete: %d mentors, %d mentees", mentors, mentees
-                )
+        async with sync_service_scope() as sync:
+            if sync is None:
+                return
+            async with celery_db():
+                mentors = await sync.backup_pull_mentors()
+                mentees = await sync.backup_pull_mentees(suppress_emit=suppress_emit)
+                if mentors or mentees:
+                    logger.info(
+                        "Backup pull complete: %d mentors, %d mentees",
+                        mentors,
+                        mentees,
+                    )
 
     try:
         run_async(_pull())
@@ -64,13 +59,12 @@ def backup_pull_users(suppress_emit: bool = False) -> None:
 
 @celery_app.task(name="notion.backup_pull_events")
 def backup_pull_events() -> None:
-    sync = _get_sync_v2()
-    if not sync:
-        return
-
     async def _pull():
-        async with celery_db():
-            await sync.backup_pull_events()
+        async with sync_service_scope() as sync:
+            if sync is None:
+                return
+            async with celery_db():
+                await sync.backup_pull_events()
 
     try:
         run_async(_pull())
@@ -80,13 +74,12 @@ def backup_pull_events() -> None:
 
 @celery_app.task(name="notion.backup_pull_cohorts")
 def backup_pull_cohorts(suppress_emit: bool = False) -> None:
-    sync = _get_sync_v2()
-    if not sync:
-        return
-
     async def _pull():
-        async with celery_db():
-            await sync.backup_pull_cohorts(suppress_emit=suppress_emit)
+        async with sync_service_scope() as sync:
+            if sync is None:
+                return
+            async with celery_db():
+                await sync.backup_pull_cohorts(suppress_emit=suppress_emit)
 
     try:
         run_async(_pull())

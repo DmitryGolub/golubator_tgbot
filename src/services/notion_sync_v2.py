@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select, update
@@ -1444,3 +1446,31 @@ def get_sync_service() -> NotionSyncServiceV2 | None:
             return None
         _sync_service = NotionSyncServiceV2(mentor_repo, mentee_repo, event_repo)
     return _sync_service
+
+
+@asynccontextmanager
+async def sync_service_scope() -> AsyncIterator[NotionSyncServiceV2 | None]:
+    """Fresh NotionSyncServiceV2 per async scope, for Celery tasks.
+
+    Each Celery task runs in a new event loop (src/tasks/_db.py:run_async),
+    so httpx clients created by a shared singleton would leak into a dead
+    loop on the next task. This scope builds fresh repos and explicitly
+    closes their clients in the same loop that created them.
+    """
+    mentor_repo, mentee_repo, event_repo = _build_repos()
+    if not any((mentor_repo, mentee_repo, event_repo)):
+        yield None
+        return
+    service = NotionSyncServiceV2(mentor_repo, mentee_repo, event_repo)
+    try:
+        yield service
+    finally:
+        for repo in (mentor_repo, mentee_repo, event_repo):
+            if repo is not None:
+                try:
+                    await repo._client.close()
+                except Exception:
+                    logger.warning(
+                        "Failed to close Notion client in sync_service_scope",
+                        exc_info=True,
+                    )
