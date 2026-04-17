@@ -29,7 +29,7 @@
         "query": "bot,celery_worker,celery_beat",
         "includeAll": true,
         "multi": true,
-        "allValue": ".*"
+        "allValue": "bot|celery_worker|celery_beat"
       }
     ]
   },
