@@ -17,51 +17,70 @@
         "type": "custom",
         "label": "Service",
         "current": {
-          "text": "All",
-          "value": "$__all"
+          "text": ["bot", "celery_worker", "celery_beat"],
+          "value": ["bot", "celery_worker", "celery_beat"]
         },
         "options": [
-          { "text": "All", "value": "$__all", "selected": true },
-          { "text": "bot", "value": "bot", "selected": false },
-          { "text": "celery_worker", "value": "celery_worker", "selected": false },
-          { "text": "celery_beat", "value": "celery_beat", "selected": false }
+          { "text": "All", "value": "$__all", "selected": false },
+          { "text": "bot", "value": "bot", "selected": true },
+          { "text": "celery_worker", "value": "celery_worker", "selected": true },
+          { "text": "celery_beat", "value": "celery_beat", "selected": true }
         ],
         "query": "bot,celery_worker,celery_beat",
         "includeAll": true,
         "multi": true,
-        "allValue": "bot|celery_worker|celery_beat"
+        "allValue": ".*"
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "title": "Service Status",
-      "description": "Shows UP if logs received in the last 2 minutes",
+      "title": "$service",
+      "description": "Green = container running AND /health OK, Orange = container running but /health failing, Red = container missing",
       "type": "stat",
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
-      "datasource": { "uid": "loki-logs", "type": "loki" },
+      "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+      "repeat": "service",
+      "repeatDirection": "h",
+      "maxPerRow": 3,
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (service)(count_over_time({service=~\"$service\"} [2m]))",
-          "legendFormat": "{{service}}"
+          "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+          "expr": "max(container_last_seen{name=\"tg_bot.$service\"}) > bool (time() - 60)",
+          "instant": true,
+          "legendFormat": "running"
+        },
+        {
+          "refId": "B",
+          "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+          "expr": "max(probe_success{service=\"$service\"})",
+          "instant": true,
+          "legendFormat": "health"
+        },
+        {
+          "refId": "C",
+          "datasource": { "uid": "__expr__", "type": "__expr__", "name": "Expression" },
+          "type": "math",
+          "expression": "$A + $B"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "special", "options": { "match": "null", "result": { "text": "DOWN", "color": "red" } } },
-            { "type": "range", "options": { "from": 1, "to": 999999, "result": { "text": "UP", "color": "green" } } },
-            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+            { "type": "value", "options": { "2": { "text": "UP",        "color": "green"  } } },
+            { "type": "value", "options": { "1": { "text": "UNHEALTHY", "color": "orange" } } },
+            { "type": "value", "options": { "0": { "text": "MISSING",   "color": "red"    } } },
+            { "type": "special", "options": { "match": "null", "result": { "text": "MISSING", "color": "red" } } }
           ],
           "color": { "mode": "fixed" }
         }
       },
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^C$/" },
         "colorMode": "background",
-        "textMode": "name"
+        "textMode": "value_and_name"
       }
     },
     {
