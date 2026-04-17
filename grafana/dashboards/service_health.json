@@ -229,7 +229,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service=~\"$service\"} |~ `\"level\": \"ERROR\"`",
+          "expr": "{service=~\"$service\"} |~ `\"level\": \"ERROR\"` | drop service_name",
           "maxLines": 200
         }
       ],
@@ -253,7 +253,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service=~\"$service\"} |~ `\"level\": \"WARNING\"`",
+          "expr": "{service=~\"$service\"} |~ `\"level\": \"WARNING\"` | drop service_name",
           "maxLines": 200
         }
       ],
