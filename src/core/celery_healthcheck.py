@@ -1,4 +1,3 @@
-import glob
 import http.server
 import logging
 import os
@@ -6,6 +5,8 @@ import sys
 import threading
 import time
 from typing import Literal
+
+from src.core.celery_beat_scheduler import HEARTBEAT_FILE as _BEAT_HEARTBEAT
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +16,9 @@ _CLIENT_DISCONNECT_ERRORS = (
     ConnectionAbortedError,
 )
 
-_BEAT_SCHEDULE_DB = "/tmp/celerybeat-schedule"
-# Minimum schedule interval is 30s (NOTION_PUSH_INTERVAL); 120s gives a safe
-# cushion that still catches a genuinely stuck beat loop.
+# Beat's loop ticks at least every `beat_max_loop_interval` (default 5s for
+# PersistentScheduler), so 120s gives a wide safety margin while still
+# catching a genuinely frozen beat loop.
 _BEAT_MAX_STALE_SECONDS = 120.0
 
 
@@ -34,30 +35,24 @@ def _worker_alive(timeout: float = 3.0) -> bool:
 
 
 def _beat_alive(max_stale_seconds: float = _BEAT_MAX_STALE_SECONDS) -> bool:
-    """Check beat health by mtime of the schedule DB file.
+    """Check beat health by mtime of the heartbeat file written every tick.
 
-    Beat persists its schedule via shelve; the on-disk suffix depends on the
-    dbm backend (.db, .dat/.dir/.bak, .pag, or none), so match a glob.
+    HeartbeatPersistentScheduler (see celery_beat_scheduler.py) touches this
+    file inside the beat loop, giving a direct liveness signal independent
+    of when shelve decides to flush the schedule state.
     """
-    now = time.time()
-    newest_age: float | None = None
-    for path in glob.glob(f"{_BEAT_SCHEDULE_DB}*"):
-        try:
-            mtime = os.path.getmtime(path)
-        except OSError:
-            continue
-        age = now - mtime
-        if newest_age is None or age < newest_age:
-            newest_age = age
-    if newest_age is None:
+    try:
+        mtime = os.path.getmtime(_BEAT_HEARTBEAT)
+    except OSError:
         logger.warning(
-            "Celery beat healthcheck: schedule file %s* not found", _BEAT_SCHEDULE_DB
+            "Celery beat healthcheck: heartbeat file %s not found", _BEAT_HEARTBEAT
         )
         return False
-    if newest_age > max_stale_seconds:
+    age = time.time() - mtime
+    if age > max_stale_seconds:
         logger.warning(
-            "Celery beat healthcheck: schedule file stale (%.1fs > %.1fs)",
-            newest_age,
+            "Celery beat healthcheck: heartbeat stale (%.1fs > %.1fs)",
+            age,
             max_stale_seconds,
         )
         return False
