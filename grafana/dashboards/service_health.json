@@ -36,34 +36,17 @@
   "panels": [
     {
       "id": 1,
-      "title": "$service",
+      "title": "Service Status",
       "description": "Green = container running AND /health OK, Orange = container running but /health failing, Red = container missing",
       "type": "stat",
-      "gridPos": { "h": 2, "w": 8, "x": 0, "y": 0 },
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
       "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
-      "repeat": "service",
-      "repeatDirection": "h",
-      "maxPerRow": 3,
       "targets": [
         {
           "refId": "A",
           "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
-          "expr": "max(probe_success{service=\"$service\"})",
-          "instant": true,
-          "legendFormat": "health"
-        },
-        {
-          "refId": "B",
-          "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
-          "expr": "max(probe_http_status_code{service=\"$service\"}) > bool 0",
-          "instant": true,
-          "legendFormat": "running"
-        },
-        {
-          "refId": "C",
-          "datasource": { "uid": "__expr__", "type": "__expr__", "name": "Expression" },
-          "type": "math",
-          "expression": "$A + $B"
+          "expr": "sum by (service)(probe_success{service=~\"$service\"}) + sum by (service)(probe_http_status_code{service=~\"$service\"} > bool 0)",
+          "legendFormat": "{{service}}"
         }
       ],
       "fieldConfig": {
@@ -78,44 +61,10 @@
         }
       },
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^C$/" },
-        "colorMode": "background",
-        "textMode": "value"
-      }
-    },
-    {
-      "id": 10,
-      "title": "Logs last 2m",
-      "description": "Log volume per service over the last 2 minutes",
-      "type": "stat",
-      "gridPos": { "h": 3, "w": 8, "x": 0, "y": 2 },
-      "datasource": { "uid": "loki-logs", "type": "loki" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (service)(count_over_time({service=~\"$service\"} [2m]))",
-          "legendFormat": "{{service}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            { "type": "special", "options": { "match": "null", "result": { "text": "0", "color": "red" } } }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "green", "value": 1 }
-            ]
-          },
-          "color": { "mode": "thresholds" }
-        }
-      },
-      "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
-        "colorMode": "value",
-        "textMode": "value_and_name"
+        "colorMode": "background",
+        "textMode": "name",
+        "graphMode": "area"
       }
     },
     {
