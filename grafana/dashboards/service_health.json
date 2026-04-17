@@ -180,6 +180,7 @@
       "targets": [
         {
           "refId": "A",
+          "queryType": "instant",
           "expr": "sum by (level)(count_over_time({service=~\"$service\", level=~\".+\"} [$__range]))",
           "legendFormat": "{{level}}"
         }
@@ -190,7 +191,7 @@
         }
       },
       "options": {
-        "reduceOptions": { "calcs": ["sum"] },
+        "reduceOptions": { "calcs": ["lastNotNull"] },
         "legend": { "displayMode": "table", "placement": "right", "values": ["percent", "value"] },
         "pieType": "donut",
         "tooltip": { "mode": "single" }
