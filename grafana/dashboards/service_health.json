@@ -230,15 +230,14 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service=~\"$service\"} | json | level=\"ERROR\"",
+          "expr": "{service=~\"$service\"} | json | level=\"ERROR\" | drop service_name",
           "maxLines": 200
         }
       ],
       "options": {
         "showTime": true,
         "showLabels": true,
-        "showCommonLabels": false,
-        "displayedFields": ["service"],
+        "showCommonLabels": true,
         "wrapLogMessage": true,
         "prettifyLogMessage": false,
         "enableLogDetails": true,
@@ -256,15 +255,14 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service=~\"$service\"} | json | level=\"WARNING\"",
+          "expr": "{service=~\"$service\"} | json | level=\"WARNING\" | drop service_name",
           "maxLines": 200
         }
       ],
       "options": {
         "showTime": true,
         "showLabels": true,
-        "showCommonLabels": false,
-        "displayedFields": ["service"],
+        "showCommonLabels": true,
         "wrapLogMessage": true,
         "prettifyLogMessage": false,
         "enableLogDetails": true,
@@ -282,15 +280,14 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{service=~\"$service\"}",
+          "expr": "{service=~\"$service\"} | drop service_name",
           "maxLines": 1000
         }
       ],
       "options": {
         "showTime": true,
         "showLabels": true,
-        "showCommonLabels": false,
-        "displayedFields": ["service"],
+        "showCommonLabels": true,
         "wrapLogMessage": true,
         "prettifyLogMessage": false,
         "enableLogDetails": true,
