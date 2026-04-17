@@ -187,10 +187,19 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "displayName": "${__field.labels.level}"
+          "color": { "mode": "palette-classic" }
         }
       },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {
+            "mappings": [
+              { "fieldName": "level", "handlerKey": "field.name" }
+            ]
+          }
+        }
+      ],
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "legend": { "displayMode": "table", "placement": "right", "values": ["percent", "value"] },
