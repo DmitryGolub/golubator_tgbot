@@ -69,11 +69,8 @@ async def test_bug_report_without_photo(
     msg = await account2.press_callback("feedback_report_menu")
     msg = await account2.click_button(msg, data="fb_type:bug")
 
-    # Enter bug description — bot sends new message with skip-photo button
+    # Enter bug description — bot immediately confirms and sends to admins
     msg = await account2.send_text_in_fsm("E2E bug report without photo")
-
-    # Skip photo — bot edits message with confirmation and sends to admins
-    msg = await account2.click_button(msg, data="fb_skip")
     assert msg.text is not None, "Expected confirmation message after bug report"
 
     # Verify account3 received the bug report

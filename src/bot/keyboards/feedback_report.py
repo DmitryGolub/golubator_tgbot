@@ -3,7 +3,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.bot.callbacks.feedback_report import (
     FeedbackRecipientCB,
-    FeedbackSkipPhotoCB,
     FeedbackTypeCB,
 )
 
@@ -34,14 +33,6 @@ def feedback_recipient_keyboard() -> InlineKeyboardMarkup:
         text="Лид по поиску работы",
         callback_data=FeedbackRecipientCB(role="job_search_lead"),
     )
-    kb.button(text="❌ Отмена", callback_data="back_to_menu")
-    kb.adjust(1)
-    return kb.as_markup()
-
-
-def feedback_skip_photo_keyboard() -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="Пропустить", callback_data=FeedbackSkipPhotoCB())
     kb.button(text="❌ Отмена", callback_data="back_to_menu")
     kb.adjust(1)
     return kb.as_markup()

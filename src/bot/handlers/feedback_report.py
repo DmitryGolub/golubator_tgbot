@@ -3,19 +3,23 @@ import logging
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import (
+    CallbackQuery,
+    InputMediaPhoto,
+    InputMediaVideo,
+    Message,
+)
 
 from src.bot.callbacks.feedback_report import (
     FeedbackRecipientCB,
-    FeedbackSkipPhotoCB,
     FeedbackTypeCB,
 )
 from src.bot.keyboards.feedback_report import (
     feedback_recipient_keyboard,
-    feedback_skip_photo_keyboard,
     feedback_type_keyboard,
 )
 from src.bot.keyboards.menu import back_to_menu_keyboard
+from src.bot.middlewares.album_middleware import AlbumMiddleware
 from src.bot.states.feedback_report import FeedbackReportFSM
 from src.bot.utils import safe_edit_text
 from src.dao.user import UserDAO
@@ -24,6 +28,10 @@ from src.services.ui_text import UiTextService
 logger = logging.getLogger(__name__)
 
 router = Router(name="feedback_report")
+router.message.middleware(AlbumMiddleware())
+
+CAPTION_LIMIT = 1024
+MEDIA_GROUP_LIMIT = 10
 
 
 @router.callback_query(F.data == "feedback_report_menu")
@@ -45,27 +53,51 @@ async def cb_choose_type(
     await state.set_state(FeedbackReportFSM.entering_text)
 
 
-@router.message(FeedbackReportFSM.entering_text, F.text)
-async def msg_enter_text(message: Message, state: FSMContext):
+@router.message(FeedbackReportFSM.entering_text)
+async def msg_enter_text(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    album: list[Message] | None = None,
+):
+    source_msgs = album if album else [message]
+
+    if album:
+        source_msgs = sorted(album, key=lambda m: m.message_id)
+        text = next((m.caption for m in source_msgs if m.caption), "")
+    else:
+        text = message.caption or message.text or ""
+
+    attachments: list[dict] = []
+    for m in source_msgs:
+        if m.photo:
+            attachments.append({"type": "photo", "file_id": m.photo[-1].file_id})
+        elif m.video:
+            attachments.append({"type": "video", "file_id": m.video.file_id})
+
+    if not text and not attachments:
+        await message.answer("Отправьте текст обращения или приложите фото/видео.")
+        return
+
     sender = message.from_user
     if sender.username:
         username = f"@{sender.username}"
     else:
         username = sender.full_name or "Аноним"
+
     await state.update_data(
-        text=message.text,
+        text=text,
+        attachments=attachments,
         sender={"username": username, "full_name": sender.full_name},
     )
-    data = await state.get_data()
 
+    data = await state.get_data()
     if data["feedback_type"] == "problem":
-        text = await UiTextService.get("feedback.choose_recipient")
-        await message.answer(text, reply_markup=feedback_recipient_keyboard())
+        prompt = await UiTextService.get("feedback.choose_recipient")
+        await message.answer(prompt, reply_markup=feedback_recipient_keyboard())
         await state.set_state(FeedbackReportFSM.choosing_recipient)
     else:
-        text = await UiTextService.get("feedback.attach_photo")
-        await message.answer(text, reply_markup=feedback_skip_photo_keyboard())
-        await state.set_state(FeedbackReportFSM.waiting_photo)
+        await _send_bug_report(message, state, bot)
 
 
 @router.callback_query(
@@ -80,6 +112,7 @@ async def cb_choose_recipient(
     await callback.answer()
     data = await state.get_data()
     text = data["text"]
+    attachments = data.get("attachments") or []
 
     sender = callback.from_user
     if sender.username:
@@ -93,26 +126,7 @@ async def cb_choose_recipient(
     for user in recipients:
         if user.telegram_id < 0:
             continue
-        try:
-            await bot.send_message(user.telegram_id, outgoing)
-        except TelegramForbiddenError:
-            logger.info("User %s blocked the bot, skipping feedback", user.telegram_id)
-        except TelegramBadRequest as exc:
-            if "chat not found" in str(exc).lower():
-                logger.info(
-                    "Chat not found for user %s, skipping feedback", user.telegram_id
-                )
-            else:
-                logger.warning(
-                    "Failed to send feedback to %s: %s",
-                    user.telegram_id,
-                    exc,
-                    exc_info=True,
-                )
-        except Exception:
-            logger.warning(
-                "Failed to send feedback to %s", user.telegram_id, exc_info=True
-            )
+        await _deliver_safe(bot, user.telegram_id, outgoing, attachments)
 
     confirmation = await UiTextService.get("feedback.sent")
     await safe_edit_text(
@@ -121,32 +135,11 @@ async def cb_choose_recipient(
     await state.clear()
 
 
-@router.message(FeedbackReportFSM.waiting_photo, F.photo)
-async def msg_photo(message: Message, state: FSMContext, bot: Bot):
-    photo_file_id = message.photo[-1].file_id
-    await _send_bug_report(message, state, bot, photo_file_id=photo_file_id)
-
-
-@router.callback_query(FeedbackReportFSM.waiting_photo, FeedbackSkipPhotoCB.filter())
-async def cb_skip_photo(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    await callback.answer()
-    await _send_bug_report(callback.message, state, bot, photo_file_id=None, edit=True)
-
-
-async def _send_bug_report(
-    message: Message,
-    state: FSMContext,
-    bot: Bot,
-    *,
-    photo_file_id: str | None,
-    edit: bool = False,
-):
+async def _send_bug_report(message: Message, state: FSMContext, bot: Bot) -> None:
     data = await state.get_data()
     text = data["text"]
+    attachments = data.get("attachments") or []
 
-    # Retrieve sender info from FSM data (stored at text-entry step)
-    # The message object here may be the bot's own message if edit=True,
-    # so we stored sender_id/username in state during entering_text.
     sender_data = data.get("sender") or {}
     username = sender_data.get("username", "")
     full_name = sender_data.get("full_name", "")
@@ -156,21 +149,62 @@ async def _send_bug_report(
     for admin in admins:
         if admin.telegram_id < 0:
             continue
-        try:
-            if photo_file_id:
-                await bot.send_photo(admin.telegram_id, photo_file_id, caption=outgoing)
-            else:
-                await bot.send_message(admin.telegram_id, outgoing)
-        except Exception:
-            logger.warning(
-                "Failed to send bug report to %s", admin.telegram_id, exc_info=True
-            )
+        await _deliver_safe(bot, admin.telegram_id, outgoing, attachments)
 
     confirmation = await UiTextService.get("feedback.bug_sent")
-    if edit:
-        await message.edit_text(
-            confirmation, reply_markup=await back_to_menu_keyboard()
-        )
-    else:
-        await message.answer(confirmation, reply_markup=await back_to_menu_keyboard())
+    await message.answer(confirmation, reply_markup=await back_to_menu_keyboard())
     await state.clear()
+
+
+async def _deliver_safe(
+    bot: Bot, chat_id: int, text: str, attachments: list[dict]
+) -> None:
+    try:
+        await _deliver(bot, chat_id, text, attachments)
+    except TelegramForbiddenError:
+        logger.info("User %s blocked the bot, skipping feedback", chat_id)
+    except TelegramBadRequest as exc:
+        if "chat not found" in str(exc).lower():
+            logger.info("Chat not found for user %s, skipping feedback", chat_id)
+        else:
+            logger.warning(
+                "Failed to send feedback to %s: %s", chat_id, exc, exc_info=True
+            )
+    except Exception:
+        logger.warning("Failed to send feedback to %s", chat_id, exc_info=True)
+
+
+async def _deliver(bot: Bot, chat_id: int, text: str, attachments: list[dict]) -> None:
+    if not attachments:
+        await bot.send_message(chat_id, text)
+        return
+
+    attachments = attachments[:MEDIA_GROUP_LIMIT]
+
+    if len(attachments) == 1:
+        item = attachments[0]
+        if len(text) <= CAPTION_LIMIT:
+            if item["type"] == "photo":
+                await bot.send_photo(chat_id, item["file_id"], caption=text)
+            else:
+                await bot.send_video(chat_id, item["file_id"], caption=text)
+        else:
+            await bot.send_message(chat_id, text)
+            if item["type"] == "photo":
+                await bot.send_photo(chat_id, item["file_id"])
+            else:
+                await bot.send_video(chat_id, item["file_id"])
+        return
+
+    media: list[InputMediaPhoto | InputMediaVideo] = []
+    use_caption = len(text) <= CAPTION_LIMIT
+    for i, item in enumerate(attachments):
+        caption = text if (use_caption and i == 0) else None
+        if item["type"] == "photo":
+            media.append(InputMediaPhoto(media=item["file_id"], caption=caption))
+        else:
+            media.append(InputMediaVideo(media=item["file_id"], caption=caption))
+
+    if not use_caption:
+        await bot.send_message(chat_id, text)
+    await bot.send_media_group(chat_id, media)

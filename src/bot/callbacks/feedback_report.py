@@ -7,7 +7,3 @@ class FeedbackTypeCB(CallbackData, prefix="fb_type"):
 
 class FeedbackRecipientCB(CallbackData, prefix="fb_rcpt"):
     role: str  # "admin" | "direction_lead" | "education_lead" | "job_search_lead"
-
-
-class FeedbackSkipPhotoCB(CallbackData, prefix="fb_skip"):
-    pass
