@@ -32,6 +32,14 @@ celery_app.conf.update(
     enable_utc=True,
     task_acks_late=True,
     task_reject_on_worker_lost=True,
+    broker_transport_options={
+        "fanout_prefix": True,
+        "fanout_patterns": True,
+    },
+    result_backend_transport_options={
+        "fanout_prefix": True,
+        "fanout_patterns": True,
+    },
     beat_schedule={
         # Bidirectional Notion sync
         "notion.push_changes": {
