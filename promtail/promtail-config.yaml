@@ -29,8 +29,3 @@ scrape_configs:
 
     pipeline_stages:
       - docker: {}
-      - json:
-          expressions:
-            level: level
-      - labels:
-          level:
