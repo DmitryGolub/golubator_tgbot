@@ -1,3 +1,4 @@
+import glob
 import http.server
 import logging
 import os
@@ -35,13 +36,12 @@ def _worker_alive(timeout: float = 3.0) -> bool:
 def _beat_alive(max_stale_seconds: float = _BEAT_MAX_STALE_SECONDS) -> bool:
     """Check beat health by mtime of the schedule DB file.
 
-    Beat persists its schedule via shelve; depending on the backend the file
-    can be either the bare path or one with a `.db` suffix. We accept either.
+    Beat persists its schedule via shelve; the on-disk suffix depends on the
+    dbm backend (.db, .dat/.dir/.bak, .pag, or none), so match a glob.
     """
-    candidates = [_BEAT_SCHEDULE_DB, f"{_BEAT_SCHEDULE_DB}.db"]
     now = time.time()
     newest_age: float | None = None
-    for path in candidates:
+    for path in glob.glob(f"{_BEAT_SCHEDULE_DB}*"):
         try:
             mtime = os.path.getmtime(path)
         except OSError:
@@ -51,7 +51,7 @@ def _beat_alive(max_stale_seconds: float = _BEAT_MAX_STALE_SECONDS) -> bool:
             newest_age = age
     if newest_age is None:
         logger.warning(
-            "Celery beat healthcheck: schedule file %s not found", _BEAT_SCHEDULE_DB
+            "Celery beat healthcheck: schedule file %s* not found", _BEAT_SCHEDULE_DB
         )
         return False
     if newest_age > max_stale_seconds:
