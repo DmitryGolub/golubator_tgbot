@@ -187,7 +187,8 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" }
+          "color": { "mode": "palette-classic" },
+          "displayName": "${__field.labels.level}"
         }
       },
       "options": {
