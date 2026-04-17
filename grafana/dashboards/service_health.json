@@ -64,7 +64,7 @@
         "reduceOptions": { "calcs": ["lastNotNull"] },
         "colorMode": "background",
         "textMode": "name",
-        "graphMode": "area"
+        "graphMode": "none"
       }
     },
     {
