@@ -728,7 +728,7 @@ UI_TEXTS = [
     ("menu.btn.my_info", "ℹ️ Обо мне", "Menu button: my info (mentor)"),
     (
         "menu.btn.my_meetings",
-        "📅 Назначенные созвоны",
+        "📅 Созвоны",
         "Menu button: my meetings (student)",
     ),
     (
@@ -759,6 +759,26 @@ UI_TEXTS = [
         "menu.mentor_students.btn.update",
         "Изменить статус менти",
         "Mentor: update student btn",
+    ),
+    (
+        "menu.mentor_students.btn.archive",
+        "📋 Прочие менти",
+        "Open archive mentees screen",
+    ),
+    (
+        "menu.mentor_students.btn.back_to_active",
+        "⬅️ Назад к менти",
+        "Back from archive to active mentees",
+    ),
+    (
+        "menu.students.archive.empty",
+        "Здесь пока никого нет.",
+        "Empty archive mentees list",
+    ),
+    (
+        "menu.students.archive.header",
+        "<b>Прочие менти:</b>",
+        "Archive mentees list header",
     ),
     # ── Mentor meetings ──
     (
@@ -1026,7 +1046,11 @@ UI_TEXTS = [
         "Menu button: feedback report",
     ),
     ("feedback.choose_type", "Выберите тип обращения:", "Feedback: choose type"),
-    ("feedback.enter_text", "Введите текст обращения:", "Feedback: enter text"),
+    (
+        "feedback.enter_text",
+        "Опишите проблему. При желании приложите фото или видео (можно альбомом).",
+        "Feedback: enter text",
+    ),
     (
         "feedback.choose_recipient",
         "Кому направить обращение?",
