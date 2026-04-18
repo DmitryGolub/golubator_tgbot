@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from src.services.notion.client import NotionClient
 from src.services.notion.dto import MenteeData, join_rich_text, parse_iso as _parse_iso
@@ -94,6 +95,15 @@ class NotionMenteeRepo:
 
     async def get_all(self) -> list[MenteeData]:
         pages = await self._client.get_all_pages()
+        return [self._parse_page(p) for p in pages]
+
+    async def get_changed_since(self, since: datetime) -> list[MenteeData]:
+        """Return mentees edited on-or-after `since` (Notion system timestamp)."""
+        filter_obj = {
+            "timestamp": "last_edited_time",
+            "last_edited_time": {"on_or_after": since.isoformat()},
+        }
+        pages = await self._client.get_all_pages(filter=filter_obj)
         return [self._parse_page(p) for p in pages]
 
     async def get_page(self, page_id: str) -> MenteeData | None:

@@ -156,11 +156,13 @@ class NotionClient:
         client = await self._ensure_client()
         return await client.data_sources.query(**kwargs)
 
-    async def get_all_pages(self) -> list[dict]:
+    async def get_all_pages(self, filter: dict | None = None) -> list[dict]:
         pages: list[dict] = []
         cursor: str | None = None
         while True:
-            resp = await self.query_pages(page_size=100, start_cursor=cursor)
+            resp = await self.query_pages(
+                filter=filter, page_size=100, start_cursor=cursor
+            )
             pages.extend(resp["results"])
             if not resp.get("has_more"):
                 break

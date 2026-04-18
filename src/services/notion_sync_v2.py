@@ -750,46 +750,75 @@ class NotionSyncServiceV2:
         page_created_time: datetime | None = None,
     ) -> list[dict]:
         """Sync cohorts and return list of diffs for changed cohorts."""
-        from sqlalchemy import delete
+        from sqlalchemy import delete, tuple_
 
-        # Snapshot current cohorts before delete
+        # Build desired state from payload first — no SQL yet.
+        new_map: dict[str, set[str]] = defaultdict(set)
+        for cat in getattr(data, "categories", []):
+            new_map["Category"].add(cat)
+        for tag in getattr(data, "tags", []):
+            new_map["Tags"].add(tag)
+        if status := getattr(data, "status", None):
+            new_map["Status"].add(status)
+        if intern := getattr(data, "intern", None):
+            new_map["Стажор"].add(intern)
+
+        # Snapshot current cohorts (with ids so we can delete only removed ones).
         old_result = await session.execute(
-            select(Cohort.type, Cohort.value)
+            select(Cohort.id, Cohort.type, Cohort.value)
             .join(UserCohort, UserCohort.cohort_id == Cohort.id)
             .where(UserCohort.user_telegram_id == user_telegram_id)
         )
         old_map: dict[str, set[str]] = defaultdict(set)
-        for row in old_result.all():
-            old_map[row[0]].add(row[1])
+        old_ids_by_entry: dict[tuple[str, str], int] = {}
+        for cid, ctype, cvalue in old_result.all():
+            old_map[ctype].add(cvalue)
+            old_ids_by_entry[(ctype, cvalue)] = cid
 
-        await session.execute(
-            delete(UserCohort).where(UserCohort.user_telegram_id == user_telegram_id)
-        )
+        # Short-circuit: nothing to write if desired state matches current state.
+        if old_map == new_map:
+            return []
 
-        entries: list[tuple[str, str]] = []
-        for cat in getattr(data, "categories", []):
-            entries.append(("Category", cat))
-        for tag in getattr(data, "tags", []):
-            entries.append(("Tags", tag))
-        if status := getattr(data, "status", None):
-            entries.append(("Status", status))
-        if intern := getattr(data, "intern", None):
-            entries.append(("Стажор", intern))
+        new_entries: set[tuple[str, str]] = {
+            (ct, v) for ct, values in new_map.items() for v in values
+        }
+        old_entries: set[tuple[str, str]] = set(old_ids_by_entry)
+        added_entries = new_entries - old_entries
+        removed_entries = old_entries - new_entries
 
-        new_map: dict[str, set[str]] = defaultdict(set)
-        for cohort_type, cohort_value in entries:
-            new_map[cohort_type].add(cohort_value)
+        # Bulk upsert Cohort rows for all entries we still want (cheap no-op if
+        # they already exist). Batches all categories in a single round-trip.
+        if new_entries:
             await session.execute(
                 pg_insert(Cohort)
-                .values(type=cohort_type, value=cohort_value)
+                .values([{"type": ct, "value": v} for ct, v in new_entries])
                 .on_conflict_do_nothing(constraint="uq_cohort_type_value")
             )
-            result = await session.execute(
-                select(Cohort.id).where(
-                    Cohort.type == cohort_type, Cohort.value == cohort_value
+
+        # Batch-resolve Cohort.id for every added entry in one query.
+        added_ids: list[int] = []
+        if added_entries:
+            id_result = await session.execute(
+                select(Cohort.id, Cohort.type, Cohort.value).where(
+                    tuple_(Cohort.type, Cohort.value).in_(added_entries)
                 )
             )
-            cohort_id = result.scalar_one()
+            for cid, ct, v in id_result.all():
+                if (ct, v) in added_entries:
+                    added_ids.append(cid)
+
+        # Point-delete UserCohort rows that dropped out.
+        if removed_entries:
+            removed_ids = [old_ids_by_entry[e] for e in removed_entries]
+            await session.execute(
+                delete(UserCohort).where(
+                    UserCohort.user_telegram_id == user_telegram_id,
+                    UserCohort.cohort_id.in_(removed_ids),
+                )
+            )
+
+        # Insert only the new links.
+        for cohort_id in added_ids:
             session.add(
                 UserCohort(
                     user_telegram_id=user_telegram_id,
@@ -889,11 +918,18 @@ class NotionSyncServiceV2:
         finally:
             await engine.dispose()
 
-    async def backup_pull_cohorts(self, suppress_emit: bool = False) -> int:
+    async def backup_pull_cohorts(
+        self,
+        suppress_emit: bool = False,
+        since: datetime | None = None,
+    ) -> int:
         if not self.mentee_repo:
             return 0
 
-        mentees_data = await self.mentee_repo.get_all()
+        if since is not None:
+            mentees_data = await self.mentee_repo.get_changed_since(since)
+        else:
+            mentees_data = await self.mentee_repo.get_all()
         count = 0
         skipped = 0
         all_diffs: list[dict] = []
@@ -908,6 +944,16 @@ class NotionSyncServiceV2:
                             )
                             mentee = result.scalar_one_or_none()
                             if not mentee or mentee.telegram_id is None:
+                                skipped += 1
+                                continue
+
+                            # Second-line echo guard: Notion filter + synced_at
+                            # cover rate-limit partials and clock skew.
+                            if (
+                                mentee.synced_at
+                                and m.last_edited_time
+                                and mentee.synced_at >= m.last_edited_time
+                            ):
                                 skipped += 1
                                 continue
 
@@ -930,7 +976,12 @@ class NotionSyncServiceV2:
         finally:
             await engine.dispose()
 
-        logger.info("Backup pull cohorts: %d synced, %d skipped", count, skipped)
+        logger.info(
+            "Backup pull cohorts: %d synced, %d skipped, %d fetched",
+            count,
+            skipped,
+            len(mentees_data),
+        )
         return count
 
     async def _resolve_mentor_notion_ids(
