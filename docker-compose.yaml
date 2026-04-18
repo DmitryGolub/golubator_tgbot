@@ -256,7 +256,10 @@ services:
     logging: *default-logging
     command:
       - --docker_only=true
-      - --store_container_labels=true
+      - --housekeeping_interval=30s
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service
+      - --disable_metrics=disk,diskIO,network,tcp,udp,advtcp,hugetlb,referenced_memory,cpu_topology,resctrl,memory_numa,cpuset,process,sched,percpu
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro

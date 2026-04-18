@@ -300,12 +300,13 @@ class CalDAVClient:
             return PutResult(href=url, etag=new_etag)
 
     async def delete_event(self, *, href: str, etag: Optional[str] = None) -> None:
+        url = _absolutize(self._base_url, href)
         headers: dict[str, str] = {}
         if etag:
             headers["If-Match"] = f'"{etag}"'
         async with self._build_client() as client:
             try:
-                response = await client.delete(href, headers=headers)
+                response = await client.delete(url, headers=headers)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 raise CalDAVTransientError(f"network error: {exc}") from exc
             if response.status_code in (200, 204, 404):
@@ -371,12 +372,13 @@ class CalDAVClient:
 
             new_token = root.findtext("d:sync-token", default="", namespaces=NS) or ""
 
+            base = calendar_url if calendar_url.endswith("/") else calendar_url + "/"
             changes: list[ChangedEvent] = []
             for resp in root.findall("d:response", NS):
                 href = resp.findtext("d:href", namespaces=NS)
                 if not href:
                     continue
-                href = href.strip()
+                href = _absolutize(base, href.strip())
                 # Top-level status (deletions): "HTTP/1.1 404 Not Found"
                 top_status = resp.findtext("d:status", namespaces=NS) or ""
                 if "404" in top_status:
@@ -455,10 +457,12 @@ class CalDAVClient:
 
         results: list[CalendarObject] = []
         prefix_token = f"UID:{uid_prefix}"
+        base = calendar_url if calendar_url.endswith("/") else calendar_url + "/"
         for resp in root.findall("d:response", NS):
             href = resp.findtext("d:href", namespaces=NS)
             if not href:
                 continue
+            href = _absolutize(base, href.strip())
             etag = None
             data = None
             for propstat in resp.findall("d:propstat", NS):
@@ -476,7 +480,7 @@ class CalDAVClient:
                 continue
             results.append(
                 CalendarObject(
-                    href=href.strip(),
+                    href=href,
                     etag=etag,
                     calendar_data=data_bytes,
                 )
@@ -484,9 +488,10 @@ class CalDAVClient:
         return results
 
     async def get_event(self, href: str) -> tuple[bytes, Optional[str]]:
+        url = _absolutize(self._base_url, href)
         async with self._build_client() as client:
             try:
-                response = await client.get(href)
+                response = await client.get(url)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 raise CalDAVTransientError(f"network error: {exc}") from exc
             _raise_for_status(response)

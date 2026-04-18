@@ -59,10 +59,10 @@ async def test_sync_collection_initial(monkeypatch):
     changed = [c for c in result.changes if c.change_type == "changed"]
     deleted = [c for c in result.changes if c.change_type == "deleted"]
     assert len(changed) == 1
-    assert changed[0].href == "/cal/event-1.ics"
+    assert changed[0].href == "https://x/cal/event-1.ics"
     assert changed[0].etag == "abc"
     assert len(deleted) == 1
-    assert deleted[0].href == "/cal/event-2.ics"
+    assert deleted[0].href == "https://x/cal/event-2.ics"
 
 
 SYNC_COLLECTION_INVALID = """<?xml version="1.0"?>
@@ -164,7 +164,7 @@ async def test_calendar_query_filters_by_uid_prefix(monkeypatch):
     client = CalDAVClient(base_url="https://x", username="u", password="p")
     objs = await client.calendar_query("https://x/cal/", "golubator-meeting-")
     assert len(objs) == 1
-    assert objs[0].href == "/cal/ours.ics"
+    assert objs[0].href == "https://x/cal/ours.ics"
     assert objs[0].etag == "e1"
     assert b"golubator-meeting-9" in objs[0].calendar_data
 
@@ -201,3 +201,89 @@ async def test_get_event_5xx_transient(monkeypatch):
     client = CalDAVClient(base_url="https://x", username="u", password="p")
     with pytest.raises(CalDAVTransientError):
         await client.get_event("https://x/cal/e.ics")
+
+
+SYNC_COLLECTION_MIXED_HREFS = """<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/cal/relative.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"r1"</d:getetag>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>https://x/cal/absolute.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"a1"</d:getetag>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+  <d:sync-token>tok</d:sync-token>
+</d:multistatus>"""
+
+
+async def test_sync_collection_absolutizes_relative_href(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(207, content=SYNC_COLLECTION_MIXED_HREFS)
+
+    _install_transport(monkeypatch, handler)
+    client = CalDAVClient(base_url="https://x", username="u", password="p")
+    result = await client.sync_collection("https://x/cal/", None)
+    hrefs = sorted(c.href for c in result.changes)
+    assert hrefs == [
+        "https://x/cal/absolute.ics",
+        "https://x/cal/relative.ics",
+    ]
+
+
+async def test_get_event_accepts_path_absolute_href(monkeypatch):
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, content=b"ics", headers={"ETag": '"z"'})
+
+    _install_transport(monkeypatch, handler)
+    client = CalDAVClient(base_url="https://x", username="u", password="p")
+    body, etag = await client.get_event("/cal/e.ics")
+    assert body == b"ics"
+    assert etag == "z"
+    assert captured["url"] == "https://x/cal/e.ics"
+
+
+CALENDAR_QUERY_RELATIVE_HREF = """<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/cal/ours.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"e1"</d:getetag>
+        <c:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:golubator-meeting-1@x
+DTSTART:20260101T120000Z
+END:VEVENT
+END:VCALENDAR
+</c:calendar-data>
+      </d:prop>
+      <d:status>HTTP/1.1 200 OK</d:status>
+    </d:propstat>
+  </d:response>
+</d:multistatus>"""
+
+
+async def test_calendar_query_absolutizes_relative_href(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(207, content=CALENDAR_QUERY_RELATIVE_HREF)
+
+    _install_transport(monkeypatch, handler)
+    client = CalDAVClient(base_url="https://x", username="u", password="p")
+    objs = await client.calendar_query("https://x/cal/", "golubator-meeting-")
+    assert len(objs) == 1
+    assert objs[0].href == "https://x/cal/ours.ics"
