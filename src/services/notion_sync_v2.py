@@ -748,8 +748,14 @@ class NotionSyncServiceV2:
         data,
         now: datetime,
         page_created_time: datetime | None = None,
+        old_ids_by_entry: dict[tuple[str, str], int] | None = None,
     ) -> list[dict]:
-        """Sync cohorts and return list of diffs for changed cohorts."""
+        """Sync cohorts and return list of diffs for changed cohorts.
+
+        If ``old_ids_by_entry`` is provided, the caller has already prefetched
+        the current UserCohort snapshot in a batch and we skip the per-user
+        SELECT. The dict is not mutated.
+        """
         from sqlalchemy import delete, tuple_
 
         # Build desired state from payload first — no SQL yet.
@@ -764,16 +770,20 @@ class NotionSyncServiceV2:
             new_map["Стажор"].add(intern)
 
         # Snapshot current cohorts (with ids so we can delete only removed ones).
-        old_result = await session.execute(
-            select(Cohort.id, Cohort.type, Cohort.value)
-            .join(UserCohort, UserCohort.cohort_id == Cohort.id)
-            .where(UserCohort.user_telegram_id == user_telegram_id)
-        )
         old_map: dict[str, set[str]] = defaultdict(set)
-        old_ids_by_entry: dict[tuple[str, str], int] = {}
-        for cid, ctype, cvalue in old_result.all():
-            old_map[ctype].add(cvalue)
-            old_ids_by_entry[(ctype, cvalue)] = cid
+        if old_ids_by_entry is None:
+            old_ids_by_entry = {}
+            old_result = await session.execute(
+                select(Cohort.id, Cohort.type, Cohort.value)
+                .join(UserCohort, UserCohort.cohort_id == Cohort.id)
+                .where(UserCohort.user_telegram_id == user_telegram_id)
+            )
+            for cid, ctype, cvalue in old_result.all():
+                old_map[ctype].add(cvalue)
+                old_ids_by_entry[(ctype, cvalue)] = cid
+        else:
+            for ctype, cvalue in old_ids_by_entry:
+                old_map[ctype].add(cvalue)
 
         # Short-circuit: nothing to write if desired state matches current state.
         if old_map == new_map:
@@ -936,30 +946,65 @@ class NotionSyncServiceV2:
         engine, factory = _make_session_factory()
         try:
             async with factory() as session:
+                # Batch prefetch Mentee rows — avoids per-mentee SELECT and lets
+                # us echo-filter in memory before doing any write.
+                page_ids = [m.page_id for m in mentees_data]
+                mentee_by_page: dict = {}
+                if page_ids:
+                    rows = await session.execute(
+                        select(
+                            Mentee.notion_page_id,
+                            Mentee.telegram_id,
+                            Mentee.synced_at,
+                        ).where(Mentee.notion_page_id.in_(page_ids))
+                    )
+                    mentee_by_page = {r.notion_page_id: r for r in rows.all()}
+
+                todo: list[tuple] = []
                 for m in mentees_data:
+                    row = mentee_by_page.get(m.page_id)
+                    if row is None or row.telegram_id is None:
+                        skipped += 1
+                        continue
+                    # Echo guard: skip if our synced_at already covers the
+                    # Notion edit (rate-limit partials / clock skew safeguard).
+                    if (
+                        row.synced_at
+                        and m.last_edited_time
+                        and row.synced_at >= m.last_edited_time
+                    ):
+                        skipped += 1
+                        continue
+                    todo.append((m, row))
+
+                # Batch prefetch current UserCohort snapshot for all todo users
+                # in one JOIN — replaces per-user SELECT inside _sync_cohorts.
+                old_snapshot: dict[int, dict[tuple[str, str], int]] = defaultdict(dict)
+                if todo:
+                    user_ids = [row.telegram_id for _, row in todo]
+                    snap = await session.execute(
+                        select(
+                            UserCohort.user_telegram_id,
+                            Cohort.id,
+                            Cohort.type,
+                            Cohort.value,
+                        )
+                        .join(Cohort, Cohort.id == UserCohort.cohort_id)
+                        .where(UserCohort.user_telegram_id.in_(user_ids))
+                    )
+                    for uid, cid, ctype, cvalue in snap.all():
+                        old_snapshot[uid][(ctype, cvalue)] = cid
+
+                now = datetime.now(timezone.utc)
+                for m, row in todo:
                     try:
                         async with session.begin_nested():
-                            result = await session.execute(
-                                select(Mentee).where(Mentee.notion_page_id == m.page_id)
-                            )
-                            mentee = result.scalar_one_or_none()
-                            if not mentee or mentee.telegram_id is None:
-                                skipped += 1
-                                continue
-
-                            # Second-line echo guard: Notion filter + synced_at
-                            # cover rate-limit partials and clock skew.
-                            if (
-                                mentee.synced_at
-                                and m.last_edited_time
-                                and mentee.synced_at >= m.last_edited_time
-                            ):
-                                skipped += 1
-                                continue
-
-                            now = datetime.now(timezone.utc)
                             diffs = await self._sync_cohorts(
-                                session, mentee.telegram_id, m, now
+                                session,
+                                row.telegram_id,
+                                m,
+                                now,
+                                old_ids_by_entry=old_snapshot.get(row.telegram_id, {}),
                             )
                             all_diffs.extend(diffs)
                             count += 1
