@@ -77,22 +77,38 @@
     {
       "id": 3,
       "title": "Конверсия (FROM → TO)",
-      "type": "table",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
+      "type": "nodeGraph",
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 10 },
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT\n  COALESCE(st.old_value, '(новый)') AS \"Из\",\n  st.new_value AS \"В\",\n  COUNT(*) AS \"Переходов\",\n  ROUND(COUNT(*)::numeric / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY st.old_value), 0) * 100, 1) AS \"% от источника\"\nFROM integrations.stage_transitions st\nWHERE st.cohort_type = '$cohort_type'\n  AND st.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND LOWER(st.new_value) NOT IN ('cancel', 'archive')\n  AND (st.old_value IS NULL OR LOWER(st.old_value) NOT IN ('cancel', 'archive'))\nGROUP BY st.old_value, st.new_value\nORDER BY \"Переходов\" DESC",
+          "rawSql": "SELECT\n  stage AS id,\n  stage AS title,\n  COUNT(*)::bigint AS mainStat\nFROM (\n  SELECT old_value AS stage\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND created_at BETWEEN $__timeFrom() AND $__timeTo()\n    AND old_value IS NOT NULL\n    AND LOWER(old_value) NOT IN ('cancel', 'archive')\n    AND LOWER(new_value) NOT IN ('cancel', 'archive')\n  UNION ALL\n  SELECT new_value AS stage\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND created_at BETWEEN $__timeFrom() AND $__timeTo()\n    AND old_value IS NOT NULL\n    AND LOWER(old_value) NOT IN ('cancel', 'archive')\n    AND LOWER(new_value) NOT IN ('cancel', 'archive')\n) s\nGROUP BY stage",
           "format": "table",
-          "refId": "A"
+          "refId": "nodes",
+          "datasource": { "type": "postgres", "uid": "pg-mentoring" }
+        },
+        {
+          "rawSql": "SELECT\n  (st.old_value || '->' || st.new_value) AS id,\n  st.old_value AS source,\n  st.new_value AS target,\n  COUNT(*)::bigint AS mainStat,\n  ROUND(COUNT(*)::numeric / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY st.old_value), 0) * 100, 1) AS secondaryStat\nFROM integrations.stage_transitions st\nWHERE st.cohort_type = '$cohort_type'\n  AND st.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND st.old_value IS NOT NULL\n  AND LOWER(st.old_value) NOT IN ('cancel', 'archive')\n  AND LOWER(st.new_value) NOT IN ('cancel', 'archive')\nGROUP BY st.old_value, st.new_value",
+          "format": "table",
+          "refId": "edges",
+          "datasource": { "type": "postgres", "uid": "pg-mentoring" }
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "secondaryStat" },
+            "properties": [{ "id": "unit", "value": "percent" }]
+          }
+        ]
+      }
     },
     {
       "id": 4,
       "title": "Среднее время на стадии",
       "type": "barchart",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 24 },
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
