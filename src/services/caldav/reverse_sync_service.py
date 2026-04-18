@@ -14,21 +14,13 @@ from src.bot.keyboards.meeting import pending_meeting_keyboard
 from src.dao.caldav_account import CalDAVAccountDAO
 from src.dao.meeting import MeetingDAO
 from src.dao.user import UserDAO
-from src.services.meeting.proposal_text import format_proposal_text
+from src.services.meeting.proposal_text import format_proposal_text, format_when
 from src.tasks._db import get_worker_bot
+from src.utils.bot_send import safe_send_message
 from src.utils.escape import e
-from src.utils.tz import MSK
+from src.utils.time import is_past
 
 logger = logging.getLogger(__name__)
-
-
-def _format_when(dt: datetime | None) -> str:
-    if dt is None:
-        return "—"
-    try:
-        return dt.astimezone(MSK).strftime("%d.%m.%Y %H:%M MSK")
-    except Exception:
-        return dt.isoformat()
 
 
 class CalDAVReverseSyncService:
@@ -58,7 +50,7 @@ class CalDAVReverseSyncService:
         proposer_name = (
             proposer.name if proposer and proposer.name else f"id{source_user_id}"
         )
-        when_str = _format_when(meeting.scheduled_at)
+        when_str = format_when(meeting.scheduled_at)
         text = (
             f"❌ Встреча {when_str} отменена — "
             f"<b>{proposer_name}</b> удалил(а) событие в своём календаре."
@@ -69,36 +61,15 @@ class CalDAVReverseSyncService:
         for participant in meeting.participants or []:
             if participant.telegram_id == source_user_id:
                 continue
-            if participant.telegram_id < 0:
-                continue  # placeholder user — no Telegram chat
-            try:
-                await bot.send_message(participant.telegram_id, text)
+            if await safe_send_message(bot, participant, text):
                 notified += 1
-            except Exception:
-                logger.exception(
-                    "caldav.reverse: failed to notify cancel",
-                    extra={
-                        "meeting_id": meeting_id,
-                        "recipient": participant.telegram_id,
-                    },
-                )
 
         confirmed_proposer = 0
-        if source_user_id > 0:
-            try:
-                await bot.send_message(
-                    source_user_id,
-                    f"✅ Встреча {when_str} отменена.",
-                )
+        if source_user_id > 0 and proposer is not None:
+            if await safe_send_message(
+                bot, proposer, f"✅ Встреча {when_str} отменена."
+            ):
                 confirmed_proposer = 1
-            except Exception:
-                logger.exception(
-                    "caldav.reverse: failed to confirm cancel to proposer",
-                    extra={
-                        "meeting_id": meeting_id,
-                        "recipient": source_user_id,
-                    },
-                )
 
         logger.info(
             "caldav.reverse: cancel applied",
@@ -141,12 +112,20 @@ class CalDAVReverseSyncService:
             )
             return
 
-        meeting = await MeetingDAO.propose_reschedule(
-            meeting_id=meeting_id,
-            new_scheduled_at=new_scheduled_at,
-            new_link=None,
-            proposer_id=source_user_id,
-        )
+        past = is_past(new_scheduled_at)
+        if past:
+            meeting = await MeetingDAO.silent_reschedule_past(
+                meeting_id=meeting_id,
+                new_scheduled_at=new_scheduled_at,
+                proposer_id=source_user_id,
+            )
+        else:
+            meeting = await MeetingDAO.propose_reschedule(
+                meeting_id=meeting_id,
+                new_scheduled_at=new_scheduled_at,
+                new_link=None,
+                proposer_id=source_user_id,
+            )
         if meeting is None:
             logger.info(
                 "caldav.reverse: reschedule — meeting completed or user not participant",
@@ -160,53 +139,47 @@ class CalDAVReverseSyncService:
         )
 
         bot = get_worker_bot()
+        when_str = format_when(meeting.scheduled_at)
         notified = 0
         other_names: list[str] = []
         for participant in meeting.participants or []:
             if participant.telegram_id == source_user_id:
                 continue
-            if participant.telegram_id < 0:
-                continue
             other_names.append(
                 participant.name if participant.name else f"id{participant.telegram_id}"
             )
-            try:
-                await bot.send_message(
-                    participant.telegram_id,
+            if past:
+                text = (
+                    f"📅 Встреча перенесена на {when_str} (прошедшее время) — "
+                    f"<b>{e(proposer_name)}</b> поправил(а) время в календаре. "
+                    f"Подтверждение не требуется."
+                )
+                delivered = await safe_send_message(bot, participant, text)
+            else:
+                delivered = await safe_send_message(
+                    bot,
+                    participant,
                     format_proposal_text(meeting, proposer_name),
                     reply_markup=pending_meeting_keyboard(meeting.id),
                 )
+            if delivered:
                 notified += 1
-            except Exception:
-                logger.exception(
-                    "caldav.reverse: failed to notify reschedule",
-                    extra={
-                        "meeting_id": meeting_id,
-                        "recipient": participant.telegram_id,
-                    },
-                )
 
         confirmed_proposer = 0
-        if source_user_id > 0:
-            when_str = _format_when(meeting.scheduled_at)
+        if source_user_id > 0 and proposer is not None:
             other_label = ", ".join(other_names) if other_names else "участника"
-            try:
-                await bot.send_message(
-                    source_user_id,
-                    (
-                        f"✅ Перенос встречи на {when_str} предложен. "
-                        f"Ждём подтверждения от <b>{e(other_label)}</b>."
-                    ),
+            if past:
+                proposer_text = (
+                    f"✅ Время встречи обновлено на {when_str}. "
+                    f"Встреча уже прошла — подтверждение не требуется."
                 )
+            else:
+                proposer_text = (
+                    f"✅ Перенос встречи на {when_str} предложен. "
+                    f"Ждём подтверждения от <b>{e(other_label)}</b>."
+                )
+            if await safe_send_message(bot, proposer, proposer_text):
                 confirmed_proposer = 1
-            except Exception:
-                logger.exception(
-                    "caldav.reverse: failed to confirm reschedule to proposer",
-                    extra={
-                        "meeting_id": meeting_id,
-                        "recipient": source_user_id,
-                    },
-                )
 
         logger.info(
             "caldav.reverse: reschedule applied",
@@ -215,5 +188,6 @@ class CalDAVReverseSyncService:
                 "account_id": source_account_id,
                 "notified": notified,
                 "confirmed_proposer": confirmed_proposer,
+                "past": past,
             },
         )

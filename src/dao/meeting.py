@@ -435,6 +435,57 @@ class MeetingDAO(BaseDAO):
             return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
+    async def silent_reschedule_past(
+        cls,
+        meeting_id: int,
+        new_scheduled_at: datetime,
+        proposer_id: int,
+    ) -> Optional[Meeting]:
+        """Update scheduled_at for a meeting moved to a past timestamp.
+
+        Unlike `propose_reschedule`, this keeps `proposal_status` and every
+        `MeetingUser.accepted` flag untouched — there is nothing to confirm
+        for a call that already happened. `original_scheduled_at` preserves
+        the earliest known start time (coalesce with existing value).
+        """
+        async with async_session_maker() as session:
+            subq = select(MeetingUser.meeting_id).where(
+                MeetingUser.meeting_id == meeting_id,
+                MeetingUser.user_id == proposer_id,
+            )
+            sel = (
+                select(Meeting.scheduled_at)
+                .where(
+                    Meeting.id == meeting_id,
+                    Meeting.id.in_(subq),
+                    Meeting.completed_at.is_(None),
+                )
+                .with_for_update()
+            )
+            row = (await session.execute(sel)).one_or_none()
+            if row is None:
+                return None
+
+            (old_scheduled,) = row
+
+            stmt = (
+                update(Meeting)
+                .where(Meeting.id == meeting_id)
+                .values(
+                    original_scheduled_at=func.coalesce(
+                        Meeting.original_scheduled_at, old_scheduled
+                    ),
+                    scheduled_at=new_scheduled_at,
+                    proposed_by=proposer_id,
+                )
+                .returning(Meeting.id)
+            )
+            await session.execute(stmt)
+            await session.commit()
+
+            return await cls._reload_with_participants(session, meeting_id)
+
+    @classmethod
     async def confirm_reschedule(
         cls, meeting_id: int, confirming_user_id: int
     ) -> Optional[Meeting]:

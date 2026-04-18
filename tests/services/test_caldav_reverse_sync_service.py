@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,11 +10,22 @@ from src.services.caldav import reverse_sync_service as rs_mod
 from src.services.caldav.reverse_sync_service import CalDAVReverseSyncService
 
 
-def _user(telegram_id, name="Alice"):
-    return SimpleNamespace(telegram_id=telegram_id, name=name, username=None)
+def _user(telegram_id, name="Alice", registered=True):
+    return SimpleNamespace(
+        telegram_id=telegram_id,
+        name=name,
+        username=None,
+        registered_at=datetime(2025, 1, 1, tzinfo=timezone.utc) if registered else None,
+    )
 
 
-def _meeting(meeting_id=42, scheduled_at=None, participants=None, is_cancelled=False):
+def _meeting(
+    meeting_id=42,
+    scheduled_at=None,
+    participants=None,
+    is_cancelled=False,
+    original_scheduled_at=None,
+):
     return SimpleNamespace(
         id=meeting_id,
         scheduled_at=scheduled_at or datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc),
@@ -22,6 +33,7 @@ def _meeting(meeting_id=42, scheduled_at=None, participants=None, is_cancelled=F
         is_cancelled=is_cancelled,
         meeting_link=None,
         description=None,
+        original_scheduled_at=original_scheduled_at,
     )
 
 
@@ -149,6 +161,99 @@ async def test_reschedule_skipped_for_cancelled_meeting():
 
     propose.assert_not_awaited()
     bot.send_message.assert_not_awaited()
+
+
+async def test_reschedule_past_uses_silent_dao_and_sends_no_keyboard():
+    account = SimpleNamespace(id=7, telegram_id=100)
+    past_dt = datetime.now(timezone.utc) - timedelta(hours=2)
+    existing = _meeting(participants=[_user(100), _user(200)])
+    rescheduled = _meeting(
+        scheduled_at=past_dt, participants=[_user(100, "A"), _user(200, "B")]
+    )
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+
+    with (
+        patch.object(
+            rs_mod.CalDAVAccountDAO, "get_by_id", AsyncMock(return_value=account)
+        ),
+        patch.object(
+            rs_mod.MeetingDAO,
+            "get_with_participants",
+            AsyncMock(return_value=existing),
+        ),
+        patch.object(
+            rs_mod.MeetingDAO,
+            "silent_reschedule_past",
+            AsyncMock(return_value=rescheduled),
+        ) as silent,
+        patch.object(rs_mod.MeetingDAO, "propose_reschedule", AsyncMock()) as propose,
+        patch.object(
+            rs_mod.UserDAO, "find_one_or_none", AsyncMock(return_value=_user(100, "A"))
+        ),
+        patch.object(rs_mod, "get_worker_bot", lambda: bot),
+    ):
+        await CalDAVReverseSyncService().reschedule_from_caldav(
+            meeting_id=42, new_scheduled_at=past_dt, source_account_id=7
+        )
+
+    silent.assert_awaited_once_with(
+        meeting_id=42, new_scheduled_at=past_dt, proposer_id=100
+    )
+    propose.assert_not_awaited()
+    assert bot.send_message.await_count == 2
+    calls_by_recipient = {
+        call.args[0]: call for call in bot.send_message.await_args_list
+    }
+    # Past reschedule: the other participant receives a plain informational
+    # message without a confirmation keyboard.
+    assert "reply_markup" not in calls_by_recipient[200].kwargs
+    assert "reply_markup" not in calls_by_recipient[100].kwargs
+
+
+async def test_reschedule_skips_unregistered_participant():
+    account = SimpleNamespace(id=7, telegram_id=100)
+    future_dt = datetime.now(timezone.utc) + timedelta(days=1)
+    existing = _meeting(participants=[_user(100), _user(200)])
+    rescheduled = _meeting(
+        scheduled_at=future_dt,
+        participants=[
+            _user(100, "A"),
+            _user(200, "Unregistered", registered=False),
+        ],
+    )
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+
+    with (
+        patch.object(
+            rs_mod.CalDAVAccountDAO, "get_by_id", AsyncMock(return_value=account)
+        ),
+        patch.object(
+            rs_mod.MeetingDAO,
+            "get_with_participants",
+            AsyncMock(return_value=existing),
+        ),
+        patch.object(
+            rs_mod.MeetingDAO,
+            "propose_reschedule",
+            AsyncMock(return_value=rescheduled),
+        ),
+        patch.object(
+            rs_mod.UserDAO, "find_one_or_none", AsyncMock(return_value=_user(100, "A"))
+        ),
+        patch.object(rs_mod, "get_worker_bot", lambda: bot),
+    ):
+        await CalDAVReverseSyncService().reschedule_from_caldav(
+            meeting_id=42, new_scheduled_at=future_dt, source_account_id=7
+        )
+
+    # Only the proposer confirmation is sent; the unregistered participant (200)
+    # is silently skipped.
+    assert bot.send_message.await_count == 1
+    recipients = [call.args[0] for call in bot.send_message.await_args_list]
+    assert 100 in recipients
+    assert 200 not in recipients
 
 
 async def test_cancel_skips_placeholder_users():

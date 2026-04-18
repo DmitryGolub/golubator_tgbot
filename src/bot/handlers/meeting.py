@@ -10,6 +10,8 @@ from aiogram.fsm.context import FSMContext
 from datetime import datetime, date, timezone
 
 from src.utils.tz import MSK
+from src.utils.time import is_past as _is_past  # noqa: F401 — re-exported for tests
+from src.utils.bot_send import safe_send_message
 
 from src.bot.callbacks.meeting import (
     ChooseMeetingTypeCB,
@@ -842,12 +844,6 @@ def _to_utc_assuming_msk(dt: datetime | None) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
-def _is_past(scheduled_at: datetime | None) -> bool:
-    if scheduled_at is None:
-        return False
-    return scheduled_at <= datetime.now(timezone.utc)
-
-
 async def _schedule_meeting_tasks(meeting) -> None:
     meeting_id = meeting.id
     scheduled_at = meeting.scheduled_at
@@ -932,19 +928,12 @@ async def _finalize_reschedule(user_id: int, state: FSMContext, reply_func, bot)
     for p in meeting.participants:
         if p.telegram_id == user_id:
             continue
-        try:
-            await bot.send_message(
-                p.telegram_id,
-                _format_proposal_text(meeting, proposer_name),
-                reply_markup=pending_meeting_keyboard(meeting.id),
-            )
-        except Exception as exc:
-            logger.error(
-                "Failed to send reschedule proposal to %s for meeting %s: %s",
-                p.telegram_id,
-                meeting.id,
-                exc,
-            )
+        await safe_send_message(
+            bot,
+            p,
+            _format_proposal_text(meeting, proposer_name),
+            reply_markup=pending_meeting_keyboard(meeting.id),
+        )
 
     await reply_func(
         "Предложение о переносе отправлено, ожидаем подтверждения.",
@@ -1505,7 +1494,8 @@ async def _finalize_confirmation(
         )
         return
 
-    if meeting.original_scheduled_at and all_confirmed:
+    was_reschedule = bool(meeting.original_scheduled_at)
+    if was_reschedule and all_confirmed:
         meeting = await MeetingDAO.confirm_reschedule(meeting.id, user_id)
 
     if meeting:
@@ -1513,17 +1503,27 @@ async def _finalize_confirmation(
 
     if all_confirmed and meeting:
         await _schedule_meeting_tasks(meeting)
+        notify_text = (
+            "✅ Перенос созвона подтверждён!"
+            if was_reschedule
+            else "✅ Созвон подтверждён!"
+        )
+        reply_text = (
+            "✅ Перенос созвона подтверждён."
+            if was_reschedule
+            else "✅ Созвон подтверждён."
+        )
         for p in meeting.participants:
             if p.telegram_id == user_id:
                 continue
             try:
-                await bot.send_message(p.telegram_id, "✅ Созвон подтверждён!")
+                await bot.send_message(p.telegram_id, notify_text)
             except Exception as exc:
                 logger.error(
                     "Failed to notify %s about confirmation: %s", p.telegram_id, exc
                 )
         await reply_func(
-            "✅ Созвон подтверждён.",
+            reply_text,
             reply_markup=await _menu_kb(user_id),
         )
     else:
