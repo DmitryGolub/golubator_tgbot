@@ -88,7 +88,7 @@
           "datasource": { "type": "postgres", "uid": "pg-mentoring" }
         },
         {
-          "rawSql": "SELECT\n  (st.old_value || '->' || st.new_value) AS id,\n  st.old_value AS source,\n  st.new_value AS target,\n  COUNT(*)::bigint AS mainStat,\n  ROUND(COUNT(*)::numeric / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY st.old_value), 0) * 100, 1) AS secondaryStat\nFROM integrations.stage_transitions st\nWHERE st.cohort_type = '$cohort_type'\n  AND st.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND st.old_value IS NOT NULL\n  AND LOWER(st.old_value) NOT IN ('cancel', 'archive', 'hold')\n  AND LOWER(st.new_value) NOT IN ('cancel', 'archive', 'hold')\nGROUP BY st.old_value, st.new_value",
+          "rawSql": "WITH trans AS (\n  SELECT old_value, new_value, COUNT(*) AS cnt\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND created_at BETWEEN $__timeFrom() AND $__timeTo()\n    AND old_value IS NOT NULL\n    AND LOWER(old_value) NOT IN ('cancel', 'archive', 'hold')\n    AND LOWER(new_value) NOT IN ('cancel', 'archive', 'hold')\n  GROUP BY old_value, new_value\n),\ntotals AS (\n  SELECT old_value, SUM(cnt) AS total FROM trans GROUP BY old_value\n)\nSELECT\n  LEAST(fwd.old_value, fwd.new_value) || '->' || GREATEST(fwd.old_value, fwd.new_value) AS id,\n  CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n    THEN fwd.old_value ELSE fwd.new_value END AS source,\n  CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n    THEN fwd.new_value ELSE fwd.old_value END AS target,\n  GREATEST(COALESCE(fwd.cnt,0), COALESCE(bwd.cnt,0))::bigint AS mainStat,\n  ROUND(\n    GREATEST(COALESCE(fwd.cnt,0), COALESCE(bwd.cnt,0))::numeric\n    / NULLIF(\n        CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n          THEN tf.total ELSE tb.total END,\n        0\n      ) * 100, 1\n  ) AS secondaryStat\nFROM trans fwd\nLEFT JOIN trans bwd ON bwd.old_value = fwd.new_value AND bwd.new_value = fwd.old_value\nLEFT JOIN totals tf ON tf.old_value = fwd.old_value\nLEFT JOIN totals tb ON tb.old_value = fwd.new_value\nWHERE fwd.old_value < fwd.new_value OR bwd.old_value IS NULL",
           "format": "table",
           "refId": "edges",
           "datasource": { "type": "postgres", "uid": "pg-mentoring" }
@@ -101,14 +101,15 @@
             "matcher": { "id": "byName", "options": "mainStat" },
             "properties": [
               { "id": "decimals", "value": 0 },
-              { "id": "displayName", "value": "переходов" }
+              { "id": "displayName", "value": "→" }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "secondaryStat" },
             "properties": [
               { "id": "unit", "value": "percent" },
-              { "id": "decimals", "value": 1 }
+              { "id": "decimals", "value": 1 },
+              { "id": "displayName", "value": "%" }
             ]
           }
         ]
