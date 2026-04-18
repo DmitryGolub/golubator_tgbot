@@ -14,6 +14,7 @@ from src.bot.keyboards.meeting import pending_meeting_keyboard
 from src.dao.caldav_account import CalDAVAccountDAO
 from src.dao.meeting import MeetingDAO
 from src.dao.user import UserDAO
+from src.models.meeting import ProposalStatus
 from src.services.meeting.proposal_text import format_proposal_text, format_when
 from src.tasks._db import get_worker_bot
 from src.utils.bot_send import safe_send_message
@@ -133,6 +134,19 @@ class CalDAVReverseSyncService:
             )
             return
 
+        if past:
+            logger.info(
+                "caldav.reverse: reschedule applied (past, silent)",
+                extra={
+                    "meeting_id": meeting_id,
+                    "account_id": source_account_id,
+                    "notified": 0,
+                    "confirmed_proposer": 0,
+                    "past": True,
+                },
+            )
+            return
+
         proposer = await UserDAO.find_one_or_none(telegram_id=source_user_id)
         proposer_name = (
             proposer.name if proposer and proposer.name else f"id{source_user_id}"
@@ -140,6 +154,7 @@ class CalDAVReverseSyncService:
 
         bot = get_worker_bot()
         when_str = format_when(meeting.scheduled_at)
+        auto_confirmed = meeting.proposal_status == ProposalStatus.confirmed
         notified = 0
         other_names: list[str] = []
         for participant in meeting.participants or []:
@@ -148,30 +163,24 @@ class CalDAVReverseSyncService:
             other_names.append(
                 participant.name if participant.name else f"id{participant.telegram_id}"
             )
-            if past:
-                text = (
-                    f"📅 Встреча перенесена на {when_str} (прошедшее время) — "
-                    f"<b>{e(proposer_name)}</b> поправил(а) время в календаре. "
-                    f"Подтверждение не требуется."
-                )
-                delivered = await safe_send_message(bot, participant, text)
-            else:
-                delivered = await safe_send_message(
-                    bot,
-                    participant,
-                    format_proposal_text(meeting, proposer_name),
-                    reply_markup=pending_meeting_keyboard(meeting.id),
-                )
+            if auto_confirmed:
+                continue
+            delivered = await safe_send_message(
+                bot,
+                participant,
+                format_proposal_text(meeting, proposer_name),
+                reply_markup=pending_meeting_keyboard(meeting.id),
+            )
             if delivered:
                 notified += 1
 
         confirmed_proposer = 0
         if source_user_id > 0 and proposer is not None:
             other_label = ", ".join(other_names) if other_names else "участника"
-            if past:
+            if auto_confirmed:
                 proposer_text = (
-                    f"✅ Время встречи обновлено на {when_str}. "
-                    f"Встреча уже прошла — подтверждение не требуется."
+                    f"✅ Встреча с <b>{e(other_label)}</b> перенесена на {when_str}. "
+                    f"Подтверждение не требуется."
                 )
             else:
                 proposer_text = (
@@ -188,6 +197,7 @@ class CalDAVReverseSyncService:
                 "account_id": source_account_id,
                 "notified": notified,
                 "confirmed_proposer": confirmed_proposer,
-                "past": past,
+                "past": False,
+                "auto_confirmed": auto_confirmed,
             },
         )

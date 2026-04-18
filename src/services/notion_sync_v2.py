@@ -67,6 +67,26 @@ def _make_session_factory() -> tuple:
     return engine, factory
 
 
+def _parse_iso_date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    from dateutil.parser import isoparse
+
+    try:
+        return isoparse(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _same_moment(a: datetime | None, b: datetime | None) -> bool:
+    if a is None or b is None:
+        return a is None and b is None
+    try:
+        return a.astimezone(timezone.utc) == b.astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        return a == b
+
+
 def _build_repos() -> tuple[
     NotionMentorRepo | None, NotionMenteeRepo | None, NotionEventRepo | None
 ]:
@@ -425,6 +445,8 @@ class NotionSyncServiceV2:
 
         data = self.event_repo._parse_page(page)
 
+        reschedule_target: tuple[int, datetime] | None = None
+
         engine, factory = _make_session_factory()
         try:
             async with factory() as session:
@@ -463,13 +485,13 @@ class NotionSyncServiceV2:
                     if mentor_tid:
                         meeting.mentor_telegram_id = mentor_tid
 
-                    if data.date:
-                        from dateutil.parser import isoparse
-
-                        try:
-                            meeting.scheduled_at = isoparse(data.date)
-                        except (ValueError, TypeError):
-                            pass
+                    new_scheduled_at = _parse_iso_date(data.date)
+                    if (
+                        new_scheduled_at is not None
+                        and not meeting.is_cancelled
+                        and not _same_moment(meeting.scheduled_at, new_scheduled_at)
+                    ):
+                        reschedule_target = (meeting.id, new_scheduled_at)
 
                     if data.link:
                         meeting.meeting_link = data.link
@@ -526,6 +548,118 @@ class NotionSyncServiceV2:
                 await session.commit()
         finally:
             await engine.dispose()
+
+        if reschedule_target is not None:
+            meeting_id, new_dt = reschedule_target
+            await self._apply_notion_reschedule(meeting_id, new_dt)
+
+    async def _apply_notion_reschedule(
+        self, meeting_id: int, new_scheduled_at: datetime
+    ) -> None:
+        from src.dao.meeting import MeetingDAO
+
+        """Dispatch a Notion-originating scheduled_at change through the DAO.
+
+        Past moves bypass confirmation silently. Future moves reuse
+        `propose_reschedule`; when the DAO auto-confirms (no real participant
+        left to confirm), the proposer gets an FYI; otherwise the real
+        participants receive a standard pending-proposal message.
+        """
+        from src.utils.time import is_past
+
+        existing = await MeetingDAO.get_with_participants(meeting_id)
+        if existing is None or existing.is_cancelled:
+            return
+
+        proposer_id: int | None = None
+        participant_ids = [p.telegram_id for p in existing.participants or []]
+        if (
+            existing.mentor_telegram_id is not None
+            and existing.mentor_telegram_id in participant_ids
+        ):
+            proposer_id = existing.mentor_telegram_id
+        else:
+            proposer_id = next(
+                (pid for pid in participant_ids if pid > 0),
+                next(iter(participant_ids), None),
+            )
+
+        if proposer_id is None:
+            logger.info(
+                "notion.reschedule: no participants on meeting %s, skipping",
+                meeting_id,
+            )
+            return
+
+        if is_past(new_scheduled_at):
+            await MeetingDAO.silent_reschedule_past(
+                meeting_id=meeting_id,
+                new_scheduled_at=new_scheduled_at,
+                proposer_id=proposer_id,
+            )
+            logger.info(
+                "notion.reschedule: past move applied silently",
+                extra={"meeting_id": meeting_id},
+            )
+            return
+
+        meeting = await MeetingDAO.propose_reschedule(
+            meeting_id=meeting_id,
+            new_scheduled_at=new_scheduled_at,
+            new_link=None,
+            proposer_id=proposer_id,
+        )
+        if meeting is None:
+            return
+
+        from src.bot.keyboards.meeting import pending_meeting_keyboard
+        from src.dao.user import UserDAO
+        from src.models.meeting import ProposalStatus
+        from src.services.meeting.proposal_text import (
+            format_proposal_text,
+            format_when,
+        )
+        from src.tasks._db import get_worker_bot
+        from src.utils.bot_send import safe_send_message
+        from src.utils.escape import e as _escape
+
+        proposer = await UserDAO.find_one_or_none(telegram_id=proposer_id)
+        proposer_name = (
+            proposer.name if proposer and proposer.name else f"id{proposer_id}"
+        )
+
+        bot = get_worker_bot()
+        when_str = format_when(meeting.scheduled_at)
+        auto_confirmed = meeting.proposal_status == ProposalStatus.confirmed
+        other_names: list[str] = []
+        for participant in meeting.participants or []:
+            if participant.telegram_id == proposer_id:
+                continue
+            other_names.append(
+                participant.name if participant.name else f"id{participant.telegram_id}"
+            )
+            if auto_confirmed:
+                continue
+            await safe_send_message(
+                bot,
+                participant,
+                format_proposal_text(meeting, proposer_name),
+                reply_markup=pending_meeting_keyboard(meeting.id),
+            )
+
+        if proposer is not None and proposer_id > 0:
+            other_label = ", ".join(other_names) if other_names else "участника"
+            if auto_confirmed:
+                proposer_text = (
+                    f"✅ Встреча с <b>{_escape(other_label)}</b> перенесена на "
+                    f"{when_str}. Подтверждение не требуется."
+                )
+            else:
+                proposer_text = (
+                    f"✅ Перенос встречи на {when_str} предложен. "
+                    f"Ждём подтверждения от <b>{_escape(other_label)}</b>."
+                )
+            await safe_send_message(bot, proposer, proposer_text)
 
     async def _upsert_mentor(self, session: AsyncSession, data, page_id: str) -> None:
         result = await session.execute(
@@ -1464,6 +1598,7 @@ class NotionSyncServiceV2:
 
         events = await self.event_repo.get_all()
         count = 0
+        reschedule_targets: list[tuple[int, datetime]] = []
         engine, factory = _make_session_factory()
         try:
             async with factory() as session:
@@ -1508,6 +1643,17 @@ class NotionSyncServiceV2:
                                 meeting.project = ev.project
                                 if mentor_tid:
                                     meeting.mentor_telegram_id = mentor_tid
+                                new_scheduled_at = _parse_iso_date(ev.date)
+                                if (
+                                    new_scheduled_at is not None
+                                    and not meeting.is_cancelled
+                                    and not _same_moment(
+                                        meeting.scheduled_at, new_scheduled_at
+                                    )
+                                ):
+                                    reschedule_targets.append(
+                                        (meeting.id, new_scheduled_at)
+                                    )
                                 if ev.link:
                                     meeting.meeting_link = ev.link
                                 if (
@@ -1565,6 +1711,14 @@ class NotionSyncServiceV2:
                 await session.commit()
         finally:
             await engine.dispose()
+
+        for meeting_id, new_dt in reschedule_targets:
+            try:
+                await self._apply_notion_reschedule(meeting_id, new_dt)
+            except Exception:
+                logger.exception(
+                    "Error applying notion reschedule for meeting %s", meeting_id
+                )
 
         logger.info("Backup pull: %d events synced", count)
         return count

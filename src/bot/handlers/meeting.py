@@ -925,6 +925,20 @@ async def _finalize_reschedule(user_id: int, state: FSMContext, reply_func, bot)
     proposer = await UserDAO.find_one_or_none(telegram_id=user_id)
     proposer_name = proposer.name if proposer else "Неизвестный участник"
 
+    if meeting.proposal_status == ProposalStatus.confirmed:
+        other_names = [
+            p.name if p.name else f"id{p.telegram_id}"
+            for p in meeting.participants
+            if p.telegram_id != user_id
+        ]
+        other_label = ", ".join(other_names) if other_names else "участника"
+        await reply_func(
+            f"✅ Созвон с <b>{e(other_label)}</b> перенесён на "
+            f"{format_when(meeting.scheduled_at)}. Подтверждение не требуется.",
+            reply_markup=await _menu_kb(user_id),
+        )
+        return
+
     for p in meeting.participants:
         if p.telegram_id == user_id:
             continue
@@ -1014,24 +1028,29 @@ async def _finalize_meeting(
     proposer = await UserDAO.find_one_or_none(telegram_id=user_id)
     proposer_name = proposer.name if proposer else "Неизвестный участник"
 
-    # Send proposal to ALL participants except the initiator
-    all_ids = set(participant_ids)
-    all_ids.add(creator_id)
-    all_ids.discard(user_id)
-    for other_id in all_ids:
-        try:
-            await bot.send_message(
-                other_id,
-                _format_proposal_text(meeting, proposer_name),
-                reply_markup=pending_meeting_keyboard(meeting.id),
-            )
-        except Exception as exc:
-            logger.error(
-                "Failed to send meeting proposal to %s for meeting %s: %s",
-                other_id,
-                meeting.id,
-                exc,
-            )
+    if meeting.proposal_status == ProposalStatus.confirmed:
+        other_names = [
+            p.name if p.name else f"id{p.telegram_id}"
+            for p in meeting.participants
+            if p.telegram_id != user_id
+        ]
+        other_label = ", ".join(other_names) if other_names else "участника"
+        await reply_func(
+            f"✅ Созвон с <b>{e(other_label)}</b> создан на "
+            f"{format_when(meeting.scheduled_at)}. Подтверждение не требуется.",
+            reply_markup=await _menu_kb(user_id),
+        )
+        return
+
+    for p in meeting.participants:
+        if p.telegram_id == user_id:
+            continue
+        await safe_send_message(
+            bot,
+            p,
+            _format_proposal_text(meeting, proposer_name),
+            reply_markup=pending_meeting_keyboard(meeting.id),
+        )
 
     await reply_func(
         "Предложение о созвоне отправлено, ожидаем подтверждения.",

@@ -56,8 +56,45 @@ class MeetingDAO(BaseDAO):
         )
 
         all_ids = {creator_id} | set(participant_ids)
+        proposer_id = proposed_by or creator_id
 
         async with async_session_maker() as session:
+            effective_status = proposal_status
+            accepted_by_user: dict[int, bool | None] = {}
+            if proposal_status == ProposalStatus.pending_confirmation:
+                non_proposer_ids = [uid for uid in all_ids if uid != proposer_id]
+                if non_proposer_ids:
+                    real_rows = (
+                        (
+                            await session.execute(
+                                select(User.telegram_id).where(
+                                    User.telegram_id.in_(non_proposer_ids),
+                                    User.telegram_id > 0,
+                                    User.registered_at.isnot(None),
+                                )
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    real_set = set(real_rows)
+                else:
+                    real_set = set()
+
+                if not real_set:
+                    effective_status = ProposalStatus.confirmed
+
+                for uid in all_ids:
+                    if uid == proposer_id:
+                        accepted_by_user[uid] = True
+                    elif uid in real_set:
+                        accepted_by_user[uid] = None
+                    else:
+                        accepted_by_user[uid] = True
+            else:
+                for uid in all_ids:
+                    accepted_by_user[uid] = True if uid == proposer_id else None
+
             meeting_stmt = (
                 insert(Meeting)
                 .values(
@@ -69,7 +106,7 @@ class MeetingDAO(BaseDAO):
                     mentor_telegram_id=creator_id,
                     student_telegram_id=compat_student_id,
                     mentee_telegram_tag=mentee_telegram_tag,
-                    proposal_status=proposal_status,
+                    proposal_status=effective_status,
                     proposed_by=proposed_by,
                 )
                 .returning(Meeting)
@@ -77,12 +114,11 @@ class MeetingDAO(BaseDAO):
             meeting_res = await session.execute(meeting_stmt)
             meeting: Meeting = meeting_res.scalar_one()
 
-            proposer_id = proposed_by or creator_id
             rows = [
                 {
                     "meeting_id": meeting.id,
                     "user_id": uid,
-                    "accepted": True if uid == proposer_id else None,
+                    "accepted": accepted_by_user[uid],
                 }
                 for uid in all_ids
             ]
@@ -371,7 +407,12 @@ class MeetingDAO(BaseDAO):
 
         Works for any proposal_status (pending or confirmed).
         Preserves original_scheduled_at if already set (repeated counter-proposals).
-        Resets MeetingUser.accepted: True for proposer, None for others.
+        Acceptances:
+          - proposer → True;
+          - placeholder / unregistered non-proposers → True (cannot confirm);
+          - real non-proposers (telegram_id > 0 AND registered_at IS NOT NULL) → None.
+        If no real non-proposer is present the meeting is marked `confirmed`
+        and `original_scheduled_at` is cleared — nobody is left to confirm.
         """
         async with async_session_maker() as session:
             subq = select(MeetingUser.meeting_id).where(
@@ -393,14 +434,34 @@ class MeetingDAO(BaseDAO):
 
             old_scheduled, existing_original = row
 
+            real_non_proposer_count = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(MeetingUser)
+                    .join(User, User.telegram_id == MeetingUser.user_id)
+                    .where(
+                        MeetingUser.meeting_id == meeting_id,
+                        MeetingUser.user_id != proposer_id,
+                        User.telegram_id > 0,
+                        User.registered_at.isnot(None),
+                    )
+                )
+            ).scalar_one()
+
+            needs_confirmation = real_non_proposer_count > 0
+
             values: dict = {
-                "original_scheduled_at": func.coalesce(
-                    Meeting.original_scheduled_at, old_scheduled
-                ),
                 "scheduled_at": new_scheduled_at,
                 "proposed_by": proposer_id,
-                "proposal_status": ProposalStatus.pending_confirmation,
             }
+            if needs_confirmation:
+                values["original_scheduled_at"] = func.coalesce(
+                    Meeting.original_scheduled_at, old_scheduled
+                )
+                values["proposal_status"] = ProposalStatus.pending_confirmation
+            else:
+                values["original_scheduled_at"] = None
+                values["proposal_status"] = ProposalStatus.confirmed
             if new_link is not None:
                 values["meeting_link"] = new_link
 
@@ -412,7 +473,7 @@ class MeetingDAO(BaseDAO):
             )
             await session.execute(stmt)
 
-            # Reset acceptances: proposer auto-accepts, others need to re-confirm
+            # Proposer auto-accepts.
             await session.execute(
                 update(MeetingUser)
                 .where(
@@ -421,11 +482,30 @@ class MeetingDAO(BaseDAO):
                 )
                 .values(accepted=True)
             )
+            # Placeholder / unregistered non-proposers cannot confirm → auto-accept.
+            placeholder_ids = select(User.telegram_id).where(
+                or_(User.telegram_id < 0, User.registered_at.is_(None))
+            )
             await session.execute(
                 update(MeetingUser)
                 .where(
                     MeetingUser.meeting_id == meeting_id,
                     MeetingUser.user_id != proposer_id,
+                    MeetingUser.user_id.in_(placeholder_ids),
+                )
+                .values(accepted=True)
+            )
+            # Real non-proposers need to confirm → reset to None.
+            real_ids = select(User.telegram_id).where(
+                User.telegram_id > 0,
+                User.registered_at.isnot(None),
+            )
+            await session.execute(
+                update(MeetingUser)
+                .where(
+                    MeetingUser.meeting_id == meeting_id,
+                    MeetingUser.user_id != proposer_id,
+                    MeetingUser.user_id.in_(real_ids),
                 )
                 .values(accepted=None)
             )
@@ -443,10 +523,9 @@ class MeetingDAO(BaseDAO):
     ) -> Optional[Meeting]:
         """Update scheduled_at for a meeting moved to a past timestamp.
 
-        Unlike `propose_reschedule`, this keeps `proposal_status` and every
-        `MeetingUser.accepted` flag untouched — there is nothing to confirm
-        for a call that already happened. `original_scheduled_at` preserves
-        the earliest known start time (coalesce with existing value).
+        A reschedule into the past cannot be confirmed — nobody can accept
+        something that already happened. Force the meeting to `confirmed`,
+        clear `original_scheduled_at`, and auto-accept every participant.
         """
         async with async_session_maker() as session:
             subq = select(MeetingUser.meeting_id).where(
@@ -466,21 +545,23 @@ class MeetingDAO(BaseDAO):
             if row is None:
                 return None
 
-            (old_scheduled,) = row
-
             stmt = (
                 update(Meeting)
                 .where(Meeting.id == meeting_id)
                 .values(
-                    original_scheduled_at=func.coalesce(
-                        Meeting.original_scheduled_at, old_scheduled
-                    ),
+                    original_scheduled_at=None,
                     scheduled_at=new_scheduled_at,
                     proposed_by=proposer_id,
+                    proposal_status=ProposalStatus.confirmed,
                 )
                 .returning(Meeting.id)
             )
             await session.execute(stmt)
+            await session.execute(
+                update(MeetingUser)
+                .where(MeetingUser.meeting_id == meeting_id)
+                .values(accepted=True)
+            )
             await session.commit()
 
             return await cls._reload_with_participants(session, meeting_id)
