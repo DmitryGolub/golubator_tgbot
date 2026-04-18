@@ -116,8 +116,11 @@ def start_celery_health_server(
         def handle_one_request(self):
             try:
                 super().handle_one_request()
-            except _CLIENT_DISCONNECT_ERRORS as exc:
-                logger.debug("health client dropped mid-request: %r", exc)
+            except _CLIENT_DISCONNECT_ERRORS:
+                # client (Prometheus blackbox, Docker probe) closed the
+                # connection before the response finished — benign, real
+                # server errors still flow through _HealthHTTPServer.handle_error
+                pass
 
         def log_message(self, format, *args):
             pass  # suppress access logs

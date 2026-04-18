@@ -111,7 +111,17 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; r=urllib.request.urlopen('http://localhost:8081/health',timeout=3); sys.exit(0 if r.status==200 and r.read() else 1)"]
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - |
+          import urllib.request, sys
+          req = urllib.request.Request('http://localhost:8081/health', headers={'Connection': 'close'})
+          with urllib.request.urlopen(req, timeout=3) as r:
+              body = r.read()
+              ok = r.status == 200 and body
+          sys.exit(0 if ok else 1)
       interval: 30s
       timeout: 5s
       retries: 3
@@ -132,7 +142,17 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; r=urllib.request.urlopen('http://localhost:8082/health',timeout=3); sys.exit(0 if r.status==200 and r.read() else 1)"]
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - |
+          import urllib.request, sys
+          req = urllib.request.Request('http://localhost:8082/health', headers={'Connection': 'close'})
+          with urllib.request.urlopen(req, timeout=3) as r:
+              body = r.read()
+              ok = r.status == 200 and body
+          sys.exit(0 if ok else 1)
       interval: 30s
       timeout: 5s
       retries: 3
