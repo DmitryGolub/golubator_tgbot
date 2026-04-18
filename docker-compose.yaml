@@ -222,6 +222,22 @@ services:
       - ./blackbox_exporter/blackbox.yml:/etc/blackboxexporter/blackbox.yml:ro
     restart: unless-stopped
 
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.51.0
+    container_name: tg_bot.cadvisor
+    privileged: true
+    cpus: 0.3
+    mem_limit: 256m
+    mem_reservation: 64m
+    pids_limit: 100
+    logging: *default-logging
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    restart: unless-stopped
+
   grafana:
     profiles: [monitoring]
     image: grafana/grafana-oss:11.5.2

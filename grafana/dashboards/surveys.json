@@ -12,7 +12,7 @@
         "label": "Опрос",
         "type": "query",
         "datasource": { "type": "postgres", "uid": "pg-mentoring" },
-        "query": "SELECT title AS __text, id::text AS __value FROM surveys.survey_templates WHERE is_active = true ORDER BY title",
+        "query": "SELECT title AS __text, id::text AS __value FROM surveys.survey_templates WHERE is_active = true AND kind = 'survey' ORDER BY title",
         "refresh": 2,
         "includeAll": false,
         "multi": false,

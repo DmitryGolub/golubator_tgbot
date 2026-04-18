@@ -26,3 +26,19 @@ scrape_configs:
       - source_labels: [__param_target]
         regex: http://([^:/]+).*
         target_label: service
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: [cadvisor:8080]
+
+  - job_name: bot-metrics
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - bot:8080
+          - celery_worker:8081
+          - celery_beat:8082
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: ([^:]+).*
+        target_label: service

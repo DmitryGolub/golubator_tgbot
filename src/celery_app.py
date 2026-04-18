@@ -1,6 +1,13 @@
+import time
+
 from celery import Celery
 from celery.schedules import crontab
-from celery.signals import setup_logging as celery_setup_logging
+from celery.signals import (
+    setup_logging as celery_setup_logging,
+    task_postrun,
+    task_prerun,
+)
+from prometheus_client import Counter, Histogram
 
 from src.core.config import settings
 from src.core.logging_config import setup_logging
@@ -114,5 +121,31 @@ celery_app.conf.update(
         },
     },
 )
+
+CELERY_TASK_DURATION = Histogram(
+    "celery_task_duration_seconds",
+    "Celery task duration",
+    ["task_name"],
+    buckets=[0.1, 0.5, 1, 5, 10, 30, 60, 120],
+)
+CELERY_TASK_TOTAL = Counter(
+    "celery_task_total",
+    "Celery task executions",
+    ["task_name", "status"],
+)
+
+
+@task_prerun.connect
+def _on_task_prerun(task, **kwargs):
+    task._prom_start = time.monotonic()
+
+
+@task_postrun.connect
+def _on_task_postrun(task, state, **kwargs):
+    duration = time.monotonic() - getattr(task, "_prom_start", time.monotonic())
+    status = "success" if state == "SUCCESS" else "failure"
+    CELERY_TASK_DURATION.labels(task_name=task.name).observe(duration)
+    CELERY_TASK_TOTAL.labels(task_name=task.name, status=status).inc()
+
 
 # NOTE: worker/beat entrypoints are in src/scripts. Make sure BOT_TOKEN/REDIS envs are set.

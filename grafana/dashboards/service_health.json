@@ -221,10 +221,98 @@
       }
     },
     {
+      "id": 10,
+      "title": "Container CPU %",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 12 },
+      "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+          "expr": "rate(container_cpu_usage_seconds_total{name=~\"tg_bot.*\"}[5m]) * 100",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "drawStyle": "line" }
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Container Memory MB",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 6, "x": 6, "y": 12 },
+      "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+          "expr": "container_memory_working_set_bytes{name=~\"tg_bot.*\"} / 1048576",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "drawStyle": "line" }
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "Celery Tasks / sec",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 12 },
+      "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+          "expr": "sum by (task_name, status)(rate(celery_task_total[5m]))",
+          "legendFormat": "{{task_name}} / {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "drawStyle": "line" }
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "Celery Duration p95",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 12 },
+      "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (task_name, le)(rate(celery_task_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{task_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "drawStyle": "line" }
+        }
+      }
+    },
+    {
       "id": 6,
       "title": "Recent Errors",
       "type": "logs",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
       "datasource": { "uid": "loki-logs", "type": "loki" },
       "targets": [
         {
@@ -248,7 +336,7 @@
       "id": 8,
       "title": "Recent Warnings",
       "type": "logs",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 27 },
       "datasource": { "uid": "loki-logs", "type": "loki" },
       "targets": [
         {
@@ -272,7 +360,7 @@
       "id": 7,
       "title": "Service Logs",
       "type": "logs",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 28 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 35 },
       "datasource": { "uid": "loki-logs", "type": "loki" },
       "maxDataPoints": 1000,
       "targets": [
