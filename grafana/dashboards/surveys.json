@@ -24,10 +24,30 @@
   },
   "panels": [
     {
+      "id": 4,
+      "title": "Всего отправлено",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS \"Всего отправлено\"\nFROM surveys.survey_sessions ss\nWHERE ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ss.template_id = ${survey}",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "text", "value": null }] }
+        }
+      }
+    },
+    {
       "id": 2,
       "title": "Процент заполнения",
-      "type": "gauge",
-      "gridPos": { "h": 10, "w": 8, "x": 0, "y": 0 },
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
@@ -38,8 +58,10 @@
       ],
       "fieldConfig": {
         "defaults": {
+          "unit": "percent",
           "min": 0,
           "max": 100,
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "steps": [
               { "color": "red", "value": null },
@@ -51,10 +73,54 @@
       }
     },
     {
+      "id": 5,
+      "title": "Среднее время заполнения",
+      "description": "Время от начала до завершения (completed_at - started_at)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  ROUND(EXTRACT(EPOCH FROM AVG(ss.completed_at - ss.started_at))::numeric, 0) AS \"Секунд\"\nFROM surveys.survey_sessions ss\nWHERE ss.status = 'completed'\n  AND ss.started_at IS NOT NULL\n  AND ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ss.template_id = ${survey}",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "text", "value": null }] }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Среднее время до заполнения",
+      "description": "Время с момента отправки до завершения (completed_at - created_at)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  ROUND(EXTRACT(EPOCH FROM AVG(ss.completed_at - ss.created_at))::numeric, 0) AS \"Секунд\"\nFROM surveys.survey_sessions ss\nWHERE ss.status = 'completed'\n  AND ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ss.template_id = ${survey}",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "text", "value": null }] }
+        }
+      }
+    },
+    {
       "id": 3,
       "title": "Заполняемость по неделям",
       "type": "timeseries",
-      "gridPos": { "h": 10, "w": 16, "x": 8, "y": 0 },
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 5 },
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
@@ -70,6 +136,91 @@
           "max": 100
         }
       }
+    },
+    {
+      "id": 7,
+      "title": "Статусы",
+      "type": "piechart",
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 5 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT status AS \"Статус\", COUNT(*) AS \"Кол-во\"\nFROM surveys.survey_sessions ss\nWHERE ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ss.template_id = ${survey}\nGROUP BY status",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Средняя оценка",
+      "type": "gauge",
+      "gridPos": { "h": 10, "w": 6, "x": 0, "y": 15 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(AVG(sa.value_int)::numeric, 2) AS \"Средняя оценка\"\nFROM surveys.survey_answers sa\nJOIN surveys.survey_sessions ss ON ss.id = sa.session_id\nWHERE sa.value_int IS NOT NULL\n  AND ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ss.template_id = ${survey}",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 1,
+          "max": 10,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "green", "value": 8 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Средние оценки по вопросам",
+      "type": "barchart",
+      "gridPos": { "h": 10, "w": 18, "x": 6, "y": 15 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  sq.title AS \"Вопрос\",\n  ROUND(AVG(sa.value_int)::numeric, 2) AS \"Средняя оценка\"\nFROM surveys.survey_answers sa\nJOIN surveys.survey_questions sq ON sq.id = sa.question_id\nJOIN surveys.survey_sessions ss ON ss.id = sa.session_id\nWHERE sa.value_int IS NOT NULL\n  AND ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ss.template_id = ${survey}\nGROUP BY sq.id, sq.title, sq.sort_order\nORDER BY sq.sort_order",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": { "xField": "Вопрос" }
+    },
+    {
+      "id": 10,
+      "title": "Распределение оценок",
+      "type": "barchart",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 25 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  sa.value_int::text AS \"Оценка\",\n  COUNT(*) AS \"Кол-во ответов\"\nFROM surveys.survey_answers sa\nJOIN surveys.survey_sessions ss ON ss.id = sa.session_id\nWHERE sa.value_int IS NOT NULL\n  AND ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ss.template_id = ${survey}\nGROUP BY sa.value_int\nORDER BY sa.value_int",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": { "xField": "Оценка" }
+    },
+    {
+      "id": 11,
+      "title": "Текстовые ответы",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 35 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  COALESCE(u.username, u.telegram_id::text) AS \"Пользователь\",\n  sq.title AS \"Вопрос\",\n  sa.value_text AS \"Ответ\",\n  sa.created_at AT TIME ZONE 'Europe/Moscow' AS \"Дата\"\nFROM surveys.survey_answers sa\nJOIN surveys.survey_questions sq ON sq.id = sa.question_id\nJOIN surveys.survey_sessions ss ON ss.id = sa.session_id\nJOIN iam.users u ON u.telegram_id = ss.respondent_id\nWHERE sa.value_text IS NOT NULL AND sa.value_text <> ''\n  AND sq.question_type = 'text'\n  AND ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ss.template_id = ${survey}\nORDER BY sa.created_at DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "schemaVersion": 39
