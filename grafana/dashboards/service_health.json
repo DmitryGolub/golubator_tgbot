@@ -80,7 +80,7 @@
         {
           "refId": "A",
           "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"}[5m])) * 100",
+          "expr": "sum(max by (name) (rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"}[5m]))) * 100",
           "legendFormat": "total"
         }
       ],
@@ -106,7 +106,7 @@
         {
           "refId": "A",
           "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
-          "expr": "sum(container_memory_working_set_bytes{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"}) / 1048576",
+          "expr": "sum(max by (name) (container_memory_working_set_bytes{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"})) / 1048576",
           "legendFormat": "total"
         }
       ],
@@ -264,7 +264,7 @@
         {
           "refId": "A",
           "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
-          "expr": "rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"}[5m]) * 100",
+          "expr": "max by (name, container_label_com_docker_compose_service) (rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"}[5m])) * 100",
           "legendFormat": "{{container_label_com_docker_compose_service}}"
         }
       ],
@@ -289,7 +289,7 @@
         {
           "refId": "A",
           "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
-          "expr": "container_memory_working_set_bytes{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"} / 1048576",
+          "expr": "max by (name, container_label_com_docker_compose_service) (container_memory_working_set_bytes{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"}) / 1048576",
           "legendFormat": "{{container_label_com_docker_compose_service}}"
         }
       ],
