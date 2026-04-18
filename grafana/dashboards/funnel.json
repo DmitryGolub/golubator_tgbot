@@ -1,18 +1,29 @@
 {
   "uid": "mentoring-funnel",
   "title": "Воронка стадий",
-  "tags": ["mentoring"],
+  "tags": [
+    "mentoring"
+  ],
   "timezone": "browser",
   "refresh": "5m",
-  "time": { "from": "now-30d", "to": "now" },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
   "templating": {
     "list": [
       {
         "name": "cohort_type",
         "type": "query",
-        "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+        "datasource": {
+          "type": "postgres",
+          "uid": "pg-mentoring"
+        },
         "query": "SELECT DISTINCT type FROM integrations.cohorts ORDER BY type",
-        "current": { "text": "Status", "value": "Status" },
+        "current": {
+          "text": "Status",
+          "value": "Status"
+        },
         "refresh": 2
       }
     ]
@@ -22,8 +33,16 @@
       "id": 1,
       "title": "Люди по стадиям",
       "type": "barchart",
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 0 },
-      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg-mentoring"
+      },
       "targets": [
         {
           "rawSql": "SELECT c.value AS stage, COUNT(uc.user_telegram_id) AS count\nFROM integrations.cohorts c\nJOIN integrations.user_cohorts uc ON uc.cohort_id = c.id\nWHERE c.type = '$cohort_type'\n  AND LOWER(c.value) NOT IN ('cancel', 'archive', 'hold')\nGROUP BY c.value\nORDER BY count DESC",
@@ -37,7 +56,9 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" }
+          "color": {
+            "mode": "palette-classic"
+          }
         }
       }
     },
@@ -45,11 +66,19 @@
       "id": 2,
       "title": "Переходы по стадиям",
       "type": "stat",
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 0 },
-      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg-mentoring"
+      },
       "targets": [
         {
-          "rawSql": "SELECT\n  $__timeGroup(st.created_at, '1d', 0) AS time,\n  st.new_value AS metric,\n  COUNT(*) AS value\nFROM integrations.stage_transitions st\nWHERE st.cohort_type = '$cohort_type'\n  AND $__timeFilter(st.created_at)\n  AND LOWER(st.new_value) NOT IN ('cancel', 'archive', 'hold')\nGROUP BY 1, 2\nORDER BY 1",
+          "rawSql": "SELECT\n  $__timeGroup(first_tr.created_at, '1d', 0) AS time,\n  first_tr.new_value AS metric,\n  COUNT(*) AS value\nFROM (\n  SELECT DISTINCT ON (user_telegram_id, new_value)\n    user_telegram_id,\n    new_value,\n    created_at\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND $__timeFilter(created_at)\n    AND LOWER(new_value) NOT IN ('cancel', 'archive', 'hold')\n  ORDER BY user_telegram_id, new_value, created_at\n) first_tr\nGROUP BY 1, 2\nORDER BY 1",
           "format": "time_series",
           "refId": "A"
         }
@@ -57,7 +86,9 @@
       "fieldConfig": {
         "defaults": {
           "decimals": 0,
-          "color": { "mode": "palette-classic" }
+          "color": {
+            "mode": "palette-classic"
+          }
         },
         "overrides": []
       },
@@ -68,7 +99,9 @@
         "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["sum"],
+          "calcs": [
+            "sum"
+          ],
           "fields": "",
           "values": false
         }
@@ -78,38 +111,97 @@
       "id": 3,
       "title": "Конверсия (FROM → TO)",
       "type": "nodeGraph",
-      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 10 },
-      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "gridPos": {
+        "h": 18,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg-mentoring"
+      },
       "targets": [
         {
-          "rawSql": "SELECT\n  c.value AS id,\n  c.value AS title,\n  COUNT(DISTINCT uc.user_telegram_id)::bigint AS mainStat\nFROM integrations.cohorts c\nJOIN integrations.user_cohorts uc ON uc.cohort_id = c.id\nWHERE c.type = '$cohort_type'\n  AND LOWER(c.value) NOT IN ('cancel', 'archive', 'hold')\nGROUP BY c.value",
+          "rawSql": "WITH dominant_edges AS (\n  SELECT DISTINCT ON (LEAST(old_value, new_value), GREATEST(old_value, new_value))\n    old_value AS src,\n    new_value AS dst\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND created_at BETWEEN $__timeFrom() AND $__timeTo()\n    AND old_value IS NOT NULL\n    AND LOWER(old_value) NOT IN ('cancel', 'archive', 'hold')\n    AND LOWER(new_value) NOT IN ('cancel', 'archive', 'hold')\n    AND (\n      old_value < new_value\n      OR NOT EXISTS (\n        SELECT 1 FROM integrations.stage_transitions st2\n        WHERE st2.cohort_type = '$cohort_type'\n          AND st2.old_value = new_value\n          AND st2.new_value = old_value\n      )\n    )\n  ORDER BY LEAST(old_value, new_value), GREATEST(old_value, new_value),\n           (old_value < new_value) DESC\n),\nroot AS (\n  SELECT e.src AS stage\n  FROM dominant_edges e\n  GROUP BY e.src\n  HAVING COUNT(DISTINCT e.src) FILTER (WHERE e.dst = e.src) = 0\n  ORDER BY\n    (SELECT COUNT(*) FROM dominant_edges e2 WHERE e2.dst = e.src) ASC,\n    (SELECT COUNT(*) FROM dominant_edges e2 WHERE e2.src = e.src) DESC\n  LIMIT 1\n),\nbfs(stage, depth) AS (\n  SELECT stage, 0 FROM root\n  UNION\n  SELECT e.dst, b.depth + 1\n  FROM bfs b\n  JOIN dominant_edges e ON e.src = b.stage\n  WHERE b.depth < 20\n),\ndepths AS (\n  SELECT stage, MIN(depth) AS depth FROM bfs GROUP BY stage\n),\npositions AS (\n  SELECT\n    stage,\n    depth * 250.0 AS x,\n    (\n      ROW_NUMBER() OVER (PARTITION BY depth ORDER BY stage) - 1\n      - (COUNT(*) OVER (PARTITION BY depth) - 1) / 2.0\n    ) * 120.0 AS y\n  FROM depths\n),\norphans AS (\n  SELECT\n    c.value AS stage,\n    (COALESCE((SELECT MAX(depth) FROM depths), 0) + ROW_NUMBER() OVER (ORDER BY c.value)) * 250.0 AS x,\n    0.0 AS y\n  FROM integrations.cohorts c\n  WHERE c.type = '$cohort_type'\n    AND LOWER(c.value) NOT IN ('cancel', 'archive', 'hold')\n    AND c.value NOT IN (SELECT stage FROM depths)\n),\nall_positions AS (\n  SELECT stage, x, y FROM positions\n  UNION ALL\n  SELECT stage, x, y FROM orphans\n)\nSELECT\n  c.value AS id,\n  c.value AS title,\n  COUNT(DISTINCT uc.user_telegram_id)::bigint AS mainStat,\n  COALESCE(ap.x, 0.0)::float AS x,\n  COALESCE(ap.y, 0.0)::float AS y\nFROM integrations.cohorts c\nJOIN integrations.user_cohorts uc ON uc.cohort_id = c.id\nLEFT JOIN all_positions ap ON ap.stage = c.value\nWHERE c.type = '$cohort_type'\n  AND LOWER(c.value) NOT IN ('cancel', 'archive', 'hold')\nGROUP BY c.value, ap.x, ap.y",
           "format": "table",
           "refId": "nodes",
-          "datasource": { "type": "postgres", "uid": "pg-mentoring" }
+          "datasource": {
+            "type": "postgres",
+            "uid": "pg-mentoring"
+          }
         },
         {
           "rawSql": "WITH trans AS (\n  SELECT old_value, new_value, COUNT(*) AS cnt\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND created_at BETWEEN $__timeFrom() AND $__timeTo()\n    AND old_value IS NOT NULL\n    AND LOWER(old_value) NOT IN ('cancel', 'archive', 'hold')\n    AND LOWER(new_value) NOT IN ('cancel', 'archive', 'hold')\n  GROUP BY old_value, new_value\n),\ntotals AS (\n  SELECT old_value, SUM(cnt) AS total FROM trans GROUP BY old_value\n)\nSELECT\n  LEAST(fwd.old_value, fwd.new_value) || '->' || GREATEST(fwd.old_value, fwd.new_value) AS id,\n  CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n    THEN fwd.old_value ELSE fwd.new_value END AS source,\n  CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n    THEN fwd.new_value ELSE fwd.old_value END AS target,\n  GREATEST(COALESCE(fwd.cnt,0), COALESCE(bwd.cnt,0))::bigint AS mainStat,\n  ROUND(\n    GREATEST(COALESCE(fwd.cnt,0), COALESCE(bwd.cnt,0))::numeric\n    / NULLIF(\n        CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n          THEN tf.total ELSE tb.total END,\n        0\n      ) * 100, 1\n  ) AS secondaryStat\nFROM trans fwd\nLEFT JOIN trans bwd ON bwd.old_value = fwd.new_value AND bwd.new_value = fwd.old_value\nLEFT JOIN totals tf ON tf.old_value = fwd.old_value\nLEFT JOIN totals tb ON tb.old_value = fwd.new_value\nWHERE fwd.old_value < fwd.new_value OR bwd.old_value IS NULL",
           "format": "table",
           "refId": "edges",
-          "datasource": { "type": "postgres", "uid": "pg-mentoring" }
+          "datasource": {
+            "type": "postgres",
+            "uid": "pg-mentoring"
+          }
         }
       ],
       "fieldConfig": {
         "defaults": {},
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "mainStat" },
+            "matcher": {
+              "id": "byName",
+              "options": "mainStat"
+            },
             "properties": [
-              { "id": "decimals", "value": 0 },
-              { "id": "displayName", "value": "→" }
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "displayName",
+                "value": "→"
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "secondaryStat" },
+            "matcher": {
+              "id": "byName",
+              "options": "secondaryStat"
+            },
             "properties": [
-              { "id": "unit", "value": "percent" },
-              { "id": "decimals", "value": 1 },
-              { "id": "displayName", "value": "%" }
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "displayName",
+                "value": "%"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "x"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "y"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
             ]
           }
         ]
@@ -119,11 +211,19 @@
       "id": 4,
       "title": "Среднее время на стадии",
       "type": "barchart",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 24 },
-      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "pg-mentoring"
+      },
       "targets": [
         {
-          "rawSql": "WITH real_transitions AS (\n  SELECT\n    user_telegram_id,\n    old_value,\n    new_value,\n    created_at\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND (old_value IS NULL OR new_value <> old_value)\n),\nstage_periods AS (\n  SELECT\n    user_telegram_id,\n    new_value AS stage,\n    created_at AS started_at,\n    LEAD(created_at) OVER (PARTITION BY user_telegram_id ORDER BY created_at) AS ended_at,\n    LEAD(new_value) OVER (PARTITION BY user_telegram_id ORDER BY created_at) AS next_stage\n  FROM real_transitions\n),\nagg AS (\n  SELECT\n    stage,\n    ROUND(AVG(EXTRACT(EPOCH FROM (ended_at - started_at)) / 86400)\n          FILTER (WHERE ended_at IS NOT NULL\n                    AND next_stage IS NOT NULL\n                    AND next_stage <> stage\n                    AND ended_at >= $__timeFrom()\n                    AND ended_at <  $__timeTo())::numeric, 1) AS \"Вышли в период\",\n    ROUND(AVG(EXTRACT(EPOCH FROM (NOW() - started_at)) / 86400)\n          FILTER (WHERE ended_at IS NULL)::numeric, 1) AS \"Ещё на стадии\"\n  FROM stage_periods\n  WHERE LOWER(stage) NOT IN ('cancel', 'archive', 'hold')\n  GROUP BY stage\n)\nSELECT stage, \"Вышли в период\", \"Ещё на стадии\"\nFROM agg\nWHERE \"Вышли в период\" IS NOT NULL OR \"Ещё на стадии\" IS NOT NULL\nORDER BY GREATEST(COALESCE(\"Вышли в период\", 0), COALESCE(\"Ещё на стадии\", 0)) DESC",
+          "rawSql": "WITH real_transitions AS (\n  SELECT\n    user_telegram_id,\n    old_value,\n    new_value,\n    created_at\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND (old_value IS NULL OR new_value <> old_value)\n),\nstage_periods AS (\n  SELECT\n    user_telegram_id,\n    new_value AS stage,\n    created_at AS started_at,\n    LEAD(created_at) OVER (PARTITION BY user_telegram_id ORDER BY created_at) AS ended_at,\n    LEAD(new_value) OVER (PARTITION BY user_telegram_id ORDER BY created_at) AS next_stage\n  FROM real_transitions\n),\nagg AS (\n  SELECT\n    stage,\n    ROUND(AVG(EXTRACT(EPOCH FROM (ended_at - started_at)) / 86400)\n          FILTER (WHERE ended_at IS NOT NULL\n                    AND next_stage IS NOT NULL\n                    AND next_stage <> stage\n                    AND ended_at >= $__timeFrom()\n                    AND ended_at <  $__timeTo())::numeric, 1) AS \"Вышли в период\",\n    ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at)) / 86400)\n          FILTER (WHERE ended_at IS NULL OR ended_at >= $__timeTo())::numeric, 1) AS \"Ещё на стадии\"\n  FROM stage_periods\n  WHERE LOWER(stage) NOT IN ('cancel', 'archive', 'hold', 'probationary period')\n  GROUP BY stage\n)\nSELECT stage, \"Вышли в период\", \"Ещё на стадии\"\nFROM agg\nWHERE \"Вышли в период\" IS NOT NULL OR \"Ещё на стадии\" IS NOT NULL\nORDER BY GREATEST(COALESCE(\"Вышли в период\", 0), COALESCE(\"Ещё на стадии\", 0)) DESC",
           "format": "table",
           "refId": "A"
         }
@@ -134,7 +234,9 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": {
+            "mode": "palette-classic"
+          },
           "unit": "d"
         }
       }
