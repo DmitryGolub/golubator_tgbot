@@ -5,6 +5,14 @@ from celery.beat import PersistentScheduler
 HEARTBEAT_FILE = "/tmp/celerybeat-heartbeat"
 
 
+def touch_heartbeat() -> None:
+    try:
+        with open(HEARTBEAT_FILE, "a"):
+            os.utime(HEARTBEAT_FILE, None)
+    except OSError:
+        pass
+
+
 class HeartbeatPersistentScheduler(PersistentScheduler):
     """PersistentScheduler that touches a heartbeat file on every tick.
 
@@ -14,9 +22,5 @@ class HeartbeatPersistentScheduler(PersistentScheduler):
     """
 
     def tick(self, *args, **kwargs):
-        try:
-            with open(HEARTBEAT_FILE, "a"):
-                os.utime(HEARTBEAT_FILE, None)
-        except OSError:
-            pass
+        touch_heartbeat()
         return super().tick(*args, **kwargs)
