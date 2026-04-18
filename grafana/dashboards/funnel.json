@@ -45,7 +45,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT c.value AS stage, COUNT(uc.user_telegram_id) AS count\nFROM integrations.cohorts c\nJOIN integrations.user_cohorts uc ON uc.cohort_id = c.id\nWHERE c.type = '$cohort_type'\n  AND LOWER(c.value) NOT IN ('cancel', 'archive', 'hold')\nGROUP BY c.value\nORDER BY count DESC",
+          "rawSql": "WITH first_arrivals AS (\n  SELECT user_telegram_id, new_value AS stage, MIN(created_at) AS first_at\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND LOWER(new_value) NOT IN ('cancel', 'archive', 'hold')\n  GROUP BY user_telegram_id, new_value\n),\npositions AS (\n  SELECT stage,\n         ROW_NUMBER() OVER (PARTITION BY user_telegram_id ORDER BY first_at) AS pos\n  FROM first_arrivals\n),\nstage_order AS (\n  SELECT stage, AVG(pos)::numeric AS ord\n  FROM positions\n  GROUP BY stage\n)\nSELECT c.value AS stage, COUNT(uc.user_telegram_id) AS count\nFROM integrations.cohorts c\nJOIN integrations.user_cohorts uc ON uc.cohort_id = c.id\nLEFT JOIN stage_order so ON so.stage = c.value\nWHERE c.type = '$cohort_type'\n  AND LOWER(c.value) NOT IN ('cancel', 'archive', 'hold')\nGROUP BY c.value, so.ord\nORDER BY so.ord NULLS LAST, c.value",
           "format": "table",
           "refId": "A"
         }
@@ -78,7 +78,7 @@
       },
       "targets": [
         {
-          "rawSql": "SELECT\n  $__timeGroup(first_tr.created_at, '1d', 0) AS time,\n  first_tr.new_value AS metric,\n  COUNT(*) AS value\nFROM (\n  SELECT DISTINCT ON (user_telegram_id, new_value)\n    user_telegram_id,\n    new_value,\n    created_at\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND $__timeFilter(created_at)\n    AND LOWER(new_value) NOT IN ('cancel', 'archive', 'hold')\n  ORDER BY user_telegram_id, new_value, created_at\n) first_tr\nGROUP BY 1, 2\nORDER BY 1",
+          "rawSql": "WITH first_arrivals AS (\n  SELECT user_telegram_id, new_value AS stage, MIN(created_at) AS first_at\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND LOWER(new_value) NOT IN ('cancel', 'archive', 'hold')\n  GROUP BY user_telegram_id, new_value\n),\npositions AS (\n  SELECT stage,\n         ROW_NUMBER() OVER (PARTITION BY user_telegram_id ORDER BY first_at) AS pos\n  FROM first_arrivals\n),\nstage_order AS (\n  SELECT stage, AVG(pos)::numeric AS ord\n  FROM positions\n  GROUP BY stage\n),\nfirst_tr AS (\n  SELECT DISTINCT ON (user_telegram_id, new_value)\n    user_telegram_id,\n    new_value,\n    created_at\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND $__timeFilter(created_at)\n    AND LOWER(new_value) NOT IN ('cancel', 'archive', 'hold')\n  ORDER BY user_telegram_id, new_value, created_at\n)\nSELECT\n  $__timeGroup(first_tr.created_at, '1d', 0) AS time,\n  first_tr.new_value AS metric,\n  COUNT(*) AS value\nFROM first_tr\nLEFT JOIN stage_order so ON so.stage = first_tr.new_value\nGROUP BY 1, 2, so.ord\nORDER BY so.ord NULLS LAST, first_tr.new_value, 1",
           "format": "time_series",
           "refId": "A"
         }
