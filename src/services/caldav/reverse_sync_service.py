@@ -16,6 +16,7 @@ from src.dao.meeting import MeetingDAO
 from src.dao.user import UserDAO
 from src.services.meeting.proposal_text import format_proposal_text
 from src.tasks._db import get_worker_bot
+from src.utils.escape import e
 from src.utils.tz import MSK
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,7 @@ class CalDAVReverseSyncService:
         )
 
         bot = get_worker_bot()
+        notified = 0
         for participant in meeting.participants or []:
             if participant.telegram_id == source_user_id:
                 continue
@@ -71,6 +73,7 @@ class CalDAVReverseSyncService:
                 continue  # placeholder user — no Telegram chat
             try:
                 await bot.send_message(participant.telegram_id, text)
+                notified += 1
             except Exception:
                 logger.exception(
                     "caldav.reverse: failed to notify cancel",
@@ -79,6 +82,33 @@ class CalDAVReverseSyncService:
                         "recipient": participant.telegram_id,
                     },
                 )
+
+        confirmed_proposer = 0
+        if source_user_id > 0:
+            try:
+                await bot.send_message(
+                    source_user_id,
+                    f"✅ Встреча {when_str} отменена.",
+                )
+                confirmed_proposer = 1
+            except Exception:
+                logger.exception(
+                    "caldav.reverse: failed to confirm cancel to proposer",
+                    extra={
+                        "meeting_id": meeting_id,
+                        "recipient": source_user_id,
+                    },
+                )
+
+        logger.info(
+            "caldav.reverse: cancel applied",
+            extra={
+                "meeting_id": meeting_id,
+                "account_id": source_account_id,
+                "notified": notified,
+                "confirmed_proposer": confirmed_proposer,
+            },
+        )
 
     async def reschedule_from_caldav(
         self,
@@ -130,17 +160,23 @@ class CalDAVReverseSyncService:
         )
 
         bot = get_worker_bot()
+        notified = 0
+        other_names: list[str] = []
         for participant in meeting.participants or []:
             if participant.telegram_id == source_user_id:
                 continue
             if participant.telegram_id < 0:
                 continue
+            other_names.append(
+                participant.name if participant.name else f"id{participant.telegram_id}"
+            )
             try:
                 await bot.send_message(
                     participant.telegram_id,
                     format_proposal_text(meeting, proposer_name),
                     reply_markup=pending_meeting_keyboard(meeting.id),
                 )
+                notified += 1
             except Exception:
                 logger.exception(
                     "caldav.reverse: failed to notify reschedule",
@@ -149,3 +185,35 @@ class CalDAVReverseSyncService:
                         "recipient": participant.telegram_id,
                     },
                 )
+
+        confirmed_proposer = 0
+        if source_user_id > 0:
+            when_str = _format_when(meeting.scheduled_at)
+            other_label = ", ".join(other_names) if other_names else "участника"
+            try:
+                await bot.send_message(
+                    source_user_id,
+                    (
+                        f"✅ Перенос встречи на {when_str} предложен. "
+                        f"Ждём подтверждения от <b>{e(other_label)}</b>."
+                    ),
+                )
+                confirmed_proposer = 1
+            except Exception:
+                logger.exception(
+                    "caldav.reverse: failed to confirm reschedule to proposer",
+                    extra={
+                        "meeting_id": meeting_id,
+                        "recipient": source_user_id,
+                    },
+                )
+
+        logger.info(
+            "caldav.reverse: reschedule applied",
+            extra={
+                "meeting_id": meeting_id,
+                "account_id": source_account_id,
+                "notified": notified,
+                "confirmed_proposer": confirmed_proposer,
+            },
+        )

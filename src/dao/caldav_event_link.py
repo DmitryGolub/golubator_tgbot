@@ -213,6 +213,17 @@ class CalDAVEventLinkDAO(BaseDAO):
             return result.scalars().first()
 
     @classmethod
+    async def update_href(cls, link_id: int, href: str) -> None:
+        """Heal a stale event_href (e.g. after URL-encoding drift)."""
+        async with async_session_maker() as session:
+            await session.execute(
+                update(CalDAVEventLink)
+                .where(CalDAVEventLink.id == link_id)
+                .values(event_href=href)
+            )
+            await session.commit()
+
+    @classmethod
     async def update_after_pull(
         cls,
         link_id: int,

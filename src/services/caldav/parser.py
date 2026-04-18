@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Optional
+from urllib.parse import unquote, urlparse
 
 from icalendar import Calendar
 
@@ -106,3 +107,23 @@ def extract_meeting_id(uid: str) -> Optional[int]:
         return int(match.group(1))
     except ValueError:
         return None
+
+
+def extract_uid_from_href(href: str) -> Optional[str]:
+    """Recover the CalDAV UID from its resource href.
+
+    Different servers percent-encode the UID inconsistently (iCloud encodes `@`
+    as `%40`, Radicale keeps it literal). We take the last path segment, strip
+    `.ics`, and unquote — yielding the same UID regardless of encoding.
+    """
+    if not href:
+        return None
+    path = urlparse(href).path or href
+    segment = path.rstrip("/").rsplit("/", 1)[-1]
+    if not segment:
+        return None
+    if segment.lower().endswith(".ics"):
+        segment = segment[:-4]
+    if not segment:
+        return None
+    return unquote(segment)

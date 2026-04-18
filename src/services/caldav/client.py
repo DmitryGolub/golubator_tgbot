@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 from xml.etree import ElementTree as ET
 
 import httpx
@@ -285,7 +285,8 @@ class CalDAVClient:
         ics: bytes,
         etag: Optional[str] = None,
     ) -> PutResult:
-        url = calendar_url.rstrip("/") + "/" + uid + ".ics"
+        base = calendar_url if calendar_url.endswith("/") else calendar_url + "/"
+        url = _absolutize(base, quote(uid, safe="") + ".ics")
         headers = {"Content-Type": "text/calendar; charset=utf-8"}
         if etag:
             headers["If-Match"] = f'"{etag}"'

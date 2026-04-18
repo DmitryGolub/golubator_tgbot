@@ -143,7 +143,9 @@ async def test_put_event_returns_href_and_etag(monkeypatch):
         ics=b"BEGIN:VCALENDAR\r\n",
         etag=None,
     )
-    assert result.href.endswith("/golubator-meeting-1@x.ics")
+    # UID is percent-encoded in the href so that it matches the form
+    # most CalDAV servers return in subsequent calendar-query responses.
+    assert result.href.endswith("/golubator-meeting-1%40x.ics")
     assert result.etag == "abc123"
 
 

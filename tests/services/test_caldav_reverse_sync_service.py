@@ -48,8 +48,11 @@ async def test_cancel_from_caldav_calls_dao_and_notifies():
         )
 
     cancel.assert_awaited_once_with(meeting_id=42, user_id=100)
-    bot.send_message.assert_awaited_once()
-    assert bot.send_message.await_args.args[0] == 200  # the other participant
+    # One notification for the other participant + one confirmation for the proposer.
+    assert bot.send_message.await_count == 2
+    recipients = [call.args[0] for call in bot.send_message.await_args_list]
+    assert 200 in recipients  # the other participant
+    assert 100 in recipients  # proposer receives a confirmation
 
 
 async def test_cancel_skips_when_meeting_missing():
@@ -107,11 +110,17 @@ async def test_reschedule_from_caldav_calls_propose_and_notifies():
     propose.assert_awaited_once_with(
         meeting_id=42, new_scheduled_at=new_dt, new_link=None, proposer_id=100
     )
-    bot.send_message.assert_awaited_once()
-    # Notification went to the OTHER participant
-    assert bot.send_message.await_args.args[0] == 200
-    # And carried the proposal keyboard
-    assert "reply_markup" in bot.send_message.await_args.kwargs
+    # One proposal to the other participant + one confirmation to the proposer.
+    assert bot.send_message.await_count == 2
+    calls_by_recipient = {
+        call.args[0]: call for call in bot.send_message.await_args_list
+    }
+    assert 200 in calls_by_recipient  # other participant
+    assert 100 in calls_by_recipient  # proposer confirmation
+    # The proposal (sent to the OTHER participant) carries the inline keyboard.
+    assert "reply_markup" in calls_by_recipient[200].kwargs
+    # The proposer confirmation is plain text (no keyboard).
+    assert "reply_markup" not in calls_by_recipient[100].kwargs
 
 
 async def test_reschedule_skipped_for_cancelled_meeting():
@@ -166,6 +175,9 @@ async def test_cancel_skips_placeholder_users():
             meeting_id=42, source_account_id=7
         )
 
-    # Only the real participant (200) gets a message; placeholder (-1) skipped.
-    bot.send_message.assert_awaited_once()
-    assert bot.send_message.await_args.args[0] == 200
+    # Real participant (200) + proposer confirmation (100); placeholder (-1) skipped.
+    assert bot.send_message.await_count == 2
+    recipients = [call.args[0] for call in bot.send_message.await_args_list]
+    assert 200 in recipients
+    assert 100 in recipients
+    assert -1 not in recipients

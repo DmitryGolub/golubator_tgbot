@@ -32,7 +32,11 @@ from src.services.caldav.client import (
     CalDAVTransientError,
     ChangedEvent,
 )
-from src.services.caldav.parser import extract_meeting_id, parse_vevent
+from src.services.caldav.parser import (
+    extract_meeting_id,
+    extract_uid_from_href,
+    parse_vevent,
+)
 from src.services.caldav.reverse_sync_service import CalDAVReverseSyncService
 from src.services.encryption import decrypt
 
@@ -230,8 +234,40 @@ class CalDAVPullService:
             account.id, href=change.href, uid=None
         )
 
+        uid_guess: Optional[str] = None
+        if link is None:
+            # href mismatch (iCloud percent-encodes `@`, Radicale doesn't, etc.)
+            # — try matching by the UID embedded in the href's filename.
+            uid_guess = extract_uid_from_href(change.href)
+            if uid_guess:
+                link = await CalDAVEventLinkDAO.find_by_account_and_href_or_uid(
+                    account.id, href=None, uid=uid_guess
+                )
+                if link is not None and link.event_href != change.href:
+                    # Heal the stale href so the next pull is O(1) by href.
+                    await CalDAVEventLinkDAO.update_href(link.id, change.href)
+                    logger.info(
+                        "caldav.pull: healed event_href via UID fallback",
+                        extra={
+                            "account_id": account.id,
+                            "link_id": link.id,
+                            "old_href": link.event_href,
+                            "new_href": change.href,
+                            "uid": uid_guess,
+                        },
+                    )
+
         if change.change_type == "deleted":
             if link is None:
+                logger.info(
+                    "caldav.pull: ignored deletion — no link match",
+                    extra={
+                        "account_id": account.id,
+                        "href": change.href,
+                        "uid_guess": uid_guess,
+                        "reason": "no_link",
+                    },
+                )
                 result.ignored_foreign += 1
                 return
             if bootstrap:
@@ -247,6 +283,15 @@ class CalDAVPullService:
 
         # change_type == "changed"
         if link is not None and change.etag and change.etag == link.etag:
+            logger.info(
+                "caldav.pull: skipped_echo by etag",
+                extra={
+                    "account_id": account.id,
+                    "meeting_id": link.meeting_id,
+                    "href": change.href,
+                    "etag": change.etag,
+                },
+            )
             result.skipped_echo += 1
             return
 
@@ -260,11 +305,30 @@ class CalDAVPullService:
         parsed = parse_vevent(ics)
         meeting_id = extract_meeting_id(parsed.uid) if parsed else None
         if parsed is None or meeting_id is None:
+            logger.info(
+                "caldav.pull: ignored — UID not ours",
+                extra={
+                    "account_id": account.id,
+                    "href": change.href,
+                    "uid": parsed.uid if parsed else None,
+                    "reason": "invalid_uid",
+                },
+            )
             result.ignored_foreign += 1
             return
 
         if link is None:
             # We never pushed this UID from this account → not ours to manage.
+            logger.info(
+                "caldav.pull: ignored — no link for UID",
+                extra={
+                    "account_id": account.id,
+                    "href": change.href,
+                    "uid": parsed.uid,
+                    "uid_guess": uid_guess,
+                    "reason": "no_link",
+                },
+            )
             result.ignored_foreign += 1
             return
 
@@ -281,11 +345,31 @@ class CalDAVPullService:
             and link.remote_sequence == parsed.sequence
             and link.remote_last_modified is not None
         ):
+            logger.info(
+                "caldav.pull: skipped_echo by last_modified+sequence",
+                extra={
+                    "account_id": account.id,
+                    "meeting_id": meeting_id,
+                    "last_modified": parsed.last_modified.isoformat(),
+                    "sequence": parsed.sequence,
+                    "link_etag": link.etag,
+                    "change_etag": change.etag,
+                },
+            )
             result.skipped_echo += 1
             return
 
         meeting = await MeetingDAO.get_with_participants(meeting_id)
         if meeting is None:
+            logger.info(
+                "caldav.pull: ignored — meeting gone",
+                extra={
+                    "account_id": account.id,
+                    "meeting_id": meeting_id,
+                    "href": change.href,
+                    "reason": "no_meeting",
+                },
+            )
             result.ignored_foreign += 1
             return
 
@@ -297,6 +381,17 @@ class CalDAVPullService:
             and meeting.updated_at is not None
             and parsed.last_modified <= _aware(meeting.updated_at)
         ):
+            logger.info(
+                "caldav.pull: skipped_lww — domain newer than server",
+                extra={
+                    "account_id": account.id,
+                    "meeting_id": meeting_id,
+                    "server_last_modified": parsed.last_modified.isoformat(),
+                    "meeting_updated_at": meeting.updated_at.isoformat(),
+                    "link_etag": link.etag,
+                    "change_etag": change.etag,
+                },
+            )
             await CalDAVEventLinkDAO.update_after_pull(
                 link.id,
                 etag=server_etag or change.etag or link.etag,
@@ -335,6 +430,21 @@ class CalDAVPullService:
         if parsed.dtstart is None or _close_enough(
             parsed.dtstart, meeting.scheduled_at
         ):
+            logger.info(
+                "caldav.pull: no-op — dtstart unchanged",
+                extra={
+                    "account_id": account.id,
+                    "meeting_id": meeting_id,
+                    "server_dtstart": (
+                        parsed.dtstart.isoformat() if parsed.dtstart else None
+                    ),
+                    "meeting_scheduled_at": (
+                        meeting.scheduled_at.isoformat()
+                        if meeting.scheduled_at
+                        else None
+                    ),
+                },
+            )
             await CalDAVEventLinkDAO.update_after_pull(
                 link.id,
                 etag=server_etag or change.etag or link.etag,

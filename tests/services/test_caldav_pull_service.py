@@ -604,6 +604,79 @@ async def test_partial_failure_continues(caldav_env):
     mark_pulled.assert_awaited_once()
 
 
+async def test_href_encoding_mismatch_recovered_via_uid_fallback(caldav_env):
+    """Server href contains `%40` but DB stored literal `@` — fallback by UID."""
+    account = _account(sync_token="tok-1")
+    # Link was saved with literal `@` in href (old behaviour).
+    link = _link(
+        etag="old-etag",
+        href="https://x/cal/golubator-meeting-42@x.ics",
+    )
+    # Server now reports the same event with percent-encoded `@`.
+    server_href = "https://x/cal/golubator-meeting-42%40x.ics"
+    new_dtstart = datetime(2026, 6, 1, 14, 0, tzinfo=timezone.utc)
+    ics = _ours_ics(dtstart="20260601T140000Z", last_mod="20260420T120000Z")
+    meeting = _meeting(
+        scheduled_at=datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc),
+    )
+    sync_result = SyncCollectionResult(
+        new_sync_token="tok-2",
+        changes=[
+            ChangedEvent(href=server_href, etag="new-etag", change_type="changed")
+        ],
+        invalid_token=False,
+    )
+    client = MagicMock()
+    client.sync_collection = AsyncMock(return_value=sync_result)
+    client.get_event = AsyncMock(return_value=(ics, "new-etag"))
+
+    reverse = MagicMock()
+    reverse.cancel_from_caldav = AsyncMock()
+    reverse.reschedule_from_caldav = AsyncMock()
+
+    async def find_link(account_id, *, href, uid):
+        # First lookup by href fails (encoding mismatch),
+        # second lookup by UID succeeds.
+        if href == server_href and uid is None:
+            return None
+        if href is None and uid == "golubator-meeting-42@x":
+            return link
+        return None
+
+    with (
+        patch.object(pull_mod, "try_page_lock", _lock_acquired),
+        patch.object(pull_mod, "CalDAVClient", _make_client_factory(client)),
+        patch.object(
+            pull_mod.CalDAVAccountDAO, "get_by_id", AsyncMock(return_value=account)
+        ),
+        patch.object(pull_mod.CalDAVAccountDAO, "mark_pulled", AsyncMock()),
+        patch.object(
+            pull_mod.CalDAVEventLinkDAO,
+            "find_by_account_and_href_or_uid",
+            AsyncMock(side_effect=find_link),
+        ),
+        patch.object(
+            pull_mod.CalDAVEventLinkDAO, "update_href", AsyncMock()
+        ) as update_href,
+        patch.object(pull_mod.CalDAVEventLinkDAO, "update_after_pull", AsyncMock()),
+        patch.object(
+            pull_mod.MeetingDAO,
+            "get_with_participants",
+            AsyncMock(return_value=meeting),
+        ),
+    ):
+        result = await CalDAVPullService(reverse_sync=reverse).pull_account(7)
+
+    assert result.rescheduled == 1
+    assert result.applied == 1
+    assert result.ignored_foreign == 0
+    update_href.assert_awaited_once_with(link.id, server_href)
+    reverse.reschedule_from_caldav.assert_awaited_once_with(
+        meeting_id=42, new_scheduled_at=new_dtstart, source_account_id=7
+    )
+
+
 async def test_get_event_404_during_changed_is_ignored(caldav_env):
     account = _account(sync_token="tok-1")
     link = _link(etag="old-etag")
