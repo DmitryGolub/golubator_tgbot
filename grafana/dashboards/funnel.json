@@ -26,7 +26,7 @@
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT c.value AS stage, COUNT(uc.user_telegram_id) AS count\nFROM integrations.cohorts c\nJOIN integrations.user_cohorts uc ON uc.cohort_id = c.id\nWHERE c.type = '$cohort_type'\nGROUP BY c.value\nORDER BY count DESC",
+          "rawSql": "SELECT c.value AS stage, COUNT(uc.user_telegram_id) AS count\nFROM integrations.cohorts c\nJOIN integrations.user_cohorts uc ON uc.cohort_id = c.id\nWHERE c.type = '$cohort_type'\n  AND LOWER(c.value) NOT IN ('cancel', 'archive')\nGROUP BY c.value\nORDER BY count DESC",
           "format": "table",
           "refId": "A"
         }
@@ -49,7 +49,7 @@
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT\n  date_trunc('week', st.created_at) AS time,\n  st.new_value AS metric,\n  COUNT(*) AS value\nFROM integrations.stage_transitions st\nWHERE st.cohort_type = '$cohort_type'\n  AND st.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1, 2\nORDER BY 1",
+          "rawSql": "SELECT\n  date_trunc('week', st.created_at) AS time,\n  st.new_value AS metric,\n  COUNT(*) AS value\nFROM integrations.stage_transitions st\nWHERE st.cohort_type = '$cohort_type'\n  AND st.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND LOWER(st.new_value) NOT IN ('cancel', 'archive')\nGROUP BY 1, 2\nORDER BY 1",
           "format": "time_series",
           "refId": "A"
         }
@@ -80,7 +80,7 @@
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT\n  COALESCE(st.old_value, '(новый)') AS \"Из\",\n  st.new_value AS \"В\",\n  COUNT(*) AS \"Переходов\",\n  ROUND(COUNT(*)::numeric / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY st.old_value), 0) * 100, 1) AS \"% от источника\"\nFROM integrations.stage_transitions st\nWHERE st.cohort_type = '$cohort_type'\n  AND st.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY st.old_value, st.new_value\nORDER BY \"Переходов\" DESC",
+          "rawSql": "SELECT\n  COALESCE(st.old_value, '(новый)') AS \"Из\",\n  st.new_value AS \"В\",\n  COUNT(*) AS \"Переходов\",\n  ROUND(COUNT(*)::numeric / NULLIF(SUM(COUNT(*)) OVER (PARTITION BY st.old_value), 0) * 100, 1) AS \"% от источника\"\nFROM integrations.stage_transitions st\nWHERE st.cohort_type = '$cohort_type'\n  AND st.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND LOWER(st.new_value) NOT IN ('cancel', 'archive')\n  AND (st.old_value IS NULL OR LOWER(st.old_value) NOT IN ('cancel', 'archive'))\nGROUP BY st.old_value, st.new_value\nORDER BY \"Переходов\" DESC",
           "format": "table",
           "refId": "A"
         }
@@ -94,7 +94,7 @@
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "WITH stage_periods AS (\n  SELECT\n    user_telegram_id,\n    new_value AS stage,\n    created_at AS started_at,\n    LEAD(created_at) OVER (PARTITION BY user_telegram_id ORDER BY created_at) AS ended_at\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n)\nSELECT\n  stage,\n  ROUND(AVG(EXTRACT(EPOCH FROM (ended_at - started_at)) / 86400)::numeric, 1) AS \"Среднее дней\"\nFROM stage_periods\nWHERE ended_at IS NOT NULL\n  AND started_at >= $__timeFrom()\n  AND started_at < $__timeTo()\nGROUP BY stage\nORDER BY \"Среднее дней\" DESC",
+          "rawSql": "WITH stage_periods AS (\n  SELECT\n    user_telegram_id,\n    new_value AS stage,\n    created_at AS started_at,\n    LEAD(created_at) OVER (PARTITION BY user_telegram_id ORDER BY created_at) AS ended_at\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND LOWER(new_value) NOT IN ('cancel', 'archive')\n)\nSELECT\n  stage,\n  ROUND(AVG(EXTRACT(EPOCH FROM (ended_at - started_at)) / 86400)::numeric, 1) AS \"Среднее дней\"\nFROM stage_periods\nWHERE ended_at IS NOT NULL\n  AND started_at >= $__timeFrom()\n  AND started_at < $__timeTo()\nGROUP BY stage\nORDER BY \"Среднее дней\" DESC",
           "format": "table",
           "refId": "A"
         }
