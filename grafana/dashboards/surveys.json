@@ -5,35 +5,33 @@
   "timezone": "browser",
   "refresh": "5m",
   "time": { "from": "now-90d", "to": "now" },
-  "panels": [
-    {
-      "id": 1,
-      "title": "Средние оценки по неделям",
-      "type": "timeseries",
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 0 },
-      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
-      "targets": [
-        {
-          "rawSql": "SELECT\n  date_trunc('week', a.created_at) AS time,\n  ROUND(AVG(a.value_int)::numeric, 2) AS \"Средняя оценка\"\nFROM surveys.survey_answers a\nWHERE a.value_int IS NOT NULL\n  AND a.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1\nORDER BY 1",
-          "format": "time_series",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": { "drawStyle": "line", "fillOpacity": 10 }
-        }
+  "templating": {
+    "list": [
+      {
+        "name": "survey",
+        "label": "Опрос",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+        "query": "SELECT title AS __text, id::text AS __value FROM surveys.survey_templates WHERE is_active = true ORDER BY title",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false,
+        "sort": 0,
+        "hide": 0,
+        "current": {}
       }
-    },
+    ]
+  },
+  "panels": [
     {
       "id": 2,
       "title": "Процент заполнения",
       "type": "gauge",
-      "gridPos": { "h": 10, "w": 6, "x": 12, "y": 0 },
+      "gridPos": { "h": 10, "w": 8, "x": 0, "y": 0 },
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT\n  ROUND(\n    COUNT(*) FILTER (WHERE ss.status = 'completed')::numeric\n    / NULLIF(COUNT(*), 0) * 100, 1\n  ) AS \"Заполнено %\"\nFROM surveys.survey_sessions ss\nWHERE ss.created_at BETWEEN $__timeFrom() AND $__timeTo()",
+          "rawSql": "SELECT\n  ROUND(\n    COUNT(*) FILTER (WHERE ss.status = 'completed')::numeric\n    / NULLIF(COUNT(*), 0) * 100, 1\n  ) AS \"Заполнено %\"\nFROM surveys.survey_sessions ss\nWHERE ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ss.template_id = ${survey}",
           "format": "table",
           "refId": "A"
         }
@@ -56,11 +54,11 @@
       "id": 3,
       "title": "Заполняемость по неделям",
       "type": "timeseries",
-      "gridPos": { "h": 10, "w": 6, "x": 18, "y": 0 },
+      "gridPos": { "h": 10, "w": 16, "x": 8, "y": 0 },
       "datasource": { "type": "postgres", "uid": "pg-mentoring" },
       "targets": [
         {
-          "rawSql": "SELECT\n  date_trunc('week', ss.created_at) AS time,\n  ROUND(\n    COUNT(*) FILTER (WHERE ss.status = 'completed')::numeric\n    / NULLIF(COUNT(*), 0) * 100, 1\n  ) AS \"Заполнено %\"\nFROM surveys.survey_sessions ss\nWHERE ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n  date_trunc('week', ss.created_at) AS time,\n  ROUND(\n    COUNT(*) FILTER (WHERE ss.status = 'completed')::numeric\n    / NULLIF(COUNT(*), 0) * 100, 1\n  ) AS \"Заполнено %\"\nFROM surveys.survey_sessions ss\nWHERE ss.created_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND ss.template_id = ${survey}\nGROUP BY 1\nORDER BY 1",
           "format": "time_series",
           "refId": "A"
         }
