@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     CALDAV_SYNC_INTERVAL_SECONDS: int = 60
     CALDAV_HOSTNAME: str = "golubator.pigeon.careers"
     CALDAV_HTTP_TIMEOUT_SECONDS: int = 15
+    # Pull (CalDAV → PG): separate flag so it can be staged after push.
+    CALDAV_PULL_ENABLED: bool = False
+    CALDAV_PULL_INTERVAL_SECONDS: int = 60
 
     @model_validator(mode="after")
     def _validate_caldav(self) -> "Settings":

@@ -52,6 +52,7 @@ from src.dao.user import UserDAO
 from src.dao.mentee import MenteeDAO
 from src.models.meeting import CallStatus, ProposalStatus
 from src.services.auth import AuthService
+from src.services.meeting.proposal_text import format_proposal_text
 from src.bot.handlers.pagination_input import clear_pagination_ctx
 from src.bot.keyboards.utils import format_username_display
 from src.bot.labels import MEETING_FIELD_LABELS
@@ -260,24 +261,7 @@ async def prepare_meetings_view(
     return MeetingsView(text=text, visible=visible, mentor_tg_ids=mentor_tg_ids)
 
 
-def _format_proposal_text(meeting, proposer_name: str) -> str:
-    date_str = "—"
-    if meeting.scheduled_at:
-        try:
-            date_str = meeting.scheduled_at.astimezone(MOSCOW_TZ).strftime(
-                "%d.%m.%Y %H:%M MSK"
-            )
-        except Exception:
-            date_str = meeting.scheduled_at.isoformat()
-    link_str = e(meeting.meeting_link) if meeting.meeting_link else "—"
-    desc_str = e(meeting.description) if meeting.description else "—"
-    return (
-        f"📅 <b>Предложение о созвоне</b>\n\n"
-        f"От: <b>{e(proposer_name)}</b>\n"
-        f"Когда: {date_str}\n"
-        f"Ссылка: {link_str}\n"
-        f"Описание: {desc_str}"
-    )
+_format_proposal_text = format_proposal_text
 
 
 @router.callback_query(

@@ -17,7 +17,11 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-NS = {"d": "DAV:", "c": "urn:ietf:params:xml:ns:caldav"}
+NS = {
+    "d": "DAV:",
+    "c": "urn:ietf:params:xml:ns:caldav",
+    "cs": "http://calendarserver.org/ns/",
+}
 
 _PROPFIND_PRINCIPAL = """<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:">
@@ -83,6 +87,27 @@ class DiscoveryResult:
 class PutResult:
     href: str
     etag: Optional[str]
+
+
+@dataclass(frozen=True)
+class ChangedEvent:
+    href: str
+    etag: Optional[str]
+    change_type: str  # "changed" | "deleted"
+
+
+@dataclass(frozen=True)
+class SyncCollectionResult:
+    new_sync_token: str
+    changes: list[ChangedEvent]
+    invalid_token: bool  # True → caller must do full-scan via calendar-query
+
+
+@dataclass(frozen=True)
+class CalendarObject:
+    href: str
+    etag: Optional[str]
+    calendar_data: bytes
 
 
 def _normalize_etag(etag: Optional[str]) -> Optional[str]:
@@ -286,6 +311,195 @@ class CalDAVClient:
             if response.status_code in (200, 204, 404):
                 return
             _raise_for_status(response)
+
+    # ── Pull (RFC 6578 sync-collection + CTag fallback) ───────────────
+
+    async def sync_collection(
+        self, calendar_url: str, sync_token: Optional[str]
+    ) -> SyncCollectionResult:
+        token_xml = (
+            f"<d:sync-token>{_xml_escape(sync_token)}</d:sync-token>"
+            if sync_token
+            else "<d:sync-token/>"
+        )
+        body = f"""<?xml version="1.0" encoding="utf-8"?>
+<d:sync-collection xmlns:d="DAV:">
+  {token_xml}
+  <d:sync-level>1</d:sync-level>
+  <d:prop>
+    <d:getetag/>
+  </d:prop>
+</d:sync-collection>""".strip()
+
+        async with self._build_client() as client:
+            try:
+                response = await client.request(
+                    "REPORT",
+                    calendar_url,
+                    content=body.encode("utf-8"),
+                    headers={
+                        "Depth": "1",
+                        "Content-Type": "application/xml; charset=utf-8",
+                    },
+                )
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                raise CalDAVTransientError(f"network error: {exc}") from exc
+
+            # Server lost the token → caller must do a full-scan rebuild.
+            if response.status_code in (403, 410):
+                if _has_valid_sync_token_error(response.content):
+                    return SyncCollectionResult(
+                        new_sync_token="", changes=[], invalid_token=True
+                    )
+                if response.status_code == 410:
+                    return SyncCollectionResult(
+                        new_sync_token="", changes=[], invalid_token=True
+                    )
+                _raise_for_status(response)
+
+            _raise_for_status(response)
+
+            try:
+                root = ET.fromstring(response.content)
+            except ET.ParseError as exc:
+                raise CalDAVError(f"invalid XML response: {exc}") from exc
+
+            if _has_valid_sync_token_error(response.content):
+                return SyncCollectionResult(
+                    new_sync_token="", changes=[], invalid_token=True
+                )
+
+            new_token = root.findtext("d:sync-token", default="", namespaces=NS) or ""
+
+            changes: list[ChangedEvent] = []
+            for resp in root.findall("d:response", NS):
+                href = resp.findtext("d:href", namespaces=NS)
+                if not href:
+                    continue
+                href = href.strip()
+                # Top-level status (deletions): "HTTP/1.1 404 Not Found"
+                top_status = resp.findtext("d:status", namespaces=NS) or ""
+                if "404" in top_status:
+                    changes.append(
+                        ChangedEvent(href=href, etag=None, change_type="deleted")
+                    )
+                    continue
+                etag = None
+                for propstat in resp.findall("d:propstat", NS):
+                    status = propstat.findtext("d:status", namespaces=NS) or ""
+                    if "200" not in status:
+                        continue
+                    raw_etag = propstat.findtext("d:prop/d:getetag", namespaces=NS)
+                    etag = _normalize_etag(raw_etag)
+                changes.append(
+                    ChangedEvent(href=href, etag=etag, change_type="changed")
+                )
+            return SyncCollectionResult(
+                new_sync_token=new_token.strip(),
+                changes=changes,
+                invalid_token=False,
+            )
+
+    async def get_ctag(self, calendar_url: str) -> Optional[str]:
+        body = """<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/">
+  <d:prop>
+    <cs:getctag/>
+  </d:prop>
+</d:propfind>""".strip()
+        async with self._build_client() as client:
+            root = await self._propfind(client, calendar_url, body, depth="0")
+        ctag = root.findtext(
+            ".//d:response/d:propstat/d:prop/cs:getctag", namespaces=NS
+        )
+        return ctag.strip() if ctag else None
+
+    async def calendar_query(
+        self, calendar_url: str, uid_prefix: str
+    ) -> list[CalendarObject]:
+        # We request all VEVENT objects with calendar-data + etag, then
+        # filter UIDs client-side. This is more portable than `text-match`,
+        # which iCloud and some Radicale builds support inconsistently.
+        body = """<?xml version="1.0" encoding="utf-8"?>
+<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <d:getetag/>
+    <c:calendar-data/>
+  </d:prop>
+  <c:filter>
+    <c:comp-filter name="VCALENDAR">
+      <c:comp-filter name="VEVENT"/>
+    </c:comp-filter>
+  </c:filter>
+</c:calendar-query>""".strip()
+
+        async with self._build_client() as client:
+            try:
+                response = await client.request(
+                    "REPORT",
+                    calendar_url,
+                    content=body.encode("utf-8"),
+                    headers={
+                        "Depth": "1",
+                        "Content-Type": "application/xml; charset=utf-8",
+                    },
+                )
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                raise CalDAVTransientError(f"network error: {exc}") from exc
+            _raise_for_status(response)
+
+        try:
+            root = ET.fromstring(response.content)
+        except ET.ParseError as exc:
+            raise CalDAVError(f"invalid XML response: {exc}") from exc
+
+        results: list[CalendarObject] = []
+        prefix_token = f"UID:{uid_prefix}"
+        for resp in root.findall("d:response", NS):
+            href = resp.findtext("d:href", namespaces=NS)
+            if not href:
+                continue
+            etag = None
+            data = None
+            for propstat in resp.findall("d:propstat", NS):
+                status = propstat.findtext("d:status", namespaces=NS) or ""
+                if "200" not in status:
+                    continue
+                raw_etag = propstat.findtext("d:prop/d:getetag", namespaces=NS)
+                etag = _normalize_etag(raw_etag)
+                data = propstat.findtext("d:prop/c:calendar-data", namespaces=NS)
+            if data is None:
+                continue
+            data_bytes = data.encode("utf-8")
+            # Cheap pre-filter: keep only objects whose UID starts with our prefix.
+            if prefix_token.encode("utf-8") not in data_bytes:
+                continue
+            results.append(
+                CalendarObject(
+                    href=href.strip(),
+                    etag=etag,
+                    calendar_data=data_bytes,
+                )
+            )
+        return results
+
+    async def get_event(self, href: str) -> tuple[bytes, Optional[str]]:
+        async with self._build_client() as client:
+            try:
+                response = await client.get(href)
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                raise CalDAVTransientError(f"network error: {exc}") from exc
+            _raise_for_status(response)
+            return response.content, _normalize_etag(response.headers.get("ETag"))
+
+
+def _xml_escape(value: str) -> str:
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _has_valid_sync_token_error(content: bytes) -> bool:
+    # RFC 6578 §3.8: <DAV:valid-sync-token/> in <DAV:error/>
+    return b"valid-sync-token" in content
 
 
 # Expose host-extraction helper used by callers for logging/UID formatting

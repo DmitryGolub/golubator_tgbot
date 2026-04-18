@@ -159,3 +159,48 @@ class CalDAVAccountDAO(BaseDAO):
                 .values(sync_enabled=enabled)
             )
             await session.commit()
+
+    @classmethod
+    async def mark_pulled(
+        cls,
+        account_id: int,
+        *,
+        sync_token: Optional[str],
+        ctag: Optional[str],
+        last_pulled_at: Optional[datetime] = None,
+    ) -> None:
+        when = last_pulled_at or datetime.now(timezone.utc)
+        async with async_session_maker() as session:
+            await session.execute(
+                update(CalDAVAccount)
+                .where(CalDAVAccount.id == account_id)
+                .values(
+                    sync_token=sync_token,
+                    ctag=ctag,
+                    last_pulled_at=when,
+                    last_pull_error=None,
+                    last_pull_error_at=None,
+                )
+            )
+            await session.commit()
+
+    @classmethod
+    async def mark_pull_error(cls, account_id: int, reason: str) -> None:
+        async with async_session_maker() as session:
+            await session.execute(
+                update(CalDAVAccount)
+                .where(CalDAVAccount.id == account_id)
+                .values(
+                    last_pull_error=reason[:2000],
+                    last_pull_error_at=datetime.now(timezone.utc),
+                )
+            )
+            await session.commit()
+
+    @classmethod
+    async def find_active_ids(cls) -> list[int]:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(CalDAVAccount.id).where(CalDAVAccount.sync_enabled.is_(True))
+            )
+            return [row[0] for row in result.all()]

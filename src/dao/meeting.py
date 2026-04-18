@@ -535,6 +535,36 @@ class MeetingDAO(BaseDAO):
             return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
+    async def cancel_by_user(cls, meeting_id: int, user_id: int) -> Optional[Meeting]:
+        """Cancel a meeting on behalf of a participant. Idempotent.
+
+        Returns the meeting (with participants) if the user is a participant
+        and the meeting exists, otherwise None. Repeat calls are safe — they
+        re-set is_cancelled=True without raising.
+        """
+        async with async_session_maker() as session:
+            participant_check = select(MeetingUser.meeting_id).where(
+                MeetingUser.meeting_id == meeting_id,
+                MeetingUser.user_id == user_id,
+            )
+            now = datetime.now(timezone.utc)
+            stmt = (
+                update(Meeting)
+                .where(
+                    Meeting.id == meeting_id,
+                    Meeting.id.in_(participant_check),
+                )
+                .values(is_cancelled=True, updated_at=now)
+                .returning(Meeting.id)
+            )
+            res = await session.execute(stmt)
+            updated_id = res.scalar_one_or_none()
+            await session.commit()
+            if updated_id is None:
+                return None
+            return await cls._reload_with_participants(session, meeting_id)
+
+    @classmethod
     async def get_pending_for_user(cls, user_id: int) -> list[Meeting]:
         """Return pending meetings where the user is a participant."""
         async with async_session_maker() as session:

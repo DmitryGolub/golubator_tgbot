@@ -69,6 +69,16 @@ class CalDAVAccount(Base):
         Integer, nullable=False, default=0, server_default="0"
     )
 
+    sync_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ctag: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    last_pulled_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_pull_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_pull_error_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -135,4 +145,12 @@ class CalDAVEventLink(Base):
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
+    )
+
+    remote_last_modified: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    remote_sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    last_pulled_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

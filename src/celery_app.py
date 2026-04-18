@@ -124,6 +124,11 @@ celery_app.conf.update(
             "task": "caldav.sync_dirty_meetings",
             "schedule": settings.CALDAV_SYNC_INTERVAL_SECONDS,
         },
+        # CalDAV pull: detect changes in mentor calendars and apply to PG
+        "caldav.pull_all_accounts": {
+            "task": "caldav.pull_all_accounts",
+            "schedule": settings.CALDAV_PULL_INTERVAL_SECONDS,
+        },
     },
 )
 

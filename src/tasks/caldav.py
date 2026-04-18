@@ -16,6 +16,7 @@ from src.core.config import settings
 from src.dao.caldav_account import CalDAVAccountDAO
 from src.dao.caldav_event_link import CalDAVEventLinkDAO, LinkSnapshot
 from src.services.caldav.client import CalDAVClient, CalDAVError, CalDAVTransientError
+from src.services.caldav.pull_service import CalDAVPullService
 from src.services.caldav.sync_service import CalDAVSyncService
 from src.services.encryption import decrypt
 from src.tasks._db import celery_db, get_worker_bot, run_async
@@ -133,6 +134,41 @@ def verify_account(account_id: int) -> None:
             logger.exception("caldav.verify_account: failed to notify user")
 
     run_async(_notify())
+
+
+@celery_app.task(
+    name="caldav.pull_account",
+    autoretry_for=(CalDAVTransientError, httpx.HTTPError),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    max_retries=5,
+)
+def pull_account(account_id: int) -> None:
+    if _caldav_disabled() or not settings.CALDAV_PULL_ENABLED:
+        return
+
+    async def _run() -> None:
+        async with celery_db():
+            await CalDAVPullService().pull_account(account_id)
+
+    run_async(_run())
+
+
+@celery_app.task(name="caldav.pull_all_accounts")
+def pull_all_accounts() -> None:
+    if _caldav_disabled() or not settings.CALDAV_PULL_ENABLED:
+        return
+
+    async def _run() -> list[int]:
+        async with celery_db():
+            return await CalDAVAccountDAO.find_active_ids()
+
+    ids = run_async(_run())
+    if not ids:
+        return
+    for account_id in ids:
+        pull_account.delay(account_id)
+    logger.info("caldav.pull_all_accounts: dispatched %d accounts", len(ids))
 
 
 @celery_app.task(

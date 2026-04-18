@@ -177,3 +177,65 @@ class CalDAVEventLinkDAO(BaseDAO):
             )
             row = result.one_or_none()
             return (row[0], row[1]) if row else None
+
+    @classmethod
+    async def find_by_account(cls, account_id: int) -> list[CalDAVEventLink]:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(CalDAVEventLink).where(CalDAVEventLink.account_id == account_id)
+            )
+            return list(result.scalars().all())
+
+    @classmethod
+    async def find_by_account_and_href_or_uid(
+        cls,
+        account_id: int,
+        *,
+        href: Optional[str],
+        uid: Optional[str],
+    ) -> Optional[CalDAVEventLink]:
+        if not href and not uid:
+            return None
+        conditions = []
+        if href:
+            conditions.append(CalDAVEventLink.event_href == href)
+        if uid:
+            conditions.append(CalDAVEventLink.event_uid == uid)
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(CalDAVEventLink).where(
+                    and_(
+                        CalDAVEventLink.account_id == account_id,
+                        or_(*conditions),
+                    )
+                )
+            )
+            return result.scalars().first()
+
+    @classmethod
+    async def update_after_pull(
+        cls,
+        link_id: int,
+        *,
+        etag: Optional[str],
+        remote_last_modified: Optional[datetime],
+        remote_sequence: Optional[int],
+        mark_pushed: bool = True,
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        values: dict = {
+            "etag": etag,
+            "remote_last_modified": remote_last_modified,
+            "remote_sequence": remote_sequence,
+            "last_pulled_at": now,
+            "status": CalDAVSyncStatus.synced,
+        }
+        if mark_pushed:
+            values["last_pushed_at"] = now
+        async with async_session_maker() as session:
+            await session.execute(
+                update(CalDAVEventLink)
+                .where(CalDAVEventLink.id == link_id)
+                .values(**values)
+            )
+            await session.commit()
