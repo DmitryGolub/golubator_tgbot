@@ -49,11 +49,13 @@ def _build_uid(meeting_id: int) -> str:
 
 
 def _participant_display_name(user: User) -> str:
+    """Prefer the Telegram handle (@username), fall back to the Notion card name."""
+    username = (user.username or "").strip()
+    if username:
+        return f"@{username}"
     name = (user.name or "").strip()
     if name:
         return name
-    if user.username:
-        return f"@{user.username}"
     return f"id{user.telegram_id}"
 
 

@@ -30,8 +30,10 @@ def enable_caldav(monkeypatch):
     enc.reset_fernet_cache()
 
 
-def _mentor_user(telegram_id: int, name: str) -> SimpleNamespace:
-    return SimpleNamespace(telegram_id=telegram_id, name=name, username=None)
+def _mentor_user(
+    telegram_id: int, name: str, username: str | None = None
+) -> SimpleNamespace:
+    return SimpleNamespace(telegram_id=telegram_id, name=name, username=username)
 
 
 def _meeting(
@@ -118,6 +120,53 @@ async def test_push_creates_and_syncs_link(enable_caldav):
     ics = fake_client.put_event.await_args.kwargs["ics"]
     assert b"golubator-meeting-42@caldav.example.com" in ics
     assert "Созвон с Bob".encode("utf-8") in ics
+
+
+async def test_summary_prefers_telegram_username(enable_caldav):
+    mentor = _mentor_user(100, "Alice")
+    # Bob has both a Notion-card name and a Telegram username — username wins.
+    other = _mentor_user(200, "Bob From Notion", username="Conte145")
+    meeting = _meeting(meeting_id=42, mentor_id=100, participants=[mentor, other])
+
+    account = SimpleNamespace(
+        id=7,
+        telegram_id=100,
+        sync_enabled=True,
+        default_calendar_url="https://caldav.example.com/alice/home",
+        base_url="https://caldav.example.com",
+        username="alice",
+        encrypted_password=enc.encrypt("pw"),
+    )
+    link = SimpleNamespace(id=1, event_uid="u", sequence=0, etag=None, event_href=None)
+    fake_client = AsyncMock()
+    fake_client.put_event = AsyncMock(return_value=SimpleNamespace(href="h", etag="e"))
+
+    with (
+        patch.object(
+            sync_mod.MeetingDAO,
+            "get_with_participants",
+            AsyncMock(return_value=meeting),
+        ),
+        patch.object(
+            sync_mod.CalDAVAccountDAO,
+            "get_for_mentor",
+            AsyncMock(side_effect=lambda tg: account if tg == 100 else None),
+        ),
+        patch.object(
+            sync_mod.CalDAVEventLinkDAO,
+            "get_or_create",
+            AsyncMock(return_value=link),
+        ),
+        patch.object(sync_mod.CalDAVEventLinkDAO, "mark_synced", AsyncMock()),
+        patch.object(sync_mod, "try_page_lock", _lock_acquired),
+        patch.object(sync_mod, "CalDAVClient", lambda **kw: fake_client),
+    ):
+        await CalDAVSyncService().push_meeting(42)
+
+    ics = fake_client.put_event.await_args.kwargs["ics"]
+    assert "Созвон с @Conte145".encode("utf-8") in ics
+    # The Notion-card name must not leak when a username is available.
+    assert "Bob From Notion".encode("utf-8") not in ics
 
 
 async def test_pending_sets_tentative_status(enable_caldav):
