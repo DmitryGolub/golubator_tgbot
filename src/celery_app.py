@@ -31,6 +31,7 @@ celery_app = Celery(
         "src.tasks.weekly_survey",
         "src.tasks.survey_alerts",
         "src.tasks.survey_escalation",
+        "src.tasks.caldav",
     ],
 )
 
@@ -117,6 +118,11 @@ celery_app.conf.update(
         "surveys.check_escalations": {
             "task": "surveys.check_escalations",
             "schedule": crontab(minute="*/2"),
+        },
+        # CalDAV sync: periodic backfill of dirty meetings for mentor calendars
+        "caldav.sync_dirty_meetings": {
+            "task": "caldav.sync_dirty_meetings",
+            "schedule": settings.CALDAV_SYNC_INTERVAL_SECONDS,
         },
     },
 )

@@ -26,6 +26,7 @@ from src.bot.handlers.education_feedback import router as education_feedback_rou
 from src.bot.handlers.feedback_report import router as feedback_report_router
 from src.bot.handlers.lead_source import router as lead_source_router
 from src.bot.handlers.pagination_input import router as pagination_input_router
+from src.bot.handlers.caldav import router as caldav_router
 from src.bot.middlewares.logging_middleware import LoggingMiddleware
 from src.bot.middlewares.survey_block_middleware import SurveyBlockMiddleware
 from src.bot.middlewares.user_sync_middleware import UserSyncMiddleware
@@ -78,6 +79,7 @@ async def main():
         education_feedback_router,
         feedback_report_router,
         lead_source_router,
+        caldav_router,
     )
 
     @dp.callback_query(F.data == "noop")

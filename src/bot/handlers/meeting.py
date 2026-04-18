@@ -56,6 +56,7 @@ from src.bot.handlers.pagination_input import clear_pagination_ctx
 from src.bot.keyboards.utils import format_username_display
 from src.bot.labels import MEETING_FIELD_LABELS
 from src.bot.utils import safe_edit_text
+from src.core.config import settings
 from src.utils.escape import e
 import logging
 from src.services.call_flow import (
@@ -70,6 +71,46 @@ from src.services.call_flow import (
 
 logger = logging.getLogger(__name__)
 MOSCOW_TZ = MSK
+
+
+def _trigger_caldav_sync(meeting_id: int) -> None:
+    """Dispatch a CalDAV push for a meeting (no-op when feature is off)."""
+    if not settings.CALDAV_ENABLED:
+        return
+    try:
+        from src.tasks.caldav import sync_meeting
+
+        sync_meeting.delay(meeting_id)
+    except Exception:
+        logger.exception(
+            "Failed to dispatch caldav.sync_meeting",
+            extra={"meeting_id": meeting_id},
+        )
+
+
+async def _trigger_caldav_delete(meeting_id: int) -> None:
+    """Snapshot and dispatch a CalDAV delete for a meeting."""
+    if not settings.CALDAV_ENABLED:
+        return
+    try:
+        from src.dao.caldav_event_link import CalDAVEventLinkDAO
+        from src.tasks.caldav import delete_events_for_meeting
+
+        snapshot = await CalDAVEventLinkDAO.find_by_meeting(meeting_id)
+        if not snapshot:
+            return
+        payload = [
+            [s.link_id, s.account_id, s.event_uid, s.event_href, s.etag]
+            for s in snapshot
+        ]
+        delete_events_for_meeting.delay(meeting_id, payload)
+    except Exception:
+        logger.exception(
+            "Failed to dispatch caldav.delete_events_for_meeting",
+            extra={"meeting_id": meeting_id},
+        )
+
+
 router = Router(name="meetings")
 router.message.filter(
     PermissionFilter(["manage_meetings", "view_own_meetings", "propose_meetings"])
@@ -891,6 +932,9 @@ async def _finalize_reschedule(user_id: int, state: FSMContext, reply_func, bot)
     )
     await state.clear()
 
+    if meeting:
+        _trigger_caldav_sync(meeting.id)
+
     if not meeting:
         await reply_func(
             "Не удалось обновить созвон. Возможно, он уже завершён.",
@@ -991,6 +1035,8 @@ async def _finalize_meeting(
     )
     await state.clear()
 
+    _trigger_caldav_sync(meeting.id)
+
     # Get proposer name for notification
     proposer = await UserDAO.find_one_or_none(telegram_id=user_id)
     proposer_name = proposer.name if proposer else "Неизвестный участник"
@@ -1072,6 +1118,8 @@ async def _save_edit_and_return(user_id, state, reply_func, bot, **update_values
     meeting_id = data["edit_meeting_id"]
     await MeetingDAO.update(meeting_id, **update_values)
     await state.clear()
+
+    _trigger_caldav_sync(meeting_id)
 
     meeting = await MeetingDAO.get_with_participants(meeting_id)
     if meeting:
@@ -1343,6 +1391,8 @@ async def cb_edit_confirm_participants(callback: CallbackQuery, state: FSMContex
     meeting_id = data["edit_meeting_id"]
     await MeetingDAO.update_participants(meeting_id, selected)
 
+    _trigger_caldav_sync(meeting_id)
+
     # Update mentee_telegram_tag for Notion sync
     mentee_tags: list[str] = []
     for pid in selected:
@@ -1409,6 +1459,10 @@ async def msg_meeting_link(message: Message, state: FSMContext):
 async def cb_delete_meeting(callback: CallbackQuery, callback_data: DeleteMeetingCB):
     await callback.answer()
 
+    # Snapshot CalDAV links BEFORE the meeting row is deleted — afterwards
+    # the FK cascade wipes them and we'd have nothing to DELETE remotely.
+    await _trigger_caldav_delete(callback_data.meeting_id)
+
     deleted, notion_page_id = await MeetingDAO.delete_for_mentor(
         meeting_id=callback_data.meeting_id,
         user_id=callback.from_user.id,
@@ -1469,6 +1523,9 @@ async def _finalize_confirmation(
 
     if meeting.original_scheduled_at and all_confirmed:
         meeting = await MeetingDAO.confirm_reschedule(meeting.id, user_id)
+
+    if meeting:
+        _trigger_caldav_sync(meeting.id)
 
     if all_confirmed and meeting:
         await _schedule_meeting_tasks(meeting)
@@ -1568,6 +1625,7 @@ async def cb_decline_meeting(callback: CallbackQuery, callback_data: DeclineMeet
             callback_data.meeting_id, user_id
         )
         if reverted:
+            _trigger_caldav_sync(reverted.id)
             for p in reverted.participants:
                 if p.telegram_id == user_id:
                     continue
@@ -1599,6 +1657,8 @@ async def cb_decline_meeting(callback: CallbackQuery, callback_data: DeclineMeet
                 logger.error(
                     "Failed to notify %s about decline: %s", p.telegram_id, exc
                 )
+        # Snapshot CalDAV links before the cascade wipes them.
+        await _trigger_caldav_delete(callback_data.meeting_id)
         await MeetingDAO.decline_meeting(callback_data.meeting_id, user_id)
         await safe_edit_text(
             callback,

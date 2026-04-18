@@ -32,6 +32,11 @@ from src.models.survey_alert import (
 )
 from src.models.ui_text import UiText as UiText
 from src.models.stage_transition import StageTransition as StageTransition
+from src.models.caldav import (
+    CalDAVAccount as CalDAVAccount,
+    CalDAVEventLink as CalDAVEventLink,
+    CalDAVSyncStatus as CalDAVSyncStatus,
+)
 from src.models.trigger import (
     TriggerRule as TriggerRule,
     TriggerExecution as TriggerExecution,

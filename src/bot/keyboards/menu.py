@@ -1,6 +1,7 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardMarkup
 
+from src.core.config import settings
 from src.services.ui_text import UiTextService
 
 # Permission -> (ui_text key, callback_data) mapping for menu buttons
@@ -112,7 +113,12 @@ async def menu_keyboard(
         needed_keys.append("menu.btn.feedback_report")
         buttons_spec.append(("menu.btn.feedback_report", "feedback_report_menu"))
 
+    # CalDAV sync is mentor-only and hidden when the feature is disabled.
+    if settings.CALDAV_ENABLED and "manage_meetings" in permissions:
+        buttons_spec.append(("caldav_menu_label", "menu_calendar"))
+
     texts = await UiTextService.get_many(needed_keys) if needed_keys else {}
+    texts["caldav_menu_label"] = "📅 Календарь"
 
     kb = InlineKeyboardBuilder()
     for key, cb in buttons_spec:

@@ -1,5 +1,6 @@
 from urllib.parse import quote
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,6 +47,35 @@ class Settings(BaseSettings):
     GENERAL_CHAT_ID: int | None = None
 
     TEST_MODE: bool = False
+
+    # CalDAV sync (one-way Meeting → personal calendar for mentors)
+    CALDAV_ENABLED: bool = False
+    CALDAV_ENCRYPTION_KEY: str | None = None
+    # CSV of older Fernet keys (kept for read-only decryption during rotation)
+    CALDAV_ENCRYPTION_KEYS_FALLBACK: str | None = None
+    CALDAV_SYNC_INTERVAL_SECONDS: int = 60
+    CALDAV_HOSTNAME: str = "golubator.pigeon.careers"
+    CALDAV_HTTP_TIMEOUT_SECONDS: int = 15
+
+    @model_validator(mode="after")
+    def _validate_caldav(self) -> "Settings":
+        if self.CALDAV_ENABLED and not self.CALDAV_ENCRYPTION_KEY:
+            raise ValueError(
+                "CALDAV_ENABLED=True requires CALDAV_ENCRYPTION_KEY "
+                '(generate via `python -c "from cryptography.fernet import Fernet; '
+                'print(Fernet.generate_key().decode())"`)'
+            )
+        return self
+
+    @property
+    def caldav_fallback_keys(self) -> list[str]:
+        if not self.CALDAV_ENCRYPTION_KEYS_FALLBACK:
+            return []
+        return [
+            k.strip()
+            for k in self.CALDAV_ENCRYPTION_KEYS_FALLBACK.split(",")
+            if k.strip()
+        ]
 
     @property
     def DATABASE_URL(self) -> str:
