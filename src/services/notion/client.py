@@ -71,6 +71,14 @@ class NotionDatabaseUnavailableError(Exception):
     """Raised when a Notion database is not accessible."""
 
 
+class NotionPageArchivedError(Exception):
+    """Raised when attempting to edit an archived Notion page."""
+
+
+def _is_archived_error(exc: APIResponseError) -> bool:
+    return "archived" in str(exc).lower()
+
+
 class NotionClient:
     """Base async client for Notion API with rate limiting.
 
@@ -227,6 +235,9 @@ class NotionClient:
             client = await self._ensure_client()
             return await client.pages.update(page_id=page_id, properties=properties)
         except APIResponseError as e:
+            if _is_archived_error(e):
+                logger.info("Notion page %s is archived; skipping update", page_id)
+                raise NotionPageArchivedError(page_id) from e
             logger.error("Notion update_page %s failed: %s", page_id, e)
             return None
 

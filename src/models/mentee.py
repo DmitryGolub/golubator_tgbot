@@ -55,6 +55,9 @@ class Mentee(Base):
     synced_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    notion_archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa.false()
+    )
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

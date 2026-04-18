@@ -3,6 +3,8 @@ from __future__ import annotations
 import enum
 from typing import TYPE_CHECKING, Optional
 from datetime import datetime, timedelta
+
+import sqlalchemy as sa
 from sqlalchemy import (
     Boolean,
     Enum,
@@ -75,6 +77,9 @@ class Meeting(Base):
     project: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     synced_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    notion_archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa.false()
     )
     call_status: Mapped[Optional[CallStatus]] = mapped_column(
         Enum(

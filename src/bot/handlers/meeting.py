@@ -54,7 +54,7 @@ from src.dao.user import UserDAO
 from src.dao.mentee import MenteeDAO
 from src.models.meeting import CallStatus, ProposalStatus
 from src.services.auth import AuthService
-from src.services.meeting.proposal_text import format_proposal_text
+from src.services.meeting.proposal_text import format_proposal_text, format_when
 from src.bot.handlers.pagination_input import clear_pagination_ctx
 from src.bot.keyboards.utils import format_username_display
 from src.bot.labels import MEETING_FIELD_LABELS
@@ -1513,11 +1513,14 @@ async def _finalize_confirmation(
             return ", ".join(names) if names else "участником"
 
         action = "Перенос созвона" if was_reschedule else "Созвон"
+        when_str = format_when(meeting.scheduled_at)
         for p in meeting.participants:
             if p.telegram_id == user_id:
                 continue
             others = _others_for(p.telegram_id)
-            notify_text = f"✅ {action} с <b>{e(others)}</b> подтверждён!"
+            notify_text = (
+                f"✅ {action} с <b>{e(others)}</b> подтверждён!\nКогда: {when_str}"
+            )
             try:
                 await bot.send_message(p.telegram_id, notify_text)
             except Exception as exc:
@@ -1525,7 +1528,9 @@ async def _finalize_confirmation(
                     "Failed to notify %s about confirmation: %s", p.telegram_id, exc
                 )
         reply_others = _others_for(user_id)
-        reply_text = f"✅ {action} с <b>{e(reply_others)}</b> подтверждён."
+        reply_text = (
+            f"✅ {action} с <b>{e(reply_others)}</b> подтверждён!\nКогда: {when_str}"
+        )
         await reply_func(
             reply_text,
             reply_markup=await _menu_kb(user_id),

@@ -24,6 +24,7 @@ from src.services.notion import (
     NotionEventRepo,
     NotionMenteeRepo,
     NotionMentorRepo,
+    NotionPageArchivedError,
 )
 
 logger = logging.getLogger(__name__)
@@ -553,6 +554,8 @@ class NotionSyncServiceV2:
             channel_id = getattr(data, "channel_id", None)
             if channel_id is not None:
                 mentor.channel_id = channel_id
+            if mentor.notion_archived:
+                mentor.notion_archived = False
             mentor.synced_at = now
 
             current_ph = (
@@ -645,6 +648,8 @@ class NotionSyncServiceV2:
                 data, "contract_expires", mentee.contract_expires
             )
             mentee.student_score = getattr(data, "student_score", mentee.student_score)
+            if mentee.notion_archived:
+                mentee.notion_archived = False
             mentee.synced_at = now
 
             current_ph = (
@@ -1070,6 +1075,7 @@ class NotionSyncServiceV2:
                     .options(selectinload(Mentor.user).selectinload(User.role_rel))
                     .where(
                         Mentor.updated_at.isnot(None),
+                        Mentor.notion_archived.is_(False),
                         (Mentor.synced_at.is_(None))
                         | (Mentor.updated_at > Mentor.synced_at),
                     )
@@ -1122,6 +1128,17 @@ class NotionSyncServiceV2:
                                 .values(synced_at=now)
                             )
                             pushed += 1
+                    except NotionPageArchivedError:
+                        logger.warning(
+                            "Mentor %s notion page %s archived; marking notion_archived",
+                            mentor.id,
+                            mentor.notion_page_id,
+                        )
+                        await session.execute(
+                            update(Mentor)
+                            .where(Mentor.id == mentor.id)
+                            .values(notion_archived=True, synced_at=now)
+                        )
                     except Exception as exc:
                         logger.error(
                             "Failed to push mentor %s to Notion: %s",
@@ -1150,6 +1167,7 @@ class NotionSyncServiceV2:
                     .options(selectinload(Mentee.mentor))
                     .where(
                         Mentee.updated_at.isnot(None),
+                        Mentee.notion_archived.is_(False),
                         (Mentee.synced_at.is_(None))
                         | (Mentee.updated_at > Mentee.synced_at),
                     )
@@ -1226,6 +1244,17 @@ class NotionSyncServiceV2:
                             .values(synced_at=now)
                         )
                         pushed += 1
+                    except NotionPageArchivedError:
+                        logger.warning(
+                            "Mentee %s notion page %s archived; marking notion_archived",
+                            mentee.id,
+                            mentee.notion_page_id,
+                        )
+                        await session.execute(
+                            update(Mentee)
+                            .where(Mentee.id == mentee.id)
+                            .values(notion_archived=True, synced_at=now)
+                        )
                     except Exception as exc:
                         logger.error(
                             "Failed to push mentee %s to Notion: %s",
@@ -1251,6 +1280,7 @@ class NotionSyncServiceV2:
             async with factory() as session:
                 result = await session.execute(
                     select(Meeting).where(
+                        Meeting.notion_archived.is_(False),
                         (Meeting.synced_at.is_(None))
                         | (
                             Meeting.updated_at.isnot(None)
@@ -1347,6 +1377,14 @@ class NotionSyncServiceV2:
                             meeting.synced_at = now
 
                         pushed += 1
+                    except NotionPageArchivedError:
+                        logger.warning(
+                            "Meeting %s notion page %s archived; marking notion_archived",
+                            meeting.id,
+                            meeting.notion_page_id,
+                        )
+                        meeting.notion_archived = True
+                        meeting.synced_at = now
                     except Exception as exc:
                         logger.error(
                             "Failed to push meeting %s to Notion: %s",
@@ -1460,6 +1498,7 @@ class NotionSyncServiceV2:
                                         session, meeting.id, user_ids=all_user_ids
                                     )
                                     continue
+                                meeting.notion_archived = False
                                 meeting.topic = ev.topic
                                 meeting.event_type = ev.event_type
                                 meeting.mentee_telegram_tag = ev.mentee_tg_tag

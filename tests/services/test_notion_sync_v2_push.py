@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from src.services.notion import NotionPageArchivedError
 from src.services.notion_sync_v2 import NotionSyncServiceV2
 
 
@@ -112,6 +114,137 @@ class TestPushMentees:
 
         props = mentee_repo.update_properties.call_args[0][1]
         assert "Mentor" not in props
+
+
+class TestPushArchivedFlag:
+    @patch("src.services.notion_sync_v2._make_session_factory")
+    async def test_push_mentees_marks_archived_on_error(self, mock_factory, caplog):
+        mentee = _mentee()
+
+        session = AsyncMock()
+        mentee_result = MagicMock()
+        mentee_result.scalars.return_value.all.return_value = [mentee]
+        status_result = MagicMock()
+        status_result.scalar_one_or_none.return_value = None
+        archived_update_result = MagicMock()
+        session.execute = AsyncMock(
+            side_effect=[mentee_result, status_result, archived_update_result]
+        )
+        session.commit = AsyncMock()
+        mock_factory.return_value = _mock_factory(session)
+
+        mentee_repo = AsyncMock()
+        mentee_repo.update_properties = AsyncMock(
+            side_effect=NotionPageArchivedError("page-1")
+        )
+
+        svc = NotionSyncServiceV2(
+            mentor_repo=None, mentee_repo=mentee_repo, event_repo=None
+        )
+        svc._resolve_mentor_notion_ids = AsyncMock(return_value=None)
+
+        with caplog.at_level(logging.WARNING, logger="src.services.notion_sync_v2"):
+            pushed = await svc.push_mentees()
+
+        assert pushed == 0
+        update_call = session.execute.await_args_list[-1]
+        update_stmt = update_call.args[0]
+        params = update_stmt.compile().params
+        assert params.get("notion_archived") is True
+        assert params.get("synced_at") is not None
+        assert any(
+            "archived; marking notion_archived" in r.message for r in caplog.records
+        )
+
+    @patch("src.services.notion_sync_v2._make_session_factory")
+    async def test_push_mentors_marks_archived_on_error(self, mock_factory, caplog):
+        mentor = SimpleNamespace(
+            id=10,
+            notion_page_id="mentor-page-1",
+            telegram_id=555,
+            name="Mentor One",
+            user=SimpleNamespace(
+                name="Mentor One",
+                role_rel=SimpleNamespace(name="mentor"),
+            ),
+        )
+
+        session = AsyncMock()
+        mentor_result = MagicMock()
+        mentor_result.scalars.return_value.all.return_value = [mentor]
+        archived_update_result = MagicMock()
+        session.execute = AsyncMock(side_effect=[mentor_result, archived_update_result])
+        session.commit = AsyncMock()
+        mock_factory.return_value = _mock_factory(session)
+
+        mentor_repo = AsyncMock()
+        mentor_repo.update_properties = AsyncMock(
+            side_effect=NotionPageArchivedError("mentor-page-1")
+        )
+
+        svc = NotionSyncServiceV2(
+            mentor_repo=mentor_repo, mentee_repo=None, event_repo=None
+        )
+
+        with caplog.at_level(logging.WARNING, logger="src.services.notion_sync_v2"):
+            pushed = await svc.push_mentors()
+
+        assert pushed == 0
+        update_call = session.execute.await_args_list[-1]
+        update_stmt = update_call.args[0]
+        params = update_stmt.compile().params
+        assert params.get("notion_archived") is True
+        assert params.get("synced_at") is not None
+        assert any(
+            "archived; marking notion_archived" in r.message for r in caplog.records
+        )
+
+    @patch("src.services.notion_sync_v2._make_session_factory")
+    async def test_push_events_marks_archived_on_error(self, mock_factory, caplog):
+        meeting = SimpleNamespace(
+            id=42,
+            notion_page_id="event-page-1",
+            topic="Тема",
+            description=None,
+            event_type="1:1",
+            scheduled_at=None,
+            completed_at=None,
+            is_cancelled=False,
+            summary=None,
+            action_items=None,
+            mentee_telegram_tag=None,
+            meeting_link=None,
+            mentor_telegram_id=None,
+            synced_at=None,
+            notion_archived=False,
+        )
+
+        session = AsyncMock()
+        meeting_result = MagicMock()
+        meeting_result.scalars.return_value.all.return_value = [meeting]
+        session.execute = AsyncMock(side_effect=[meeting_result])
+        session.commit = AsyncMock()
+        mock_factory.return_value = _mock_factory(session)
+
+        event_repo = AsyncMock()
+        event_repo.update_properties = AsyncMock(
+            side_effect=NotionPageArchivedError("event-page-1")
+        )
+
+        svc = NotionSyncServiceV2(
+            mentor_repo=None, mentee_repo=None, event_repo=event_repo
+        )
+        svc._resolve_mentor_notion_ids = AsyncMock(return_value=None)
+
+        with caplog.at_level(logging.WARNING, logger="src.services.notion_sync_v2"):
+            pushed = await svc.push_events()
+
+        assert pushed == 0
+        assert meeting.notion_archived is True
+        assert meeting.synced_at is not None
+        assert any(
+            "archived; marking notion_archived" in r.message for r in caplog.records
+        )
 
 
 class TestResolveMentorNotionIds:
