@@ -70,29 +70,51 @@
       }
     },
     {
-      "id": 2,
-      "title": "Error Rate",
-      "description": "Errors per second by service",
+      "id": 14,
+      "title": "Total CPU %",
+      "description": "Aggregated CPU % across all project containers",
       "type": "timeseries",
-      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 0 },
-      "datasource": { "uid": "loki-logs", "type": "loki" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (service)(rate({service=~\"$service\"} | json | level=\"ERROR\" [5m]))",
-          "legendFormat": "{{service}}"
+          "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+          "expr": "sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"}[5m])) * 100",
+          "legendFormat": "total"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "percent",
           "color": { "mode": "palette-classic" },
-          "custom": {
-            "fillOpacity": 15,
-            "lineWidth": 2,
-            "drawStyle": "line",
-            "pointSize": 5
-          }
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "drawStyle": "line" }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 15,
+      "title": "Total Memory MB",
+      "description": "Aggregated RSS across all project containers",
+      "type": "timeseries",
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
+          "expr": "sum(container_memory_working_set_bytes{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"}) / 1048576",
+          "legendFormat": "total"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 15, "lineWidth": 2, "drawStyle": "line" }
         }
       },
       "options": {
