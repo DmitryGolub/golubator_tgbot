@@ -1503,25 +1503,29 @@ async def _finalize_confirmation(
 
     if all_confirmed and meeting:
         await _schedule_meeting_tasks(meeting)
-        notify_text = (
-            "✅ Перенос созвона подтверждён!"
-            if was_reschedule
-            else "✅ Созвон подтверждён!"
-        )
-        reply_text = (
-            "✅ Перенос созвона подтверждён."
-            if was_reschedule
-            else "✅ Созвон подтверждён."
-        )
+
+        def _others_for(viewer_id: int) -> str:
+            names = [
+                p.name if p.name else f"id{p.telegram_id}"
+                for p in meeting.participants
+                if p.telegram_id != viewer_id
+            ]
+            return ", ".join(names) if names else "участником"
+
+        action = "Перенос созвона" if was_reschedule else "Созвон"
         for p in meeting.participants:
             if p.telegram_id == user_id:
                 continue
+            others = _others_for(p.telegram_id)
+            notify_text = f"✅ {action} с <b>{e(others)}</b> подтверждён!"
             try:
                 await bot.send_message(p.telegram_id, notify_text)
             except Exception as exc:
                 logger.error(
                     "Failed to notify %s about confirmation: %s", p.telegram_id, exc
                 )
+        reply_others = _others_for(user_id)
+        reply_text = f"✅ {action} с <b>{e(reply_others)}</b> подтверждён."
         await reply_func(
             reply_text,
             reply_markup=await _menu_kb(user_id),
