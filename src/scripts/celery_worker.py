@@ -2,6 +2,7 @@ import os
 
 from src.celery_app import celery_app
 from src.core.celery_healthcheck import start_celery_health_server
+from src.core.celery_worker_heartbeat import start_worker_heartbeat
 from src.tasks._db import start_worker_runtime
 
 
@@ -13,6 +14,7 @@ def main() -> None:
     # Bring up the shared asyncio runtime (event loop thread + Bot + engine)
     # before handing control to Celery so tasks find it ready.
     start_worker_runtime()
+    start_worker_heartbeat()
     celery_app.worker_main(argv=["worker", "-l", "info", "-P", "solo"])
 
 

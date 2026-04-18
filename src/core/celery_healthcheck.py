@@ -22,16 +22,18 @@ _CLIENT_DISCONNECT_ERRORS = (
 _BEAT_MAX_STALE_SECONDS = 120.0
 
 
-def _worker_alive(timeout: float = 3.0) -> bool:
-    """Ping the local Celery worker via control inspect."""
-    try:
-        from src.celery_app import celery_app
+def _worker_alive() -> bool:
+    """Check worker health via in-memory heartbeat.
 
-        reply = celery_app.control.inspect(timeout=timeout).ping()
-        return bool(reply)
-    except Exception as exc:
-        logger.warning("Celery healthcheck ping failed: %r", exc)
-        return False
+    Avoids a blocking RPC through the Redis control channel: with `-P solo`
+    the worker cannot answer control pings while a task is executing, so
+    inspect().ping() timeouts were producing false UNHEALTHY readings.
+    The heartbeat is refreshed by a daemon tick thread and Celery signals,
+    so a live process registers alive even during long tasks.
+    """
+    from src.core.celery_worker_heartbeat import is_alive
+
+    return is_alive()
 
 
 def _beat_alive(max_stale_seconds: float = _BEAT_MAX_STALE_SECONDS) -> bool:

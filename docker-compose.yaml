@@ -124,8 +124,8 @@ services:
           sys.exit(0 if ok else 1)
       interval: 30s
       timeout: 5s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 60s
     profiles: [app]
 
   celery_beat:
