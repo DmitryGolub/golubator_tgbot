@@ -230,8 +230,8 @@
         {
           "refId": "A",
           "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
-          "expr": "rate(container_cpu_usage_seconds_total{name=~\"tg_bot.*\"}[5m]) * 100",
-          "legendFormat": "{{name}}"
+          "expr": "rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"}[5m]) * 100",
+          "legendFormat": "{{container_label_com_docker_compose_service}}"
         }
       ],
       "fieldConfig": {
@@ -252,8 +252,8 @@
         {
           "refId": "A",
           "datasource": { "uid": "prometheus-metrics", "type": "prometheus" },
-          "expr": "container_memory_working_set_bytes{name=~\"tg_bot.*\"} / 1048576",
-          "legendFormat": "{{name}}"
+          "expr": "container_memory_working_set_bytes{container_label_com_docker_compose_project=\"golubator_tgbot\",name!=\"\"} / 1048576",
+          "legendFormat": "{{container_label_com_docker_compose_service}}"
         }
       ],
       "fieldConfig": {
