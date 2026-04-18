@@ -42,7 +42,6 @@ celery_app.conf.update(
     # Hard guard so -P solo can't be pinned forever by a hung external I/O.
     task_soft_time_limit=180,
     task_time_limit=240,
-    worker_max_tasks_per_child=0,
     broker_connection_retry_on_startup=True,
     broker_connection_retry=True,
     broker_connection_max_retries=None,
@@ -149,3 +148,7 @@ def _on_task_postrun(task, state, **kwargs):
 
 
 # NOTE: worker/beat entrypoints are in src/scripts. Make sure BOT_TOKEN/REDIS envs are set.
+
+# Ensure the worker_shutdown handler in src.tasks._db is registered even when
+# this module is imported without the task modules being touched first.
+import src.tasks._db  # noqa: E402, F401

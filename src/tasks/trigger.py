@@ -3,12 +3,8 @@ from datetime import datetime, timezone
 
 from croniter import croniter
 
-from aiogram import Bot
-from aiogram.client.default import DefaultBotProperties
-
 from src.celery_app import celery_app
-from src.core.config import settings
-from src.tasks._db import celery_db, run_async
+from src.tasks._db import celery_db, get_worker_bot, run_async
 
 logger = logging.getLogger(__name__)
 
@@ -33,106 +29,93 @@ def process_pending_executions() -> None:
 
 async def _execute_action_async(execution_id: int) -> None:
     async with celery_db():
-        bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+        bot = get_worker_bot()
+        from src.dao.trigger_execution import TriggerExecutionDAO
+        from src.dao.trigger_rule import TriggerRuleDAO
+        from src.services.events.dispatcher import EventDispatcher
+
+        exec_obj = await TriggerExecutionDAO.claim_pending(execution_id)
+        if not exec_obj:
+            return
+
+        rule = await TriggerRuleDAO.get_by_id(exec_obj.rule_id)
+        if not rule:
+            await TriggerExecutionDAO.mark_failed(execution_id, "Rule not found")
+            return
+
         try:
-            from src.dao.trigger_execution import TriggerExecutionDAO
-            from src.dao.trigger_rule import TriggerRuleDAO
-            from src.services.events.dispatcher import EventDispatcher
-
-            exec_obj = await TriggerExecutionDAO.claim_pending(execution_id)
-            if not exec_obj:
-                return
-
-            rule = await TriggerRuleDAO.get_by_id(exec_obj.rule_id)
-            if not rule:
-                await TriggerExecutionDAO.mark_failed(execution_id, "Rule not found")
-                return
-
-            try:
-                await EventDispatcher.execute_action(
-                    rule=rule,
-                    recipient_id=exec_obj.recipient_id,
-                    context=exec_obj.context or {},
-                    bot=bot,
-                )
-                await TriggerExecutionDAO.mark_sent(execution_id)
-                logger.info(
-                    "Trigger execution %s completed: rule=%s user=%s",
-                    execution_id,
-                    exec_obj.rule_id,
-                    exec_obj.recipient_id,
-                )
-            except Exception as exc:
-                await TriggerExecutionDAO.mark_failed(execution_id, str(exc))
-                logger.exception("Failed trigger execution %s", execution_id)
-        finally:
-            await bot.session.close()
+            await EventDispatcher.execute_action(
+                rule=rule,
+                recipient_id=exec_obj.recipient_id,
+                context=exec_obj.context or {},
+                bot=bot,
+            )
+            await TriggerExecutionDAO.mark_sent(execution_id)
+            logger.info(
+                "Trigger execution %s completed: rule=%s user=%s",
+                execution_id,
+                exec_obj.rule_id,
+                exec_obj.recipient_id,
+            )
+        except Exception as exc:
+            await TriggerExecutionDAO.mark_failed(execution_id, str(exc))
+            logger.exception("Failed trigger execution %s", execution_id)
 
 
 async def _tick_periodic_async() -> None:
     async with celery_db():
-        bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-        try:
-            from src.dao.trigger_rule import TriggerRuleDAO
-            from src.models.trigger import TriggerType
-            from src.services.events.dispatcher import EventDispatcher
+        bot = get_worker_bot()
+        from src.dao.trigger_rule import TriggerRuleDAO
+        from src.models.trigger import TriggerType
+        from src.services.events.dispatcher import EventDispatcher
 
-            rules = await TriggerRuleDAO.get_active_by_trigger(
-                TriggerType.periodic_cron
-            )
-            now = datetime.now(timezone.utc)
+        rules = await TriggerRuleDAO.get_active_by_trigger(TriggerType.periodic_cron)
+        now = datetime.now(timezone.utc)
 
-            fired = 0
-            for rule in rules:
-                if _should_fire_now(rule, now):
-                    try:
-                        await EventDispatcher.fire_rule(
-                            rule,
-                            {"rule_id": rule.id},
-                            bot=bot,
-                        )
-                        fired += 1
-                    except Exception:
-                        logger.exception("Error firing periodic rule %s", rule.id)
+        fired = 0
+        for rule in rules:
+            if _should_fire_now(rule, now):
+                try:
+                    await EventDispatcher.fire_rule(
+                        rule,
+                        {"rule_id": rule.id},
+                        bot=bot,
+                    )
+                    fired += 1
+                except Exception:
+                    logger.exception("Error firing periodic rule %s", rule.id)
 
-            if fired:
-                logger.info("Periodic triggers: %d/%d fired", fired, len(rules))
-        finally:
-            await bot.session.close()
+        if fired:
+            logger.info("Periodic triggers: %d/%d fired", fired, len(rules))
 
 
 async def _process_pending_async() -> None:
     async with celery_db():
-        bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-        try:
-            from src.dao.trigger_execution import TriggerExecutionDAO
-            from src.dao.trigger_rule import TriggerRuleDAO
-            from src.services.events.dispatcher import EventDispatcher
+        bot = get_worker_bot()
+        from src.dao.trigger_execution import TriggerExecutionDAO
+        from src.dao.trigger_rule import TriggerRuleDAO
+        from src.services.events.dispatcher import EventDispatcher
 
-            pending = await TriggerExecutionDAO.claim_pending_batch()
-            if pending:
-                logger.info("Processing %d pending execution(s)", len(pending))
-            for execution in pending:
-                rule = await TriggerRuleDAO.get_by_id(execution.rule_id)
-                if not rule:
-                    await TriggerExecutionDAO.mark_failed(
-                        execution.id, "Rule not found"
-                    )
-                    continue
+        pending = await TriggerExecutionDAO.claim_pending_batch()
+        if pending:
+            logger.info("Processing %d pending execution(s)", len(pending))
+        for execution in pending:
+            rule = await TriggerRuleDAO.get_by_id(execution.rule_id)
+            if not rule:
+                await TriggerExecutionDAO.mark_failed(execution.id, "Rule not found")
+                continue
 
-                try:
-                    await EventDispatcher.execute_action(
-                        rule=rule,
-                        recipient_id=execution.recipient_id,
-                        context=execution.context or {},
-                        bot=bot,
-                    )
-                    await TriggerExecutionDAO.mark_sent(execution.id)
-                except Exception as exc:
-                    await TriggerExecutionDAO.mark_failed(execution.id, str(exc))
-                    logger.exception("Failed pending execution %s", execution.id)
-        finally:
-            await bot.session.close()
+            try:
+                await EventDispatcher.execute_action(
+                    rule=rule,
+                    recipient_id=execution.recipient_id,
+                    context=execution.context or {},
+                    bot=bot,
+                )
+                await TriggerExecutionDAO.mark_sent(execution.id)
+            except Exception as exc:
+                await TriggerExecutionDAO.mark_failed(execution.id, str(exc))
+                logger.exception("Failed pending execution %s", execution.id)
 
 
 def _should_fire_now(rule, now: datetime) -> bool:

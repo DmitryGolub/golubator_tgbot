@@ -3,18 +3,16 @@ from datetime import datetime
 from typing import Optional
 
 from aiogram import Bot
-from aiogram.client.default import DefaultBotProperties
 from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from src.celery_app import celery_app
-from src.core.config import settings
 from src.dao.meeting import MeetingDAO
 from src.models.meeting import Meeting
 from src.models.user import User
-from src.tasks._db import celery_db, run_async
+from src.tasks._db import celery_db, get_worker_bot, run_async
 from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
@@ -93,31 +91,28 @@ async def _notify_created_inner(meeting_id: int) -> None:
         logger.warning("Meeting %s not found for notification", meeting_id)
         return
 
-    bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-    try:
-        creator, others = _split_participants(meeting)
-        when = _format_dt(meeting.scheduled_at)
-        creator_line = (
-            f"Организатор: <b>{e(creator.name)}</b> @{e(creator.username)}"
-            if creator
-            else "Организатор не указан"
+    bot = get_worker_bot()
+    creator, others = _split_participants(meeting)
+    when = _format_dt(meeting.scheduled_at)
+    creator_line = (
+        f"Организатор: <b>{e(creator.name)}</b> @{e(creator.username)}"
+        if creator
+        else "Организатор не указан"
+    )
+    text = (
+        "<b>Вам назначен созвон.</b>\n"
+        f"{creator_line}\n"
+        f"Когда: {when}\n"
+        f"Описание: {e(meeting.description) or '—'}\n"
+        f"Ссылка: {e(meeting.meeting_link) or '—'}"
+    )
+    for other in others:
+        await _send_to_user(bot, other.telegram_id, text)
+        logger.info(
+            "Meeting %s: created notification sent to user %s",
+            meeting_id,
+            other.telegram_id,
         )
-        text = (
-            "<b>Вам назначен созвон.</b>\n"
-            f"{creator_line}\n"
-            f"Когда: {when}\n"
-            f"Описание: {e(meeting.description) or '—'}\n"
-            f"Ссылка: {e(meeting.meeting_link) or '—'}"
-        )
-        for other in others:
-            await _send_to_user(bot, other.telegram_id, text)
-            logger.info(
-                "Meeting %s: created notification sent to user %s",
-                meeting_id,
-                other.telegram_id,
-            )
-    finally:
-        await bot.session.close()
 
 
 async def _notify_reminder_async(meeting_id: int) -> None:
@@ -126,34 +121,31 @@ async def _notify_reminder_async(meeting_id: int) -> None:
         if not meeting:
             return
 
-        bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-        try:
-            when = _format_dt(meeting.scheduled_at)
-            link = e(meeting.meeting_link) or "—"
-            for p in meeting.participants:
-                partners = [
-                    other
-                    for other in meeting.participants
-                    if other.telegram_id != p.telegram_id
-                ]
-                if partners:
-                    partners_line = ", ".join(
-                        f"<b>{e(other.name)}</b> @{e(other.username)}"
-                        if other.username
-                        else f"<b>{e(other.name)}</b>"
-                        for other in partners
-                    )
-                else:
-                    partners_line = "—"
-                text = (
-                    "<b>Напоминание о созвоне через ~5 минут.</b>\n"
-                    f"С кем: {partners_line}\n"
-                    f"Когда: {when}\n"
-                    f"Ссылка: {link}"
+        bot = get_worker_bot()
+        when = _format_dt(meeting.scheduled_at)
+        link = e(meeting.meeting_link) or "—"
+        for p in meeting.participants:
+            partners = [
+                other
+                for other in meeting.participants
+                if other.telegram_id != p.telegram_id
+            ]
+            if partners:
+                partners_line = ", ".join(
+                    f"<b>{e(other.name)}</b> @{e(other.username)}"
+                    if other.username
+                    else f"<b>{e(other.name)}</b>"
+                    for other in partners
                 )
-                await _send_to_user(bot, p.telegram_id, text)
-        finally:
-            await bot.session.close()
+            else:
+                partners_line = "—"
+            text = (
+                "<b>Напоминание о созвоне через ~5 минут.</b>\n"
+                f"С кем: {partners_line}\n"
+                f"Когда: {when}\n"
+                f"Ссылка: {link}"
+            )
+            await _send_to_user(bot, p.telegram_id, text)
 
 
 @celery_app.task(name="meeting.notify_created")

@@ -21,9 +21,10 @@ _RATE_PERIOD = 1.0
 class _RateLimiter:
     """Token-bucket rate limiter shared across all repos using the same token.
 
-    Asyncio primitives (Lock) are bound to a specific event loop.
-    In Celery (-P solo) each task calls asyncio.run() which creates a new loop,
-    so we track the loop id and re-create primitives when the loop changes.
+    Asyncio primitives (Lock) are bound to a specific event loop. The worker
+    runs on a single persistent loop, so primitives get created once on first
+    use; the loop-id guard still recreates them if the limiter is reused from
+    a different loop (e.g. in the bot process).
     """
 
     def __init__(self, rate: int = _RATE_LIMIT, period: float = _RATE_PERIOD):
@@ -86,10 +87,13 @@ class NotionClient:
         self._users_cache: dict[str, str] | None = None
 
     async def _ensure_client(self) -> AsyncClient:
-        """Recreate AsyncClient when the event loop changes (Celery -P solo).
+        """Create the AsyncClient lazily and recreate it if the event loop
+        ever changes underneath us.
 
-        The previous client is bound to a dead loop, so we close it first to
-        release httpx TCP connections instead of leaking them until GC.
+        Normally the worker holds a single long-lived loop (see
+        src/tasks/_db.py) and this branch runs exactly once per process. The
+        loop-id guard remains as a defensive measure for any caller that
+        happens to invoke the client from a different loop.
         """
         current_loop_id = id(asyncio.get_running_loop())
         if self._client_loop_id != current_loop_id:

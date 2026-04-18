@@ -62,7 +62,7 @@ class TestSearchBiweeklyMentor:
         with (
             patch("src.tasks.weekly_survey.datetime") as mock_dt,
             patch("src.tasks.weekly_survey.celery_db") as mock_db,
-            patch("src.tasks.weekly_survey.Bot") as MockBot,
+            patch("src.tasks.weekly_survey.get_worker_bot") as MockBot,
         ):
             mock_dt.now.return_value = EVEN_WEEK
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
@@ -97,7 +97,7 @@ class TestSearchBiweeklyMentor:
         with (
             patch("src.tasks.weekly_survey.datetime") as mock_dt,
             patch("src.tasks.weekly_survey.celery_db") as mock_db,
-            patch("src.tasks.weekly_survey.Bot") as MockBot,
+            patch("src.tasks.weekly_survey.get_worker_bot") as MockBot,
         ):
             mock_dt.now.return_value = EVEN_WEEK
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
@@ -152,7 +152,7 @@ class TestSearchBiweeklyMentor:
         with (
             patch("src.tasks.weekly_survey.datetime") as mock_dt,
             patch("src.tasks.weekly_survey.celery_db") as mock_db,
-            patch("src.tasks.weekly_survey.Bot") as MockBot,
+            patch("src.tasks.weekly_survey.get_worker_bot") as MockBot,
         ):
             mock_dt.now.return_value = EVEN_WEEK
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
@@ -207,7 +207,7 @@ class TestSearchBiweeklyMentor:
         with (
             patch("src.tasks.weekly_survey.datetime") as mock_dt,
             patch("src.tasks.weekly_survey.celery_db") as mock_db,
-            patch("src.tasks.weekly_survey.Bot") as MockBot,
+            patch("src.tasks.weekly_survey.get_worker_bot") as MockBot,
         ):
             mock_dt.now.return_value = EVEN_WEEK
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
@@ -247,7 +247,7 @@ class TestSearchBiweeklyMentor:
         with (
             patch("src.tasks.weekly_survey.datetime") as mock_dt,
             patch("src.tasks.weekly_survey.celery_db") as mock_db,
-            patch("src.tasks.weekly_survey.Bot") as MockBot,
+            patch("src.tasks.weekly_survey.get_worker_bot") as MockBot,
         ):
             mock_dt.now.return_value = EVEN_WEEK
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)

@@ -1,12 +1,9 @@
 import logging
 
-from aiogram import Bot
-from aiogram.client.default import DefaultBotProperties
 from aiogram.exceptions import TelegramForbiddenError
 
 from src.celery_app import celery_app
-from src.core.config import settings
-from src.tasks._db import celery_db, run_async
+from src.tasks._db import celery_db, get_worker_bot, run_async
 from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
@@ -80,77 +77,74 @@ def _format_alert_message(alert) -> str:
 
 async def _process_survey_alerts_async() -> None:
     async with celery_db():
-        bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-        try:
-            from src.dao.cohort import CohortDAO
-            from src.dao.survey_alert import SurveyAlertDAO
-            from src.dao.user import UserDAO
+        bot = get_worker_bot()
+        from src.dao.cohort import CohortDAO
+        from src.dao.survey_alert import SurveyAlertDAO
+        from src.dao.user import UserDAO
 
-            alerts = await SurveyAlertDAO.get_unnotified()
-            if not alerts:
-                return
+        alerts = await SurveyAlertDAO.get_unnotified()
+        if not alerts:
+            return
 
-            logger.info("Processing %d unnotified survey alerts", len(alerts))
-            sent = 0
+        logger.info("Processing %d unnotified survey alerts", len(alerts))
+        sent = 0
 
-            for alert in alerts:
-                try:
-                    # Determine student stage -> role
-                    role_name = None
-                    student_id = alert.student_id
-                    if student_id:
-                        statuses = await CohortDAO.get_user_cohort_values_by_type(
-                            student_id, "Status"
+        for alert in alerts:
+            try:
+                # Determine student stage -> role
+                role_name = None
+                student_id = alert.student_id
+                if student_id:
+                    statuses = await CohortDAO.get_user_cohort_values_by_type(
+                        student_id, "Status"
+                    )
+                    for status in statuses:
+                        role_name = STAGE_ROLE_MAP.get(status)
+                        if role_name:
+                            break
+
+                if not role_name:
+                    role_name = "education_lead"
+
+                recipients = await UserDAO.get_all(role_name=role_name)
+                message = _format_alert_message(alert)
+
+                send_errors = 0
+                for user in recipients:
+                    if user.telegram_id < 0:
+                        continue
+                    try:
+                        await bot.send_message(
+                            user.telegram_id,
+                            message,
+                            parse_mode="HTML",
                         )
-                        for status in statuses:
-                            role_name = STAGE_ROLE_MAP.get(status)
-                            if role_name:
-                                break
-
-                    if not role_name:
-                        role_name = "education_lead"
-
-                    recipients = await UserDAO.get_all(role_name=role_name)
-                    message = _format_alert_message(alert)
-
-                    send_errors = 0
-                    for user in recipients:
-                        if user.telegram_id < 0:
-                            continue
-                        try:
-                            await bot.send_message(
-                                user.telegram_id,
-                                message,
-                                parse_mode="HTML",
-                            )
-                            sent += 1
-                        except TelegramForbiddenError:
-                            logger.warning(
-                                "User %s blocked the bot, skipping alert",
-                                user.telegram_id,
-                            )
-                        except Exception:
-                            logger.exception(
-                                "Failed to send alert %d to user %s",
-                                alert.id,
-                                user.telegram_id,
-                            )
-                            send_errors += 1
-
-                    if send_errors == 0:
-                        await SurveyAlertDAO.mark_notified(alert.id)
-                    else:
+                        sent += 1
+                    except TelegramForbiddenError:
                         logger.warning(
-                            "Alert %d: %d send failures, NOT marking as notified",
-                            alert.id,
-                            send_errors,
+                            "User %s blocked the bot, skipping alert",
+                            user.telegram_id,
                         )
-                except Exception:
-                    logger.exception("Failed to process alert %d, skipping", alert.id)
+                    except Exception:
+                        logger.exception(
+                            "Failed to send alert %d to user %s",
+                            alert.id,
+                            user.telegram_id,
+                        )
+                        send_errors += 1
 
-            logger.info("Survey alerts processed: sent=%d messages", sent)
-        finally:
-            await bot.session.close()
+                if send_errors == 0:
+                    await SurveyAlertDAO.mark_notified(alert.id)
+                else:
+                    logger.warning(
+                        "Alert %d: %d send failures, NOT marking as notified",
+                        alert.id,
+                        send_errors,
+                    )
+            except Exception:
+                logger.exception("Failed to process alert %d, skipping", alert.id)
+
+        logger.info("Survey alerts processed: sent=%d messages", sent)
 
 
 @celery_app.task(name="surveys.process_alerts")

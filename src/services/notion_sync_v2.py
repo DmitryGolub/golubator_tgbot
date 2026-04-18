@@ -1499,29 +1499,38 @@ def get_sync_service() -> NotionSyncServiceV2 | None:
     return _sync_service
 
 
+_worker_sync_service: NotionSyncServiceV2 | None = None
+
+
 @asynccontextmanager
 async def sync_service_scope() -> AsyncIterator[NotionSyncServiceV2 | None]:
-    """Fresh NotionSyncServiceV2 per async scope, for Celery tasks.
+    """Yield a shared NotionSyncServiceV2 bound to the Celery worker's loop.
 
-    Each Celery task runs in a new event loop (src/tasks/_db.py:run_async),
-    so httpx clients created by a shared singleton would leak into a dead
-    loop on the next task. This scope builds fresh repos and explicitly
-    closes their clients in the same loop that created them.
+    With the persistent worker event loop (src/tasks/_db.py), httpx clients
+    are safe to keep alive for the worker's lifetime. Repos are built lazily
+    on first use and closed once at worker shutdown via close_notion_clients().
     """
-    mentor_repo, mentee_repo, event_repo = _build_repos()
-    if not any((mentor_repo, mentee_repo, event_repo)):
-        yield None
+    global _worker_sync_service
+    if _worker_sync_service is None:
+        mentor_repo, mentee_repo, event_repo = _build_repos()
+        if not any((mentor_repo, mentee_repo, event_repo)):
+            yield None
+            return
+        _worker_sync_service = NotionSyncServiceV2(mentor_repo, mentee_repo, event_repo)
+    yield _worker_sync_service
+
+
+async def close_notion_clients() -> None:
+    """Close cached Notion HTTP clients. Called from worker shutdown cleanup."""
+    global _worker_sync_service
+    service = _worker_sync_service
+    if service is None:
         return
-    service = NotionSyncServiceV2(mentor_repo, mentee_repo, event_repo)
-    try:
-        yield service
-    finally:
-        for repo in (mentor_repo, mentee_repo, event_repo):
-            if repo is not None:
-                try:
-                    await repo._client.close()
-                except Exception:
-                    logger.warning(
-                        "Failed to close Notion client in sync_service_scope",
-                        exc_info=True,
-                    )
+    for repo in (service.mentor_repo, service.mentee_repo, service.event_repo):
+        if repo is None:
+            continue
+        try:
+            await repo._client.close()
+        except Exception:
+            logger.warning("Failed to close cached Notion client", exc_info=True)
+    _worker_sync_service = None
