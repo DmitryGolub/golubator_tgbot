@@ -203,6 +203,7 @@ services:
     restart: unless-stopped
 
   prometheus:
+    profiles: [monitoring]
     image: prom/prometheus:v2.55.1
     container_name: tg_bot.prometheus
     cpus: 0.5
@@ -229,6 +230,7 @@ services:
     restart: unless-stopped
 
   blackbox_exporter:
+    profiles: [monitoring]
     image: prom/blackbox-exporter:v0.25.0
     container_name: tg_bot.blackbox_exporter
     cpus: 0.2
@@ -243,6 +245,7 @@ services:
     restart: unless-stopped
 
   cadvisor:
+    profiles: [monitoring]
     image: gcr.io/cadvisor/cadvisor:v0.55.1
     container_name: tg_bot.cadvisor
     privileged: true
