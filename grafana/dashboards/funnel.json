@@ -123,7 +123,7 @@
       },
       "targets": [
         {
-          "rawSql": "WITH RECURSIVE trans_pairs AS (\n  SELECT DISTINCT old_value, new_value\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND created_at BETWEEN $__timeFrom() AND $__timeTo()\n    AND old_value IS NOT NULL\n    AND LOWER(old_value) NOT IN ('cancel', 'archive', 'hold')\n    AND LOWER(new_value) NOT IN ('cancel', 'archive', 'hold')\n),\ndominant_edges AS (\n  SELECT\n    CASE WHEN fwd.old_value < fwd.new_value OR bwd.old_value IS NULL\n      THEN fwd.old_value ELSE fwd.new_value END AS src,\n    CASE WHEN fwd.old_value < fwd.new_value OR bwd.old_value IS NULL\n      THEN fwd.new_value ELSE fwd.old_value END AS dst\n  FROM trans_pairs fwd\n  LEFT JOIN trans_pairs bwd\n    ON bwd.old_value = fwd.new_value AND bwd.new_value = fwd.old_value\n  WHERE fwd.old_value < fwd.new_value OR bwd.old_value IS NULL\n),\nroot AS (\n  SELECT src AS stage\n  FROM dominant_edges\n  GROUP BY src\n  ORDER BY\n    (SELECT COUNT(*) FROM dominant_edges de2 WHERE de2.dst = dominant_edges.src) ASC,\n    COUNT(*) DESC\n  LIMIT 1\n),\nbfs(stage, depth) AS (\n  SELECT stage, 0 FROM root\n  UNION\n  SELECT e.dst, b.depth + 1\n  FROM bfs b\n  JOIN dominant_edges e ON e.src = b.stage\n  WHERE b.depth < 20\n),\ndepths AS (\n  SELECT stage, MIN(depth) AS depth FROM bfs GROUP BY stage\n),\npositions AS (\n  SELECT\n    stage,\n    depth * 250.0 AS x,\n    (\n      ROW_NUMBER() OVER (PARTITION BY depth ORDER BY stage) - 1\n      - (COUNT(*) OVER (PARTITION BY depth) - 1) / 2.0\n    ) * 120.0 AS y\n  FROM depths\n),\norphans AS (\n  SELECT\n    c.value AS stage,\n    (COALESCE((SELECT MAX(depth) FROM depths), 0) + ROW_NUMBER() OVER (ORDER BY c.value)) * 250.0 AS x,\n    0.0 AS y\n  FROM integrations.cohorts c\n  WHERE c.type = '$cohort_type'\n    AND LOWER(c.value) NOT IN ('cancel', 'archive', 'hold')\n    AND c.value NOT IN (SELECT stage FROM depths)\n),\nall_positions AS (\n  SELECT stage, x, y FROM positions\n  UNION ALL\n  SELECT stage, x, y FROM orphans\n)\nSELECT\n  c.value AS id,\n  c.value AS title,\n  COUNT(DISTINCT uc.user_telegram_id)::bigint AS mainStat,\n  COALESCE(ap.x, 0.0)::float AS x,\n  COALESCE(ap.y, 0.0)::float AS y\nFROM integrations.cohorts c\nJOIN integrations.user_cohorts uc ON uc.cohort_id = c.id\nLEFT JOIN all_positions ap ON ap.stage = c.value\nWHERE c.type = '$cohort_type'\n  AND LOWER(c.value) NOT IN ('cancel', 'archive', 'hold')\nGROUP BY c.value, ap.x, ap.y",
+          "rawSql": "SELECT\n  c.value AS id,\n  c.value AS title,\n  COUNT(DISTINCT uc.user_telegram_id)::bigint AS mainStat\nFROM integrations.cohorts c\nJOIN integrations.user_cohorts uc ON uc.cohort_id = c.id\nWHERE c.type = '$cohort_type'\n  AND LOWER(c.value) NOT IN ('cancel', 'archive', 'hold')\nGROUP BY c.value",
           "format": "table",
           "refId": "nodes",
           "datasource": {
@@ -132,7 +132,7 @@
           }
         },
         {
-          "rawSql": "WITH trans AS (\n  SELECT old_value, new_value, COUNT(*) AS cnt\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND created_at BETWEEN $__timeFrom() AND $__timeTo()\n    AND old_value IS NOT NULL\n    AND LOWER(old_value) NOT IN ('cancel', 'archive', 'hold')\n    AND LOWER(new_value) NOT IN ('cancel', 'archive', 'hold')\n  GROUP BY old_value, new_value\n),\ntotals AS (\n  SELECT old_value, SUM(cnt) AS total FROM trans GROUP BY old_value\n)\nSELECT\n  LEAST(fwd.old_value, fwd.new_value) || '->' || GREATEST(fwd.old_value, fwd.new_value) AS id,\n  CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n    THEN fwd.old_value ELSE fwd.new_value END AS source,\n  CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n    THEN fwd.new_value ELSE fwd.old_value END AS target,\n  GREATEST(COALESCE(fwd.cnt,0), COALESCE(bwd.cnt,0))::bigint AS mainStat,\n  ROUND(\n    GREATEST(COALESCE(fwd.cnt,0), COALESCE(bwd.cnt,0))::numeric\n    / NULLIF(\n        CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n          THEN tf.total ELSE tb.total END,\n        0\n      ) * 100, 1\n  ) AS secondaryStat\nFROM trans fwd\nLEFT JOIN trans bwd ON bwd.old_value = fwd.new_value AND bwd.new_value = fwd.old_value\nLEFT JOIN totals tf ON tf.old_value = fwd.old_value\nLEFT JOIN totals tb ON tb.old_value = fwd.new_value\nWHERE fwd.old_value < fwd.new_value OR bwd.old_value IS NULL",
+          "rawSql": "WITH trans AS (\n  SELECT old_value, new_value, COUNT(*) AS cnt\n  FROM integrations.stage_transitions\n  WHERE cohort_type = '$cohort_type'\n    AND created_at BETWEEN $__timeFrom() AND $__timeTo()\n    AND old_value IS NOT NULL\n    AND LOWER(old_value) NOT IN ('cancel', 'archive', 'hold')\n    AND LOWER(new_value) NOT IN ('cancel', 'archive', 'hold')\n  GROUP BY old_value, new_value\n),\ntotals AS (\n  SELECT old_value, SUM(cnt) AS total FROM trans GROUP BY old_value\n),\nreal_edges AS (\n  SELECT\n    LEAST(fwd.old_value, fwd.new_value) || '->' || GREATEST(fwd.old_value, fwd.new_value) AS id,\n    CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n      THEN fwd.old_value ELSE fwd.new_value END AS source,\n    CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n      THEN fwd.new_value ELSE fwd.old_value END AS target,\n    GREATEST(COALESCE(fwd.cnt,0), COALESCE(bwd.cnt,0))::bigint AS mainStat,\n    ROUND(\n      GREATEST(COALESCE(fwd.cnt,0), COALESCE(bwd.cnt,0))::numeric\n      / NULLIF(\n          CASE WHEN COALESCE(fwd.cnt,0) >= COALESCE(bwd.cnt,0)\n            THEN tf.total ELSE tb.total END,\n          0\n        ) * 100, 1\n    ) AS secondaryStat\n  FROM trans fwd\n  LEFT JOIN trans bwd ON bwd.old_value = fwd.new_value AND bwd.new_value = fwd.old_value\n  LEFT JOIN totals tf ON tf.old_value = fwd.old_value\n  LEFT JOIN totals tb ON tb.old_value = fwd.new_value\n  WHERE fwd.old_value < fwd.new_value OR bwd.old_value IS NULL\n),\nordered_stages AS (\n  SELECT c.value AS stage,\n         ROW_NUMBER() OVER (ORDER BY c.value) AS rn\n  FROM integrations.cohorts c\n  WHERE c.type = '$cohort_type'\n    AND LOWER(c.value) NOT IN ('cancel', 'archive', 'hold')\n),\nsynthetic_chain AS (\n  SELECT\n    'skeleton:' || a.stage || '->' || b.stage AS id,\n    a.stage AS source,\n    b.stage AS target,\n    NULL::bigint AS mainStat,\n    NULL::numeric AS secondaryStat\n  FROM ordered_stages a\n  JOIN ordered_stages b ON b.rn = a.rn + 1\n  WHERE (SELECT COUNT(*) FROM real_edges) < 2\n)\nSELECT id, source, target, mainStat, secondaryStat FROM real_edges\nUNION ALL\nSELECT id, source, target, mainStat, secondaryStat FROM synthetic_chain",
           "format": "table",
           "refId": "edges",
           "datasource": {
@@ -179,32 +179,11 @@
                 "value": "%"
               }
             ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "x"
-            },
-            "properties": [
-              {
-                "id": "custom.hidden",
-                "value": true
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "y"
-            },
-            "properties": [
-              {
-                "id": "custom.hidden",
-                "value": true
-              }
-            ]
           }
         ]
+      },
+      "options": {
+        "layoutAlgorithm": "layered"
       },
       "description": "Число в узле — сколько человек сейчас на стадии.\nВерхнее число на ребре — количество переходов между стадиями за период.\nНижнее число на ребре — % от всех ушедших с исходной стадии."
     },
