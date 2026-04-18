@@ -98,8 +98,18 @@
         "defaults": {},
         "overrides": [
           {
+            "matcher": { "id": "byName", "options": "mainStat" },
+            "properties": [
+              { "id": "decimals", "value": 0 },
+              { "id": "displayName", "value": "переходов" }
+            ]
+          },
+          {
             "matcher": { "id": "byName", "options": "secondaryStat" },
-            "properties": [{ "id": "unit", "value": "percent" }]
+            "properties": [
+              { "id": "unit", "value": "percent" },
+              { "id": "decimals", "value": 1 }
+            ]
           }
         ]
       }
