@@ -1,10 +1,27 @@
+import os
+
 from src.celery_app import celery_app
+from src.core.celery_beat_scheduler import touch_heartbeat
+from src.core.celery_healthcheck import start_celery_health_server
 
 
 def main() -> None:
     # BOT_TOKEN / REDIS_* must be set in environment
     # use default scheduler but store state in container tmpfs so files aren't persisted
-    celery_app.start(argv=["beat", "-l", "info", "-s", "/tmp/celerybeat-schedule"])
+    port = int(os.environ.get("CELERY_HEALTH_PORT", "8082"))
+    touch_heartbeat()
+    start_celery_health_server(port, mode="beat")
+    celery_app.start(
+        argv=[
+            "beat",
+            "-l",
+            "info",
+            "-s",
+            "/tmp/celerybeat-schedule",
+            "-S",
+            "src.core.celery_beat_scheduler:HeartbeatPersistentScheduler",
+        ]
+    )
 
 
 if __name__ == "__main__":

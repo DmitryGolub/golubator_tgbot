@@ -1,0 +1,81 @@
+{
+  "uid": "mentoring-mentors",
+  "title": "Менторы",
+  "tags": ["mentoring"],
+  "timezone": "browser",
+  "refresh": "5m",
+  "time": { "from": "now-30d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Менти на ментора",
+      "type": "barchart",
+      "gridPos": { "h": 12, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  COALESCE(u.name, u.username) AS mentor,\n  COUNT(me.id) AS mentees\nFROM iam.mentors mt\nJOIN iam.users u ON u.telegram_id = mt.telegram_id\nLEFT JOIN iam.mentees me ON me.mentor_id = mt.id\nGROUP BY u.name, u.username\nORDER BY mentees DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "xTickLabelRotation": -45,
+        "xTickLabelMaxLength": 20
+      }
+    },
+    {
+      "id": 2,
+      "title": "Созвонов на ментора",
+      "type": "barchart",
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  COALESCE(u.name, u.username) AS mentor,\n  COUNT(m.id) AS meetings\nFROM meetings.meetings m\nJOIN iam.users u ON u.telegram_id = m.mentor_telegram_id\nWHERE m.mentor_telegram_id IS NOT NULL\n  AND m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY u.name, u.username\nORDER BY meetings DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "xTickLabelRotation": -45,
+        "xTickLabelMaxLength": 20
+      }
+    },
+    {
+      "id": 3,
+      "title": "Средние оценки по менторам",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 10 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  COALESCE(u.name, u.username) AS \"Ментор\",\n  ROUND(AVG(a.value_int)::numeric, 2) AS \"Средняя оценка\",\n  COUNT(DISTINCT ss.id) AS \"Опросов\"\nFROM surveys.survey_sessions ss\nJOIN surveys.survey_answers a ON a.session_id = ss.id\nJOIN meetings.meetings m ON m.id = ss.context_id::int\nJOIN iam.users u ON u.telegram_id = m.mentor_telegram_id\nWHERE a.value_int IS NOT NULL\n  AND ss.status = 'completed'\n  AND ss.context_type = 'meeting'\nGROUP BY u.name, u.username\nORDER BY \"Средняя оценка\" DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Активность (созвонов в неделю)",
+      "type": "heatmap",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 10 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  date_trunc('week', m.scheduled_at) AS time,\n  COALESCE(u.name, u.username) AS metric,\n  COUNT(*) AS value\nFROM meetings.meetings m\nJOIN iam.users u ON u.telegram_id = m.mentor_telegram_id\nWHERE m.mentor_telegram_id IS NOT NULL\n  AND m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1, 2\nORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "calculate": false,
+        "color": {
+          "scheme": "Oranges"
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39
+}

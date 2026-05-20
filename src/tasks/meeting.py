@@ -1,23 +1,19 @@
-import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from aiogram import Bot
-from aiogram.client.default import DefaultBotProperties
 from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
-from src.bot.keyboards.survey import survey_start_keyboard
 from src.celery_app import celery_app
-from src.core.config import settings
+from src.dao.meeting import MeetingDAO
 from src.models.meeting import Meeting
-from src.models.user import Role, User
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from sqlalchemy import select
-from sqlalchemy.orm import joinedload
+from src.models.user import User
+from src.tasks._db import celery_db, get_worker_bot, run_async
+from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
 
@@ -25,20 +21,28 @@ logger = logging.getLogger(__name__)
 def _format_dt(dt: Optional[datetime]) -> str:
     if not dt:
         return "—"
-    if dt.tzinfo:
-        return dt.astimezone(dt.tzinfo).strftime("%d.%m.%Y %H:%M MSK")
-    return dt.strftime("%d.%m.%Y %H:%M MSK")
+    from src.utils.tz import MSK
+
+    return dt.astimezone(MSK).strftime("%d.%m.%Y %H:%M MSK")
 
 
-def _split_participants(meeting: Meeting) -> tuple[Optional[User], Optional[User]]:
-    mentor = next((p for p in meeting.participants if p.role == Role.mentor), None)
-    student = next((p for p in meeting.participants if p.role == Role.student), None)
-    if not student and mentor:
-        student = next(
-            (p for p in meeting.participants if p.telegram_id != mentor.telegram_id),
-            None,
-        )
-    return mentor, student
+def _split_participants(
+    meeting: Meeting,
+) -> tuple[Optional[User], list[User]]:
+    creator = next(
+        (
+            p
+            for p in meeting.participants
+            if p.telegram_id == meeting.mentor_telegram_id
+        ),
+        None,
+    )
+    others = [
+        p
+        for p in meeting.participants
+        if not creator or p.telegram_id != creator.telegram_id
+    ]
+    return creator, others
 
 
 def _survey_notification_text(call_id: int) -> str:
@@ -51,156 +55,181 @@ def _survey_notification_text(call_id: int) -> str:
 
 
 async def _send_to_user(
+    bot: Bot,
     user_id: int,
     text: str,
     *,
     reply_markup: InlineKeyboardMarkup | None = None,
 ) -> None:
-    bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-    try:
-        await bot.send_message(user_id, text, reply_markup=reply_markup)
-    finally:
-        await bot.session.close()
-
-
-async def _send_to_student(
-    student: Optional[User],
-    text: str,
-    *,
-    reply_markup: InlineKeyboardMarkup | None = None,
-) -> None:
-    if not student:
-        return
-    await _send_to_user(student.telegram_id, text, reply_markup=reply_markup)
+    await bot.send_message(user_id, text, reply_markup=reply_markup)
 
 
 async def _load_meeting(meeting_id: int) -> Optional[Meeting]:
-    engine = create_async_engine(settings.DATABASE_URL)
-    Session = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        async with Session() as session:
-            query = (
-                select(Meeting)
-                .where(Meeting.id == meeting_id)
-                .options(joinedload(Meeting.participants))
+    from src.core.database import async_session_maker
+
+    async with async_session_maker() as session:
+        query = (
+            select(Meeting)
+            .where(Meeting.id == meeting_id)
+            .options(
+                joinedload(Meeting.participants),
             )
-            res = await session.execute(query)
-            res = res.unique()
-            return res.scalar_one_or_none()
-    finally:
-        await engine.dispose()
+        )
+        res = await session.execute(query)
+        res = res.unique()
+        return res.scalar_one_or_none()
 
 
 async def _notify_created_async(meeting_id: int) -> None:
+    async with celery_db():
+        await _notify_created_inner(meeting_id)
+
+
+async def _notify_created_inner(meeting_id: int) -> None:
     meeting = await _load_meeting(meeting_id)
     if not meeting:
+        logger.warning("Meeting %s not found for notification", meeting_id)
         return
 
-    mentor, student = _split_participants(meeting)
+    bot = get_worker_bot()
+    creator, others = _split_participants(meeting)
     when = _format_dt(meeting.scheduled_at)
-    mentor_line = (
-        f"Ментор: <b>{mentor.name}</b> @{mentor.username}"
-        if mentor
-        else "Ментор не указан"
+    creator_line = (
+        f"Организатор: <b>{e(creator.name)}</b> @{e(creator.username)}"
+        if creator
+        else "Организатор не указан"
     )
     text = (
         "<b>Вам назначен созвон.</b>\n"
-        f"{mentor_line}\n"
+        f"{creator_line}\n"
         f"Когда: {when}\n"
-        f"Описание: {meeting.description or '—'}\n"
-        f"Ссылка: {meeting.meeting_link or '—'}"
+        f"Описание: {e(meeting.description) or '—'}\n"
+        f"Ссылка: {e(meeting.meeting_link) or '—'}"
     )
-    await _send_to_student(student, text)
+    for other in others:
+        await _send_to_user(bot, other.telegram_id, text)
+        logger.info(
+            "Meeting %s: created notification sent to user %s",
+            meeting_id,
+            other.telegram_id,
+        )
 
 
 async def _notify_reminder_async(meeting_id: int) -> None:
-    meeting = await _load_meeting(meeting_id)
-    if not meeting:
-        return
+    async with celery_db():
+        meeting = await _load_meeting(meeting_id)
+        if not meeting:
+            return
 
-    _, student = _split_participants(meeting)
-    when = _format_dt(meeting.scheduled_at)
-    text = (
-        "<b>Напоминание о созвоне через ~5 минут.</b>\n"
-        f"Когда: {when}\n"
-        f"Ссылка: {meeting.meeting_link or '—'}"
-    )
-    await _send_to_student(student, text)
-
-
-async def _complete_meeting_async(meeting_id: int) -> bool:
-    now = datetime.now(timezone.utc)
-    engine = create_async_engine(settings.DATABASE_URL)
-    Session = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        async with Session() as session:
-            query = select(Meeting).where(Meeting.id == meeting_id)
-            result = await session.execute(query)
-            meeting = result.scalar_one_or_none()
-            if not meeting or meeting.completed_at is not None:
-                return
-
-            meeting.completed_at = datetime.now(timezone.utc)
-            await session.commit()
-            logger.info("Completed meeting %s via scheduled task", meeting_id)
-    finally:
-        await engine.dispose()
-
-
-async def _cleanup_stale_async() -> None:
-    cutoff = datetime.now(timezone.utc)
-    engine = create_async_engine(settings.DATABASE_URL)
-    Session = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        async with Session() as session:
-            query = (
-                select(Meeting)
-                .where(
-                    Meeting.scheduled_at <= cutoff,
-                    Meeting.completed_at.is_(None),
+        bot = get_worker_bot()
+        when = _format_dt(meeting.scheduled_at)
+        link = e(meeting.meeting_link) or "—"
+        for p in meeting.participants:
+            partners = [
+                other
+                for other in meeting.participants
+                if other.telegram_id != p.telegram_id
+            ]
+            if partners:
+                partners_line = ", ".join(
+                    f"<b>{e(other.name)}</b> @{e(other.username)}"
+                    if other.username
+                    else f"<b>{e(other.name)}</b>"
+                    for other in partners
                 )
+            else:
+                partners_line = "—"
+            text = (
+                "<b>Напоминание о созвоне через ~5 минут.</b>\n"
+                f"С кем: {partners_line}\n"
+                f"Когда: {when}\n"
+                f"Ссылка: {link}"
             )
-            result = await session.execute(query)
-            meetings = result.scalars().all()
-
-            for meeting in meetings:
-                meeting.completed_at = cutoff
-
-            if meetings:
-                await session.commit()
-            logger.info("Cleanup stale meetings: cutoff=%s, completed=%s", cutoff, len(meetings))
-    finally:
-        await engine.dispose()
-
-    for student_id, call_id in survey_notifications:
-        await _send_to_user(
-            student_id,
-            _survey_notification_text(call_id),
-            reply_markup=survey_start_keyboard(call_id),
-        )
+            await _send_to_user(bot, p.telegram_id, text)
 
 
 @celery_app.task(name="meeting.notify_created")
 def notify_meeting_created(meeting_id: int) -> None:
-    asyncio.run(_notify_created_async(meeting_id))
+    try:
+        run_async(_notify_created_async(meeting_id))
+    except Exception:
+        logger.exception("notify_meeting_created failed for meeting %s", meeting_id)
+        raise
 
 
 @celery_app.task(name="meeting.notify_reminder")
 def notify_meeting_reminder(meeting_id: int) -> None:
-    asyncio.run(_notify_reminder_async(meeting_id))
+    try:
+        run_async(_notify_reminder_async(meeting_id))
+    except Exception:
+        logger.exception("notify_meeting_reminder failed for meeting %s", meeting_id)
+        raise
 
 
-@celery_app.task(name="meeting.complete")
-def complete_meeting(meeting_id: int) -> None:
-    asyncio.run(_complete_meeting_async(meeting_id))
+async def _archive_notion_page_async(notion_page_id: str) -> None:
+    from src.services.notion_sync_v2 import sync_service_scope
+
+    async with sync_service_scope() as sync:
+        if sync is None or sync.event_repo is None:
+            logger.warning(
+                "No sync service available to archive page %s", notion_page_id
+            )
+            return
+        async with celery_db():
+            archived = await sync.event_repo._client.archive_page(notion_page_id)
+            if archived:
+                logger.info("Archived Notion page %s", notion_page_id)
+            else:
+                logger.warning("Failed to archive Notion page %s", notion_page_id)
 
 
-@celery_app.task(name="meeting.delete")
-def delete_meeting(meeting_id: int) -> None:
-    # Backward-compatibility alias for already planned tasks.
-    asyncio.run(_complete_meeting_async(meeting_id))
+@celery_app.task(name="meeting.archive_notion_page", ignore_result=True)
+def archive_notion_page(notion_page_id: str) -> None:
+    try:
+        run_async(_archive_notion_page_async(notion_page_id))
+    except Exception:
+        logger.exception("archive_notion_page failed for %s", notion_page_id)
+        raise
 
 
-@celery_app.task(name="meeting.cleanup_stale")
-def cleanup_stale_meetings() -> None:
-    asyncio.run(_cleanup_stale_async())
+async def _auto_start_due_calls_async() -> None:
+    async with celery_db():
+        due = await MeetingDAO.find_due_unstarted_call_ids()
+        if not due:
+            return
+
+        logger.info("auto_start_due_calls: found %d due meetings", len(due))
+        for meeting_id, scheduled_at in due:
+            try:
+                started = await MeetingDAO.start_call(
+                    meeting_id, started_at=scheduled_at
+                )
+            except IntegrityError:
+                logger.warning(
+                    "auto_start_due_calls: meeting %s skipped — "
+                    "mentor already has an active call",
+                    meeting_id,
+                )
+                continue
+
+            if started is None:
+                logger.info(
+                    "auto_start_due_calls: meeting %s already started (race)",
+                    meeting_id,
+                )
+                continue
+
+            logger.info(
+                "auto_start_due_calls: meeting %s auto-started at %s",
+                meeting_id,
+                scheduled_at,
+            )
+
+
+@celery_app.task(name="meeting.auto_start_due_calls", ignore_result=True)
+def auto_start_due_calls() -> None:
+    try:
+        run_async(_auto_start_due_calls_async())
+    except Exception:
+        logger.exception("auto_start_due_calls failed")
+        raise

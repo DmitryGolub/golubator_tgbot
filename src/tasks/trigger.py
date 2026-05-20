@@ -1,0 +1,170 @@
+import logging
+from datetime import datetime, timezone
+
+from croniter import croniter
+
+from src.celery_app import celery_app
+from src.tasks._db import celery_db, get_worker_bot, run_async
+
+logger = logging.getLogger(__name__)
+
+
+@celery_app.task(name="triggers.execute_action")
+def execute_trigger_action(execution_id: int) -> None:
+    """Execute a single delayed trigger action."""
+    run_async(_execute_action_async(execution_id))
+
+
+@celery_app.task(name="triggers.tick_periodic")
+def tick_periodic_triggers() -> None:
+    """Check and fire periodic trigger rules. Runs every minute via beat."""
+    run_async(_tick_periodic_async())
+
+
+@celery_app.task(name="triggers.process_pending")
+def process_pending_executions() -> None:
+    """Pick up pending executions that were missed (e.g. worker restart)."""
+    run_async(_process_pending_async())
+
+
+async def _execute_action_async(execution_id: int) -> None:
+    async with celery_db():
+        bot = get_worker_bot()
+        from src.dao.trigger_execution import TriggerExecutionDAO
+        from src.dao.trigger_rule import TriggerRuleDAO
+        from src.services.events.dispatcher import EventDispatcher
+
+        exec_obj = await TriggerExecutionDAO.claim_pending(execution_id)
+        if not exec_obj:
+            return
+
+        rule = await TriggerRuleDAO.get_by_id(exec_obj.rule_id)
+        if not rule:
+            await TriggerExecutionDAO.mark_failed(execution_id, "Rule not found")
+            return
+
+        try:
+            await EventDispatcher.execute_action(
+                rule=rule,
+                recipient_id=exec_obj.recipient_id,
+                context=exec_obj.context or {},
+                bot=bot,
+            )
+            await TriggerExecutionDAO.mark_sent(execution_id)
+            logger.info(
+                "Trigger execution %s completed: rule=%s user=%s",
+                execution_id,
+                exec_obj.rule_id,
+                exec_obj.recipient_id,
+            )
+        except Exception as exc:
+            await TriggerExecutionDAO.mark_failed(execution_id, str(exc))
+            logger.exception("Failed trigger execution %s", execution_id)
+
+
+async def _tick_periodic_async() -> None:
+    async with celery_db():
+        bot = get_worker_bot()
+        from src.dao.trigger_rule import TriggerRuleDAO
+        from src.models.trigger import TriggerType
+        from src.services.events.dispatcher import EventDispatcher
+
+        rules = await TriggerRuleDAO.get_active_by_trigger(TriggerType.periodic_cron)
+        now = datetime.now(timezone.utc)
+
+        fired = 0
+        for rule in rules:
+            if _should_fire_now(rule, now):
+                try:
+                    await EventDispatcher.fire_rule(
+                        rule,
+                        {"rule_id": rule.id},
+                        bot=bot,
+                    )
+                    fired += 1
+                except Exception:
+                    logger.exception("Error firing periodic rule %s", rule.id)
+
+        if fired:
+            logger.info("Periodic triggers: %d/%d fired", fired, len(rules))
+
+
+async def _process_pending_async() -> None:
+    async with celery_db():
+        bot = get_worker_bot()
+        from src.dao.trigger_execution import TriggerExecutionDAO
+        from src.dao.trigger_rule import TriggerRuleDAO
+        from src.services.events.dispatcher import EventDispatcher
+
+        pending = await TriggerExecutionDAO.claim_pending_batch()
+        if pending:
+            logger.info("Processing %d pending execution(s)", len(pending))
+        for execution in pending:
+            rule = await TriggerRuleDAO.get_by_id(execution.rule_id)
+            if not rule:
+                await TriggerExecutionDAO.mark_failed(execution.id, "Rule not found")
+                continue
+
+            try:
+                await EventDispatcher.execute_action(
+                    rule=rule,
+                    recipient_id=execution.recipient_id,
+                    context=execution.context or {},
+                    bot=bot,
+                )
+                await TriggerExecutionDAO.mark_sent(execution.id)
+            except Exception as exc:
+                await TriggerExecutionDAO.mark_failed(execution.id, str(exc))
+                logger.exception("Failed pending execution %s", execution.id)
+
+
+def _should_fire_now(rule, now: datetime) -> bool:
+    """Check if a periodic rule should fire at current minute."""
+    if rule.cron_expression:
+        return _match_cron(rule.cron_expression, now)
+
+    if rule.regularity:
+        return _match_regularity(rule, now)
+
+    return False
+
+
+def _match_cron(expr: str, now: datetime) -> bool:
+    from src.utils.tz import MSK
+
+    try:
+        return croniter.match(expr, now.astimezone(MSK))
+    except (ValueError, KeyError):
+        logger.warning("Invalid cron expression: %s", expr)
+        return False
+
+
+def _match_regularity(rule, now: datetime) -> bool:
+    """Match regularity enum + time_of_day. Times are interpreted as MSK."""
+    from src.models.enums import Regularity
+    from src.utils.tz import MSK
+
+    now_msk = now.astimezone(MSK)
+
+    if rule.time_of_day:
+        if (
+            now_msk.hour != rule.time_of_day.hour
+            or now_msk.minute != rule.time_of_day.minute
+        ):
+            return False
+    else:
+        # Default: fire at 09:00 MSK
+        if now_msk.hour != 9 or now_msk.minute != 0:
+            return False
+
+    if rule.regularity == Regularity.day:
+        return True
+    if rule.regularity == Regularity.week:
+        return now_msk.weekday() == 0  # Monday
+    if rule.regularity == Regularity.fortnight:
+        # Fire on even ISO weeks
+        return now_msk.weekday() == 0 and now_msk.isocalendar()[1] % 2 == 0
+    if rule.regularity == Regularity.month:
+        return now_msk.day == 1
+
+    return False

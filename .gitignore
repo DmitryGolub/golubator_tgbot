@@ -1,6 +1,57 @@
-.idea/
-.env
+# Python
 __pycache__/
-.venv
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment variables
+.env
+/.env.*
+!.env.sample
+!.env.test.sample
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Redis
 redisdata/
+
+# Docker
+docker-compose.override.yml
+docker-compose.override.yaml
+
+# pytest
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# mypy / ruff
+.mypy_cache
+.ruff_cache
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule.db
+
+# E2E test sessions
+tests/e2e/sessions/*.session*
+
+# Misc
+*.log
 AGENTS.md

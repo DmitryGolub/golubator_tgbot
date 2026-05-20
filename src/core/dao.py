@@ -1,10 +1,19 @@
-from sqlalchemy import select, insert, delete, update
+import logging
+
+from sqlalchemy import inspect as sa_inspect, select, insert, delete, update
 
 from src.core.database import async_session_maker
+
+logger = logging.getLogger(__name__)
 
 
 class BaseDAO:
     model = None
+
+    @classmethod
+    def _pk_column(cls):
+        mapper = sa_inspect(cls.model)
+        return mapper.primary_key[0]
 
     @classmethod
     async def get_all(cls):
@@ -26,24 +35,38 @@ class BaseDAO:
             query = insert(cls.model).values(**data).returning(cls.model)
             result = await session.execute(query)
             await session.commit()
-            return result.scalars().first()
+            obj = result.scalars().first()
+            logger.debug(
+                "%s.add -> pk=%s",
+                cls.model.__name__,
+                getattr(obj, cls._pk_column().key, "?"),
+            )
+            return obj
 
     @classmethod
     async def delete(cls, **filter_by):
+        if not filter_by:
+            raise ValueError(
+                f"{cls.__name__}.delete() called without filter conditions"
+            )
         async with async_session_maker() as session:
             query = delete(cls.model).filter_by(**filter_by)
             await session.execute(query)
             await session.commit()
+            logger.debug("%s.delete(%s)", cls.model.__name__, filter_by)
 
     @classmethod
-    async def update(cls, id: int, **values):
+    async def update(cls, pk_value, **values):
+        pk_col = cls._pk_column()
         async with async_session_maker() as session:
             query = (
                 update(cls.model)
-                .where(cls.model.id == id)
+                .where(pk_col == pk_value)
                 .values(**values)
                 .returning(cls.model)
             )
             result = await session.execute(query)
             await session.commit()
-            return result.scalars().first()
+            obj = result.scalars().first()
+            logger.debug("%s.update(pk=%s)", cls.model.__name__, pk_value)
+            return obj

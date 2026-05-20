@@ -1,0 +1,100 @@
+{
+  "uid": "mentoring-meetings",
+  "title": "Созвоны",
+  "tags": ["mentoring"],
+  "timezone": "browser",
+  "refresh": "5m",
+  "time": { "from": "now-30d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "interval",
+        "type": "custom",
+        "query": "day,week,month",
+        "current": { "text": "week", "value": "week" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Созвоны за период",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  date_trunc('$interval', m.scheduled_at) AS time,\n  COUNT(*) AS \"Созвонов\"\nFROM meetings.meetings m\nWHERE m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY 1\nORDER BY 1",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "bars", "fillOpacity": 50 }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "По менторам (TOP-15)",
+      "type": "barchart",
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  COALESCE(u.name, u.username, m.mentor_telegram_id::text) AS mentor,\n  COUNT(*) AS meetings\nFROM meetings.meetings m\nJOIN iam.users u ON u.telegram_id = m.mentor_telegram_id\nWHERE m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\n  AND m.mentor_telegram_id IS NOT NULL\nGROUP BY mentor\nORDER BY meetings DESC\nLIMIT 15",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "xTickLabelRotation": -45,
+        "xTickLabelMaxLength": 20
+      }
+    },
+    {
+      "id": 3,
+      "title": "Созвоны по текущим стадиям менти",
+      "type": "barchart",
+      "gridPos": { "h": 12, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "SELECT\n  COALESCE(c.value, 'Без стадии') AS stage,\n  COUNT(DISTINCT m.id) AS meetings\nFROM meetings.meetings m\nJOIN meetings.meeting_users mu ON mu.meeting_id = m.id AND mu.user_id != m.mentor_telegram_id\nLEFT JOIN integrations.user_cohorts uc ON uc.user_telegram_id = mu.user_id\nLEFT JOIN integrations.cohorts c ON c.id = uc.cohort_id AND c.type = 'Status'\nWHERE m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\nGROUP BY c.value\nORDER BY meetings DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Частота на ментора (в неделю)",
+      "type": "table",
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "WITH weekly AS (\n  SELECT\n    m.mentor_telegram_id,\n    date_trunc('week', m.scheduled_at) AS week,\n    COUNT(*) AS cnt\n  FROM meetings.meetings m\n  WHERE m.mentor_telegram_id IS NOT NULL\n    AND m.scheduled_at BETWEEN $__timeFrom() AND $__timeTo()\n  GROUP BY 1, 2\n)\nSELECT\n  COALESCE(u.name, u.username) AS \"Ментор\",\n  ROUND(AVG(w.cnt), 1) AS \"Среднее в неделю\",\n  SUM(w.cnt) AS \"Всего\"\nFROM weekly w\nJOIN iam.users u ON u.telegram_id = w.mentor_telegram_id\nGROUP BY u.name, u.username\nORDER BY \"Среднее в неделю\" DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Среднее кол-во созвонов на стадию",
+      "type": "barchart",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "postgres", "uid": "pg-mentoring" },
+      "targets": [
+        {
+          "rawSql": "WITH stage_periods AS (\n  SELECT\n    user_telegram_id,\n    new_value AS stage,\n    created_at AS started_at,\n    COALESCE(\n      LEAD(created_at) OVER (PARTITION BY user_telegram_id ORDER BY created_at),\n      now()\n    ) AS ended_at\n  FROM integrations.stage_transitions\n  WHERE cohort_type = 'Status'\n),\nmeetings_per_stage AS (\n  SELECT\n    sp.user_telegram_id,\n    sp.stage,\n    COUNT(DISTINCT m.id) AS cnt\n  FROM stage_periods sp\n  JOIN meetings.meeting_users mu ON mu.user_id = sp.user_telegram_id\n  JOIN meetings.meetings m ON m.id = mu.meeting_id\n    AND m.scheduled_at >= sp.started_at\n    AND m.scheduled_at < sp.ended_at\n  GROUP BY sp.user_telegram_id, sp.stage\n)\nSELECT\n  stage,\n  ROUND(AVG(cnt), 1) AS \"Среднее созвонов\"\nFROM meetings_per_stage\nGROUP BY stage\nORDER BY \"Среднее созвонов\" DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39
+}

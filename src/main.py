@@ -1,47 +1,151 @@
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher
+
+from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.types import BotCommand
 
 from src.bot.handlers.common.start import router as start_router
 from src.bot.handlers.common.menu import router as menu_router
 from src.bot.handlers.cohort.create import router as cohort_create_router
 from src.bot.handlers.cohort.delete import router as cohort_delete_router
+from src.bot.handlers.cohort.edit import router as cohort_edit_router
 from src.bot.handlers.cohort.list import router as cohort_list_router
 from src.bot.handlers.user.list import router as user_router
 from src.bot.handlers.user.update_user import router as update_user_fsm_router
 from src.bot.handlers.meeting import router as meeting_router
-from src.bot.handlers.mentor_feedback import router as mentor_feedback_router
-from src.bot.handlers.mailings import router as mailings_router
-from src.bot.handlers.mentor_self_review import router as mentor_self_review_router
-
-
+from src.bot.handlers.rbac.manage_roles import router as rbac_router
+from src.bot.handlers.survey_builder import router as survey_builder_router
+from src.bot.handlers.dynamic_survey import router as dynamic_survey_router
+from src.bot.handlers.trigger_rules import router as trigger_rules_router
+from src.bot.handlers.mentor_stats import router as mentor_stats_router
+from src.bot.handlers.user.direction_students import router as direction_students_router
+from src.bot.handlers.job_search_report import router as job_search_report_router
+from src.bot.handlers.education_feedback import router as education_feedback_router
+from src.bot.handlers.feedback_report import router as feedback_report_router
+from src.bot.handlers.lead_source import router as lead_source_router
+from src.bot.handlers.pagination_input import router as pagination_input_router
+from src.bot.handlers.caldav import router as caldav_router
+from src.bot.middlewares.logging_middleware import LoggingMiddleware
+from src.bot.middlewares.survey_block_middleware import SurveyBlockMiddleware
+from src.bot.middlewares.user_sync_middleware import UserSyncMiddleware
 from src.core.config import settings
+from src.core.healthcheck import start_health_server
+from src.core.logging_config import setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    setup_logging(settings.LOG_LEVEL, settings.LOG_FORMAT)
+    logger.info(
+        "Starting bot: log_level=%s, log_format=%s, db_host=%s, redis=%s, admins=%d",
+        settings.LOG_LEVEL,
+        settings.LOG_FORMAT,
+        settings.DB_HOST,
+        settings.REDIS_HOST,
+        len(settings.admin_ids),
+    )
     bot = Bot(settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 
     storage = RedisStorage.from_url(settings.REDIS_URL)
     dp = Dispatcher(storage=storage)
+    dp.update.outer_middleware(LoggingMiddleware())
+    dp.update.outer_middleware(UserSyncMiddleware())
+
+    survey_block = SurveyBlockMiddleware()
+    dp.message.outer_middleware(survey_block)
+    dp.callback_query.outer_middleware(survey_block)
 
     dp.include_routers(
+        pagination_input_router,
         start_router,
         menu_router,
         cohort_create_router,
         cohort_list_router,
         cohort_delete_router,
+        cohort_edit_router,
         user_router,
         update_user_fsm_router,
         meeting_router,
-        mentor_feedback_router,
-        mailings_router,
-        mentor_self_review_router,
+        rbac_router,
+        survey_builder_router,
+        dynamic_survey_router,
+        trigger_rules_router,
+        mentor_stats_router,
+        direction_students_router,
+        job_search_report_router,
+        education_feedback_router,
+        feedback_report_router,
+        lead_source_router,
+        caldav_router,
     )
 
-    await dp.start_polling(bot)
+    @dp.callback_query(F.data == "noop")
+    async def _cb_noop(callback):
+        await callback.answer()
+
+    health_runner = await start_health_server()
+
+    dp.startup.register(_set_bot_commands)
+    dp.startup.register(_initial_sync)
+    dp.shutdown.register(_shutdown)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await health_runner.cleanup()
+
+
+async def _shutdown(bot: Bot, dispatcher: Dispatcher) -> None:
+    logger.info("Shutting down: closing FSM storage, bot session and DB engine")
+    try:
+        await dispatcher.storage.close()
+    except Exception:
+        logger.exception("Error closing FSM storage")
+    try:
+        await bot.session.close()
+    except Exception:
+        logger.exception("Error closing bot session")
+    try:
+        from src.core.database import get_engine
+
+        engine = get_engine()
+        await engine.dispose()
+    except Exception:
+        logger.exception("Error disposing DB engine")
+
+
+async def _initial_sync(**kwargs) -> None:
+    from celery import chain
+
+    from src.tasks.notion_sync import (
+        backup_pull_cohorts,
+        backup_pull_events,
+        backup_pull_users,
+    )
+
+    try:
+        await asyncio.to_thread(
+            chain(
+                backup_pull_users.si(suppress_emit=True),
+                backup_pull_events.si(),
+                backup_pull_cohorts.si(suppress_emit=True),
+            ).apply_async,
+        )
+        logger.info("Initial sync chain dispatched to Celery")
+    except Exception as exc:
+        logger.warning("Initial sync dispatch failed: %s", exc)
+
+
+async def _set_bot_commands(bot: Bot) -> None:
+    commands = [
+        BotCommand(command="start", description="Начать работу с ботом"),
+        BotCommand(command="menu", description="Главное меню"),
+        BotCommand(command="help", description="Помощь"),
+        BotCommand(command="end_call", description="Завершить активный созвон"),
+    ]
+    await bot.set_my_commands(commands)
 
 
 if __name__ == "__main__":

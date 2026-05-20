@@ -1,0 +1,495 @@
+from __future__ import annotations
+
+import asyncpg
+from datetime import datetime
+from typing import Any
+
+
+class E2ESetup:
+    def __init__(self, pool: asyncpg.Pool):
+        self._pool = pool
+
+    _redis_url: str | None = None
+
+    async def set_user_role(self, telegram_id: int, role_name: str):
+        """Assign a role to a user and flush Redis permission cache."""
+        await self._pool.execute(
+            """
+            UPDATE iam.users SET role_id = (
+                SELECT id FROM iam.roles WHERE name = $1
+            ) WHERE telegram_id = $2
+            """,
+            role_name,
+            telegram_id,
+        )
+        # Flush Redis to invalidate permission cache
+        if self._redis_url:
+            await self.flush_redis(self._redis_url)
+
+    async def ensure_user_record(self, telegram_id: int, name: str = "E2E User"):
+        """Create a User record if it doesn't exist (FK dependency for mentors/mentees)."""
+        await self._pool.execute(
+            """INSERT INTO iam.users (telegram_id, name)
+               VALUES ($1, $2) ON CONFLICT (telegram_id) DO NOTHING""",
+            telegram_id,
+            name,
+        )
+
+    async def ensure_mentor_record(self, telegram_id: int):
+        """Create a Mentor record if it doesn't exist."""
+        await self.ensure_user_record(telegram_id)
+        existing = await self._pool.fetchrow(
+            "SELECT id FROM iam.mentors WHERE telegram_id = $1", telegram_id
+        )
+        if not existing:
+            await self._pool.execute(
+                "INSERT INTO iam.mentors (telegram_id) VALUES ($1)", telegram_id
+            )
+
+    async def ensure_mentee_record(
+        self, telegram_id: int, mentor_telegram_id: int | None = None
+    ):
+        """Create a Mentee record if it doesn't exist."""
+        await self.ensure_user_record(telegram_id)
+        if mentor_telegram_id:
+            await self.ensure_user_record(mentor_telegram_id)
+            await self.ensure_mentor_record(mentor_telegram_id)
+        mentor_id = None
+        if mentor_telegram_id:
+            row = await self._pool.fetchrow(
+                "SELECT id FROM iam.mentors WHERE telegram_id = $1",
+                mentor_telegram_id,
+            )
+            mentor_id = row["id"] if row else None
+        # ON CONFLICT: update mentor_id but preserve notion_page_id set by background task
+        await self._pool.execute(
+            """INSERT INTO iam.mentees (telegram_id, mentor_id) VALUES ($1, $2)
+               ON CONFLICT (telegram_id) DO UPDATE SET mentor_id = COALESCE($2, iam.mentees.mentor_id)""",
+            telegram_id,
+            mentor_id,
+        )
+
+    # Tables preserved between test modules (seed data from migrations)
+    _PRESERVE_TABLES = {
+        ("iam", "roles"),
+        ("iam", "permissions"),
+        ("iam", "role_permissions"),
+        ("public", "ui_texts"),
+        ("integrations", "cohorts"),
+        ("surveys", "survey_templates"),
+        ("surveys", "survey_questions"),
+        ("surveys", "survey_question_options"),
+    }
+
+    async def truncate_all(self):
+        """Truncate all tables between test suites, preserving seed data."""
+        schemas = ["triggers", "surveys", "meetings", "integrations", "iam", "public"]
+        to_truncate = []
+        for schema in schemas:
+            tables = await self._pool.fetch(
+                """
+                SELECT tablename FROM pg_tables
+                WHERE schemaname = $1 AND tablename != 'alembic_version'
+                """,
+                schema,
+            )
+            for table in tables:
+                if (schema, table["tablename"]) in self._PRESERVE_TABLES:
+                    continue
+                to_truncate.append(f'{schema}."{table["tablename"]}"')
+        if to_truncate:
+            # Use DELETE instead of TRUNCATE: TRUNCATE checks FK constraints
+            # at DDL level (ignores session_replication_role), while DELETE
+            # respects 'replica' mode which disables trigger-based FK checks.
+            async with self._pool.acquire() as conn:
+                await conn.execute("SET session_replication_role = 'replica'")
+                for table in to_truncate:
+                    await conn.execute(f"DELETE FROM {table}")
+                await conn.execute("SET session_replication_role = 'origin'")
+        # Clean up test-created cohorts while preserving seed data
+        await self._pool.execute(
+            "DELETE FROM integrations.cohorts WHERE type LIKE 'E2E_%'"
+        )
+
+    async def flush_redis(self, redis_url: str):
+        """Flush Redis (FSM state, permission cache)."""
+        import redis.asyncio as aioredis
+
+        r = aioredis.from_url(redis_url)
+        await r.flushall()
+        await r.aclose()
+
+    # --- Surveys ---
+
+    async def clear_pending_surveys(self, telegram_id: int | None = None):
+        """Clear pending survey sessions to prevent SurveyBlockMiddleware interference."""
+        if telegram_id:
+            await self._pool.execute(
+                "UPDATE surveys.survey_sessions SET status = 'completed', completed_at = NOW() "
+                "WHERE respondent_id = $1 AND status IN ('pending', 'in_progress')",
+                telegram_id,
+            )
+        else:
+            await self._pool.execute(
+                "UPDATE surveys.survey_sessions SET status = 'completed', completed_at = NOW() "
+                "WHERE status IN ('pending', 'in_progress')"
+            )
+
+    async def create_survey_template(
+        self, title: str, slug: str, questions: list[dict[str, Any]]
+    ) -> int:
+        """Create survey template + questions + options directly in DB.
+
+        Returns template_id.
+        questions: [{"title": ..., "type": "text"|"rating"|"single_choice"|"multiple_choice",
+                     "config": {...}, "options": [{"value": ..., "label": ...}]}]
+        """
+        import json
+
+        # Clean up from previous failed runs to avoid UniqueViolationError
+        await self._pool.execute(
+            "DELETE FROM surveys.survey_templates WHERE slug = $1", slug
+        )
+
+        template_id = await self._pool.fetchval(
+            """
+            INSERT INTO surveys.survey_templates (title, slug, is_active)
+            VALUES ($1, $2, true)
+            RETURNING id
+            """,
+            title,
+            slug,
+        )
+        for pos, q in enumerate(questions, start=1):
+            config_json = json.dumps(q.get("config", {}))
+            question_id = await self._pool.fetchval(
+                """
+                INSERT INTO surveys.survey_questions
+                    (template_id, title, question_type, sort_order, is_required, config)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+                RETURNING id
+                """,
+                template_id,
+                q["title"],
+                q["type"],
+                pos,
+                q.get("is_required", True),
+                config_json,
+            )
+            for opt_pos, opt in enumerate(q.get("options", []), start=1):
+                await self._pool.execute(
+                    """
+                    INSERT INTO surveys.survey_question_options
+                        (question_id, value, label, sort_order)
+                    VALUES ($1, $2, $3, $4)
+                    """,
+                    question_id,
+                    opt["value"],
+                    opt["label"],
+                    opt_pos,
+                )
+        return template_id
+
+    async def create_survey_session(
+        self,
+        template_id: int,
+        respondent_id: int,
+        context_type: str = "test",
+        context_id: str = "e2e",
+    ) -> int:
+        """Create a pending survey session directly in DB. Returns session_id."""
+        return await self._pool.fetchval(
+            """
+            INSERT INTO surveys.survey_sessions
+                (template_id, respondent_id, context_type, context_id, status)
+            VALUES ($1, $2, $3, $4, 'pending')
+            RETURNING id
+            """,
+            template_id,
+            respondent_id,
+            context_type,
+            context_id,
+        )
+
+    async def ensure_role_permission(self, role_name: str, permission_name: str):
+        """Ensure a role has a specific permission in role_permissions."""
+        await self._pool.execute(
+            """
+            INSERT INTO iam.role_permissions (role_id, permission_id)
+            SELECT r.id, p.id FROM iam.roles r, iam.permissions p
+            WHERE r.name = $1 AND p.codename = $2
+            ON CONFLICT DO NOTHING
+            """,
+            role_name,
+            permission_name,
+        )
+        # Flush Redis to invalidate permission cache
+        if self._redis_url:
+            await self.flush_redis(self._redis_url)
+
+    async def add_fake_mentor(self, telegram_id: int, name: str):
+        """Create a non-placeholder user with role=mentor and a mentor record."""
+        await self._pool.execute(
+            """
+            INSERT INTO iam.users (telegram_id, name, role_id)
+            VALUES ($1, $2, (SELECT id FROM iam.roles WHERE name = 'mentor'))
+            ON CONFLICT (telegram_id) DO UPDATE SET
+                role_id = (SELECT id FROM iam.roles WHERE name = 'mentor')
+            """,
+            telegram_id,
+            name,
+        )
+        await self._pool.execute(
+            "INSERT INTO iam.mentors (telegram_id) VALUES ($1) ON CONFLICT DO NOTHING",
+            telegram_id,
+        )
+
+    # --- Cohorts ---
+
+    async def ensure_cohort_value(self, cohort_type: str, cohort_value: str) -> int:
+        """Ensure a cohort value exists in DB without assigning it to any user. Returns cohort_id."""
+        cohort_id = await self._pool.fetchval(
+            "SELECT id FROM integrations.cohorts WHERE type = $1 AND value = $2",
+            cohort_type,
+            cohort_value,
+        )
+        if cohort_id is None:
+            cohort_id = await self._pool.fetchval(
+                "INSERT INTO integrations.cohorts (type, value) VALUES ($1, $2) RETURNING id",
+                cohort_type,
+                cohort_value,
+            )
+        return cohort_id
+
+    async def ensure_user_cohort(
+        self, telegram_id: int, cohort_type: str, cohort_value: str
+    ):
+        """Ensure user has a specific cohort assignment."""
+        cohort_id = await self._pool.fetchval(
+            "SELECT id FROM integrations.cohorts WHERE type = $1 AND value = $2",
+            cohort_type,
+            cohort_value,
+        )
+        if cohort_id is None:
+            cohort_id = await self._pool.fetchval(
+                "INSERT INTO integrations.cohorts (type, value) VALUES ($1, $2) RETURNING id",
+                cohort_type,
+                cohort_value,
+            )
+        existing = await self._pool.fetchval(
+            """
+            SELECT cohort_id FROM integrations.user_cohorts
+            WHERE user_telegram_id = $1 AND cohort_id IN (
+                SELECT id FROM integrations.cohorts WHERE type = $2
+            )
+            """,
+            telegram_id,
+            cohort_type,
+        )
+        if existing:
+            await self._pool.execute(
+                """
+                UPDATE integrations.user_cohorts SET cohort_id = $1
+                WHERE user_telegram_id = $2 AND cohort_id = $3
+                """,
+                cohort_id,
+                telegram_id,
+                existing,
+            )
+        else:
+            await self._pool.execute(
+                "INSERT INTO integrations.user_cohorts (user_telegram_id, cohort_id) VALUES ($1, $2)",
+                telegram_id,
+                cohort_id,
+            )
+
+    # --- Notion sync ---
+
+    async def set_mentor_notion_page_id(self, telegram_id: int, page_id: str):
+        await self._pool.execute(
+            "UPDATE iam.mentors SET notion_page_id = $1 WHERE telegram_id = $2",
+            page_id,
+            telegram_id,
+        )
+
+    async def set_mentee_notion_page_id(self, telegram_id: int, page_id: str):
+        await self._pool.execute(
+            "UPDATE iam.mentees SET notion_page_id = $1 WHERE telegram_id = $2",
+            page_id,
+            telegram_id,
+        )
+
+    async def touch_updated_at(self, table: str, telegram_id: int):
+        """Set updated_at = now() to force a push on next sync cycle."""
+        await self._pool.execute(
+            f"UPDATE {table} SET updated_at = NOW() WHERE telegram_id = $1",
+            telegram_id,
+        )
+
+    # --- Meetings ---
+
+    async def create_meeting(
+        self,
+        mentor_telegram_id: int,
+        student_telegram_id: int,
+        description: str = "test meeting",
+        scheduled_at: "datetime | None" = None,
+        run_id: str | None = None,
+    ) -> int:
+        """Create a meeting directly in DB. Returns meeting_id."""
+        topic = f"[E2E-{run_id}] {description}" if run_id else f"E2E {description}"
+        await self.ensure_user_record(mentor_telegram_id)
+        await self.ensure_user_record(student_telegram_id)
+        meeting_id = await self._pool.fetchval(
+            """
+            INSERT INTO meetings.meetings
+                (mentor_telegram_id, student_telegram_id, description, scheduled_at,
+                 proposal_status)
+            VALUES ($1, $2, $3, $4, 'подтверждён')
+            RETURNING id
+            """,
+            mentor_telegram_id,
+            student_telegram_id,
+            topic,
+            scheduled_at,
+        )
+        # Add participants via association table
+        await self._pool.execute(
+            "INSERT INTO meetings.meeting_users (meeting_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            meeting_id,
+            mentor_telegram_id,
+        )
+        await self._pool.execute(
+            "INSERT INTO meetings.meeting_users (meeting_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            meeting_id,
+            student_telegram_id,
+        )
+        return meeting_id
+
+    async def create_fake_users(
+        self, count: int, role_name: str = "student"
+    ) -> list[int]:
+        """Create N fake non-placeholder users. Returns list of telegram_ids."""
+        ids = []
+        for i in range(count):
+            tg_id = -(900_000 + i)
+            await self._pool.execute(
+                """
+                INSERT INTO iam.users (telegram_id, name, role_id)
+                VALUES ($1, $2, (SELECT id FROM iam.roles WHERE name = $3))
+                ON CONFLICT (telegram_id) DO NOTHING
+                """,
+                tg_id,
+                f"FakeUser_{i}",
+                role_name,
+            )
+            ids.append(tg_id)
+        return ids
+
+    async def create_test_role_with_perms(
+        self, name: str, display_name: str, permissions: list[str]
+    ) -> int:
+        """Create a role with specific permissions. Returns role_id."""
+        role_id = await self.create_role(name, display_name)
+        for perm in permissions:
+            await self._pool.execute(
+                """
+                INSERT INTO iam.role_permissions (role_id, permission_id)
+                SELECT $1, p.id FROM iam.permissions p
+                WHERE p.codename = $2
+                ON CONFLICT DO NOTHING
+                """,
+                role_id,
+                perm,
+            )
+        return role_id
+
+    async def create_role(self, name: str, display_name: str) -> int:
+        """Create a role directly in DB. Returns role_id."""
+        await self._pool.execute(
+            "DELETE FROM iam.role_permissions WHERE role_id IN (SELECT id FROM iam.roles WHERE name = $1)",
+            name,
+        )
+        await self._pool.execute("DELETE FROM iam.roles WHERE name = $1", name)
+        return await self._pool.fetchval(
+            "INSERT INTO iam.roles (name, display_name) VALUES ($1, $2) RETURNING id",
+            name,
+            display_name,
+        )
+
+    # --- Survey escalation ---
+
+    async def complete_session_with_answers(
+        self, session_id: int, answers: list[tuple[int, int]]
+    ) -> None:
+        """Mark session as completed and insert answers directly in DB.
+
+        args:
+            answers: list of (question_id, value_int) pairs
+        """
+        for question_id, value_int in answers:
+            await self._pool.execute(
+                """
+                INSERT INTO surveys.survey_answers (session_id, question_id, value_int)
+                VALUES ($1, $2, $3)
+                ON CONFLICT DO NOTHING
+                """,
+                session_id,
+                question_id,
+                value_int,
+            )
+        await self._pool.execute(
+            "UPDATE surveys.survey_sessions SET status = 'completed', completed_at = NOW() WHERE id = $1",
+            session_id,
+        )
+
+    async def backdate_session(self, session_id: int, hours_ago: int) -> None:
+        """Backdate session created_at for escalation testing."""
+        await self._pool.execute(
+            f"UPDATE surveys.survey_sessions SET created_at = NOW() - INTERVAL '{hours_ago} hours' WHERE id = $1",
+            session_id,
+        )
+
+    async def set_session_field(self, session_id: int, field: str, value: Any) -> None:
+        """Update a single field on a survey session (e.g. is_escalatable, reminder_sent_at)."""
+        await self._pool.execute(
+            f"UPDATE surveys.survey_sessions SET {field} = $1 WHERE id = $2",
+            value,
+            session_id,
+        )
+
+    # --- Triggers ---
+
+    async def create_trigger_rule(
+        self,
+        *,
+        name: str,
+        trigger_type: str,
+        action_type: str,
+        recipient_type: str,
+        action_config: dict[str, Any],
+        recipient_config: dict[str, Any] | None = None,
+        trigger_config: dict[str, Any] | None = None,
+        delay_seconds: int = 0,
+    ) -> int:
+        """Create a trigger rule directly in DB. Returns rule_id."""
+        import json
+
+        return await self._pool.fetchval(
+            """
+            INSERT INTO triggers.trigger_rules
+                (name, trigger_type, action_type, recipient_type,
+                 action_config, recipient_config, trigger_config,
+                 delay_seconds, is_active)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, true)
+            RETURNING id
+            """,
+            name,
+            trigger_type,
+            action_type,
+            recipient_type,
+            json.dumps(action_config),
+            json.dumps(recipient_config or {}),
+            json.dumps(trigger_config or {}),
+            delay_seconds,
+        )

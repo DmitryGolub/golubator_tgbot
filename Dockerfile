@@ -1,21 +1,35 @@
-FROM python:3.14-slim
+# === Builder ===
+FROM python:3.14-slim AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
- && rm -rf /var/lib/apt/lists/*
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_PREFERENCE=only-system
 
-RUN pip install --no-cache-dir poetry
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
-COPY pyproject.toml poetry.lock* ./
+COPY src/ src/
+COPY migrations/ migrations/
+COPY alembic.ini .
 
-RUN poetry config virtualenvs.create false \
- && poetry install --no-interaction --no-ansi --only main --no-root
+# === Runtime ===
+FROM python:3.14-slim
 
-COPY . .
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+RUN groupadd --gid 1000 app && \
+    useradd --uid 1000 --gid app --no-create-home app
+
+COPY --from=builder /app /app
+
+USER app
 
 CMD ["python", "-m", "src.main"]

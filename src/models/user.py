@@ -1,107 +1,82 @@
-import enum
-from datetime import datetime
-from typing import List, Optional
+from __future__ import annotations
 
-from sqlalchemy import String, DateTime, func, Enum, ForeignKey, Integer, BigInteger
+from datetime import datetime
+from typing import TYPE_CHECKING, Optional
+
+from sqlalchemy import (
+    String,
+    DateTime,
+    func,
+    ForeignKey,
+    Integer,
+    BigInteger,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.database import Base
 
-
-class Role(enum.Enum):
-    admin = "Админ"
-    mentor = "Ментор"
-    student = "Студент"
-
-
-class State(enum.Enum):
-    greeting = "Отбор"
-    hold = "В ожидании"
-    study = "Обучение"
-    search = "Поиск работы"
-    offer = "Оффер"
+if TYPE_CHECKING:
+    from src.models.lead_source import LeadSource
+    from src.models.meeting import Meeting
+    from src.models.mentor import Mentor
+    from src.models.mentee import Mentee
+    from src.models.role import RoleModel
 
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = {"schema": "iam"}
 
-    telegram_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, index=True
+    telegram_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    username: Mapped[Optional[str]] = mapped_column(
+        String(255), unique=True, index=True, nullable=True
     )
-    username: Mapped[str] = mapped_column(
-        String(255), unique=True, index=True, nullable=False
-    )
-    name: Mapped[str] = mapped_column(
-        String(255), nullable=False
-    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    role: Mapped[Role] = mapped_column(
-        Enum(Role, name="role_enum"), nullable=False, default=Role.student
+    lead_source_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("iam.lead_sources.id"), nullable=True
     )
-    state: Mapped[Optional[State]] = mapped_column(
-        Enum(State, name="state_enum"), nullable=True, default=State.greeting, server_default="greeting",
-    )
+    lead_source: Mapped["LeadSource | None"] = relationship("LeadSource", lazy="noload")
 
-    mentor_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True,
+    role_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("iam.roles.id"), nullable=True
     )
-    cohort_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("cohorts.id", ondelete="SET NULL"), nullable=True,
+    role_rel: Mapped["RoleModel | None"] = relationship(
+        "RoleModel", back_populates="users", lazy="selectin"
     )
-
-    registered_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
-    state_changed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+    registered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=True,
     )
 
     meetings: Mapped[list["Meeting"]] = relationship(
-        "Meeting", secondary="meeting_users", back_populates="participants", lazy="selectin",
+        "Meeting",
+        secondary="meetings.meeting_users",
+        back_populates="participants",
+        lazy="raise",
     )
-    cohort: Mapped[Optional["Cohort"]] = relationship(
-        "Cohort", back_populates="users", lazy="selectin",
-    )
-    mentor: Mapped[Optional["User"]] = relationship(
-        "User", remote_side="User.telegram_id", back_populates="students",
-    )
-    students: Mapped[List["User"]] = relationship(
-        "User", back_populates="mentor", cascade="all", passive_deletes=True,
-    )
-    notifications: Mapped[list["Notification"]] = relationship(
-        "Notification",
+    mentor_profile: Mapped[Optional["Mentor"]] = relationship(
+        "Mentor",
         back_populates="user",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        lazy="selectin",
+        foreign_keys="Mentor.telegram_id",
+        uselist=False,
+        lazy="noload",
     )
-    survey_responses: Mapped[list["SurveyResponse"]] = relationship(
-        "SurveyResponse",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        lazy="selectin",
-    )
-    mentor_self_reviews: Mapped[list["MentorSelfReview"]] = relationship(
-        "MentorSelfReview",
-        back_populates="mentor",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        lazy="selectin",
-    )
-
-    user_rules: Mapped[list["UserRule"]] = relationship(
-        "UserRule", back_populates="user", foreign_keys="UserRule.user_id", cascade="all, delete-orphan",
-    )
-
-    authored_rules: Mapped[list["UserRule"]] = relationship(
-        "UserRule", back_populates="author", foreign_keys="UserRule.author_id",
-    )
-    mentor_calls: Mapped[list["Call"]] = relationship(
-        "Call", foreign_keys="Call.mentor_id", back_populates="mentor", lazy="selectin",
-    )
-    student_calls: Mapped[list["Call"]] = relationship(
-        "Call", foreign_keys="Call.student_id", back_populates="student", lazy="selectin",
-    )
-    tags: Mapped[list["Tag"]] = relationship(
-        "Tag", secondary="user_tags", back_populates="users", lazy="selectin",
+    mentee_profile: Mapped[Optional["Mentee"]] = relationship(
+        "Mentee",
+        back_populates="user",
+        foreign_keys="Mentee.telegram_id",
+        uselist=False,
+        lazy="noload",
     )

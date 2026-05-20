@@ -1,13 +1,35 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-app: &app-base
+  build: .
+  image: golubator-tgbot:latest
+  env_file:
+    - .env
+  environment:
+    DB_HOST: db
+    REDIS_HOST: redis
+  restart: unless-stopped
+  logging: *default-logging
+
 services:
   db:
     image: postgres:16-alpine
     container_name: tg_bot.db
+    cpus: 1.5
+    mem_limit: 2g
+    mem_reservation: 1g
+    pids_limit: 200
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASS}
     ports:
-      - "${DB_PORT}:5432"
+      - "127.0.0.1:${DB_PORT}:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,84 +37,410 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: [app]
+
+  redis:
+    image: redis:7-alpine
+    container_name: tg_bot.redis
+    cpus: 0.5
+    mem_limit: 512m
+    mem_reservation: 128m
+    pids_limit: 100
+    logging: *default-logging
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    profiles: [app]
 
   migrations:
-    build: .
+    <<: *app-base
     container_name: tg_bot.migrations
-    command: >
-      sh -c "alembic upgrade head"
-    env_file:
-      - .env
-    environment:
-      DB_HOST: db
-      REDIS_HOST: redis
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 100
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./:/app
+    profiles: [app]
 
   bot:
-    build: .
+    <<: *app-base
     container_name: tg_bot.bot
-    env_file:
-      - .env
-    environment:
-      DB_HOST: db
-      REDIS_HOST: redis
+    cpus: 1.0
+    mem_limit: 768m
+    mem_reservation: 256m
+    pids_limit: 200
+    ports:
+      - "127.0.0.1:8080:8080"
     depends_on:
       migrations:
         condition: service_completed_successfully
       redis:
-        condition: service_started
-    restart: unless-stopped
-    volumes:
-      - ./:/app
-
-  redis:
-    image: redis:latest
-    container_name: tg_bot.redis
-    ports:
-      - "6380:6379"
-    volumes:
-      - ./redisdata:/data
-    restart: unless-stopped
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    profiles: [app]
 
   celery_worker:
-    build: .
+    <<: *app-base
     container_name: tg_bot.celery_worker
-    command: python -m src.scripts.celery_worker
-    env_file:
-      - .env
-    environment:
-      DB_HOST: db
-      REDIS_HOST: redis
+    cpus: 1.0
+    mem_limit: 1g
+    mem_reservation: 256m
+    pids_limit: 200
+    command: ["python", "-m", "src.scripts.celery_worker"]
     depends_on:
       migrations:
         condition: service_completed_successfully
       redis:
-        condition: service_started
-    restart: unless-stopped
-    volumes:
-      - ./:/app
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - |
+          import urllib.request, sys
+          req = urllib.request.Request('http://localhost:8081/health', headers={'Connection': 'close'})
+          with urllib.request.urlopen(req, timeout=3) as r:
+              body = r.read()
+              ok = r.status == 200 and body
+          sys.exit(0 if ok else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    profiles: [app]
 
   celery_beat:
-    build: .
+    <<: *app-base
     container_name: tg_bot.celery_beat
-    command: python -m src.scripts.celery_beat
-    env_file:
-      - .env
-    environment:
-      DB_HOST: db
-      REDIS_HOST: redis
+    cpus: 0.3
+    mem_limit: 256m
+    mem_reservation: 64m
+    pids_limit: 100
+    command: ["python", "-m", "src.scripts.celery_beat"]
     depends_on:
       migrations:
         condition: service_completed_successfully
       redis:
-        condition: service_started
-    restart: unless-stopped
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - |
+          import urllib.request, sys
+          req = urllib.request.Request('http://localhost:8082/health', headers={'Connection': 'close'})
+          with urllib.request.urlopen(req, timeout=3) as r:
+              body = r.read()
+              ok = r.status == 200 and body
+          sys.exit(0 if ok else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    profiles: [app]
+
+  loki:
+    profiles: [monitoring]
+    image: grafana/loki:3.4.2
+    container_name: tg_bot.loki
+    cpus: 0.5
+    mem_limit: 1g
+    mem_reservation: 256m
+    pids_limit: 100
+    logging: *default-logging
+    command: -config.file=/etc/loki/loki-config.yaml
     volumes:
-      - ./:/app
+      - ./loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  promtail:
+    profiles: [monitoring]
+    image: grafana/promtail:3.4.2
+    container_name: tg_bot.promtail
+    cpus: 0.3
+    mem_limit: 256m
+    mem_reservation: 64m
+    pids_limit: 100
+    logging: *default-logging
+    command: -config.file=/etc/promtail/promtail-config.yaml -config.expand-env=true
+    environment:
+      LOKI_TENANT_ID: ${LOKI_TENANT_ID}
+    volumes:
+      - ./promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - promtail_positions:/tmp
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    profiles: [monitoring]
+    image: prom/prometheus:v2.55.1
+    container_name: tg_bot.prometheus
+    cpus: 0.5
+    mem_limit: 512m
+    mem_reservation: 128m
+    pids_limit: 100
+    logging: *default-logging
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  blackbox_exporter:
+    profiles: [monitoring]
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: tg_bot.blackbox_exporter
+    cpus: 0.2
+    mem_limit: 128m
+    mem_reservation: 32m
+    pids_limit: 100
+    logging: *default-logging
+    command:
+      - --config.file=/etc/blackboxexporter/blackbox.yml
+    volumes:
+      - ./blackbox_exporter/blackbox.yml:/etc/blackboxexporter/blackbox.yml:ro
+    restart: unless-stopped
+
+  cadvisor:
+    profiles: [monitoring]
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
+    container_name: tg_bot.cadvisor
+    privileged: true
+    cpus: 0.3
+    mem_limit: 256m
+    mem_reservation: 64m
+    pids_limit: 100
+    logging: *default-logging
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service
+      - --disable_metrics=disk,diskIO,network,tcp,udp,advtcp,hugetlb,referenced_memory,cpu_topology,resctrl,memory_numa,cpuset,process,sched,percpu
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    restart: unless-stopped
+
+  grafana:
+    profiles: [monitoring]
+    image: grafana/grafana-oss:11.5.2
+    container_name: tg_bot.grafana
+    cpus: 0.5
+    mem_limit: 512m
+    mem_reservation: 128m
+    pids_limit: 100
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_SERVER_ENABLE_GZIP: "true"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      LOKI_TENANT_ID: ${LOKI_TENANT_ID}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Test profile ──
+  db_test:
+    image: postgres:16-alpine
+    container_name: tg_bot.db_test
+    env_file:
+      - .env.test
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - db_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - test
+
+  redis_test:
+    image: redis:7-alpine
+    container_name: tg_bot.redis_test
+    env_file:
+      - .env.test
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    ports:
+      - "127.0.0.1:6381:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - test
+
+  migrations_test:
+    <<: *app-base
+    container_name: tg_bot.migrations_test
+    command: ["alembic", "upgrade", "head"]
+    env_file:
+      - .env.test
+    environment:
+      DB_HOST: db_test
+      DB_PORT: 5432
+      REDIS_HOST: redis_test
+      REDIS_PORT: 6379
+    restart: "no"
+    depends_on:
+      db_test:
+        condition: service_healthy
+    profiles:
+      - test
+
+  bot_test:
+    <<: *app-base
+    container_name: tg_bot.bot_test
+    env_file:
+      - .env.test
+    environment:
+      DB_HOST: db_test
+      DB_PORT: 5432
+      REDIS_HOST: redis_test
+      REDIS_PORT: 6379
+    ports:
+      - "127.0.0.1:8081:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      migrations_test:
+        condition: service_completed_successfully
+      redis_test:
+        condition: service_healthy
+    profiles:
+      - test
+
+  celery_worker_test:
+    <<: *app-base
+    container_name: tg_bot.celery_worker_test
+    command: ["python", "-m", "src.scripts.celery_worker"]
+    env_file:
+      - .env.test
+    environment:
+      DB_HOST: db_test
+      DB_PORT: 5432
+      REDIS_HOST: redis_test
+      REDIS_PORT: 6379
+    depends_on:
+      migrations_test:
+        condition: service_completed_successfully
+      redis_test:
+        condition: service_healthy
+    profiles:
+      - test
+
+  celery_beat_test:
+    <<: *app-base
+    container_name: tg_bot.celery_beat_test
+    command: ["python", "-m", "src.scripts.celery_beat"]
+    env_file:
+      - .env.test
+    environment:
+      DB_HOST: db_test
+      DB_PORT: 5432
+      REDIS_HOST: redis_test
+      REDIS_PORT: 6379
+    depends_on:
+      migrations_test:
+        condition: service_completed_successfully
+      redis_test:
+        condition: service_healthy
+    profiles:
+      - test
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: tg_bot.ngrok
+    command: http bot:8080
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+    ports:
+      - "127.0.0.1:4040:4040"
+    depends_on:
+      bot:
+        condition: service_healthy
+    profiles:
+      - dev
+    restart: unless-stopped
 
 volumes:
   db_data:
+  redis_data:
+  grafana_data:
+  loki_data:
+  promtail_positions:
+  prometheus_data:
+  db_test_data:
