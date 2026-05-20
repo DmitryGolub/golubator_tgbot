@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
@@ -202,7 +202,7 @@ class SurveySessionDAO:
 
     @classmethod
     async def get_overdue_sessions(cls, min_age_hours: int = 24) -> list[SurveySession]:
-        """Get escalatable sessions older than min_age_hours that are not completed."""
+        """Get sessions due for reminder/escalation handling."""
         from src.models.survey_template import SurveyTemplate, TemplateKind
 
         cutoff = datetime.now(timezone.utc) - timedelta(hours=min_age_hours)
@@ -214,14 +214,21 @@ class SurveySessionDAO:
                     SurveySession.status.in_(
                         [SessionStatus.pending, SessionStatus.in_progress]
                     ),
-                    SurveySession.is_escalatable.is_(True),
-                    SurveySession.created_at < cutoff,
                     SurveyTemplate.kind != TemplateKind.broadcast,
+                    or_(
+                        SurveyTemplate.reminder_interval_minutes.isnot(None),
+                        SurveySession.is_escalatable.is_(True),
+                    ),
+                    or_(
+                        SurveyTemplate.reminder_interval_minutes.isnot(None),
+                        SurveySession.created_at < cutoff,
+                    ),
                 )
+                .options(joinedload(SurveySession.template))
                 .order_by(SurveySession.created_at)
             )
             result = await session.execute(query)
-            return list(result.scalars().all())
+            return list(result.unique().scalars().all())
 
     @classmethod
     async def update_escalation_field(cls, session_id: int, field: str, value) -> None:

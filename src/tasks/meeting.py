@@ -1,9 +1,11 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
@@ -16,6 +18,9 @@ from src.tasks._db import celery_db, get_worker_bot, run_async
 from src.utils.escape import e
 
 logger = logging.getLogger(__name__)
+
+CALL_DURATION_TEMPLATE_SLUG = "call_duration_actual"
+CALL_DURATION_CONTEXT_TYPE = "call_duration"
 
 
 def _format_dt(dt: Optional[datetime]) -> str:
@@ -226,10 +231,101 @@ async def _auto_start_due_calls_async() -> None:
             )
 
 
+async def _request_due_call_durations_async() -> None:
+    async with celery_db():
+        from src.bot.callbacks.dynamic_survey import StartDynamicSurveyCB
+        from src.dao.survey_session import SurveySessionDAO
+        from src.dao.survey_template import SurveyTemplateDAO
+        from src.services.survey_session import SurveySessionService
+
+        template = await SurveyTemplateDAO.get_by_slug(CALL_DURATION_TEMPLATE_SLUG)
+        if not template:
+            logger.warning(
+                "request_due_call_durations: template %s not found",
+                CALL_DURATION_TEMPLATE_SLUG,
+            )
+            return
+
+        now = datetime.now(timezone.utc)
+        due_meetings = await MeetingDAO.find_due_call_duration_request_meetings(
+            template_id=template.id,
+            now=now,
+        )
+        if not due_meetings:
+            return
+
+        bot = get_worker_bot()
+        service = SurveySessionService()
+        sent = 0
+        skipped = 0
+
+        for meeting in due_meetings:
+            try:
+                session, already_existed = await service.create_session(
+                    template_id=template.id,
+                    respondent_id=meeting.mentor_telegram_id,
+                    context_type=CALL_DURATION_CONTEXT_TYPE,
+                    context_id=str(meeting.id),
+                )
+            except Exception:
+                logger.exception(
+                    "request_due_call_durations: failed to create session for "
+                    "meeting=%s",
+                    meeting.id,
+                )
+                continue
+
+            if already_existed:
+                skipped += 1
+                continue
+
+            await SurveySessionDAO.update_escalation_field(
+                session.id, "is_escalatable", False
+            )
+
+            kb = InlineKeyboardBuilder()
+            kb.button(
+                text="Указать длительность",
+                callback_data=StartDynamicSurveyCB(session_id=session.id),
+            )
+            try:
+                await bot.send_message(
+                    meeting.mentor_telegram_id,
+                    f"⏱ Созвон #{meeting.id} идёт больше часа.\n"
+                    "Укажите фактическую длительность в минутах: выберите "
+                    "15/30/45/60 или отправьте число сообщением в опросе.",
+                    reply_markup=kb.as_markup(),
+                )
+                sent += 1
+            except TelegramAPIError:
+                logger.warning(
+                    "request_due_call_durations: failed to send survey to mentor=%s "
+                    "meeting=%s",
+                    meeting.mentor_telegram_id,
+                    meeting.id,
+                )
+
+        logger.info(
+            "request_due_call_durations: sent=%d skipped_existing=%d due=%d",
+            sent,
+            skipped,
+            len(due_meetings),
+        )
+
+
 @celery_app.task(name="meeting.auto_start_due_calls", ignore_result=True)
 def auto_start_due_calls() -> None:
     try:
         run_async(_auto_start_due_calls_async())
     except Exception:
         logger.exception("auto_start_due_calls failed")
+        raise
+
+
+@celery_app.task(name="meeting.request_due_call_durations", ignore_result=True)
+def request_due_call_durations() -> None:
+    try:
+        run_async(_request_due_call_durations_async())
+    except Exception:
+        logger.exception("request_due_call_durations failed")
         raise

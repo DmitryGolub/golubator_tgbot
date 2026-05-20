@@ -7,6 +7,9 @@ from src.models.survey_template import QuestionType, SurveyQuestion
 
 logger = logging.getLogger(__name__)
 
+CALL_DURATION_TEMPLATE_SLUG = "call_duration_actual"
+CALL_DURATION_CONTEXT_TYPE = "call_duration"
+
 
 class SessionNotFoundError(Exception):
     pass
@@ -140,9 +143,12 @@ class SurveySessionService:
 
         session = await SurveySessionDAO.complete(session_id)
 
-        # Reload with answers for analytics
+        # Reload with answers for analytics / completion hooks
         session = await SurveySessionDAO.get_by_id(session_id)
         if session:
+            if await self._complete_call_duration_session(session):
+                return session
+
             from src.services.survey_analytics import SurveyAnalytics
 
             try:
@@ -151,3 +157,38 @@ class SurveySessionService:
                 logger.exception("SurveyAnalytics failed for session %d", session_id)
 
         return session
+
+    async def _complete_call_duration_session(self, session: SurveySession) -> bool:
+        if not session.template:
+            return False
+        if session.template.slug != CALL_DURATION_TEMPLATE_SLUG:
+            return False
+        if session.context_type != CALL_DURATION_CONTEXT_TYPE or not session.context_id:
+            return False
+
+        try:
+            meeting_id = int(session.context_id)
+            answer = session.answers[0] if session.answers else None
+            minutes = int(answer.value_text) if answer and answer.value_text else None
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid call duration survey answer: session=%s context_id=%s",
+                session.id,
+                session.context_id,
+            )
+            return True
+
+        if minutes is None:
+            logger.warning(
+                "Missing call duration survey answer: session=%s", session.id
+            )
+            return True
+
+        from src.services.call_flow import CallFlowService
+
+        await CallFlowService().end_call_with_actual_duration(
+            meeting_id=meeting_id,
+            user_id=session.respondent_id,
+            actual_duration_minutes=minutes,
+        )
+        return True

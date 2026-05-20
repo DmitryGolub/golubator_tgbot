@@ -69,6 +69,9 @@ class SurveyTemplate(Base):
     )
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reminder_interval_minutes: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
     target_role_id: Mapped[Optional[int]] = mapped_column(
         Integer,
         ForeignKey("iam.roles.id", ondelete="SET NULL"),

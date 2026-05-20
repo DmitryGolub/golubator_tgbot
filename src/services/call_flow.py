@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 
@@ -100,6 +101,44 @@ def _resolve_student(meeting: Meeting) -> User | None:
     return None
 
 
+async def _emit_call_ended_event(finished_meeting: Meeting, actor_id: int) -> None:
+    try:
+        from src.dao.cohort import CohortDAO
+        from src.models.trigger import TriggerType
+        from src.services.events.dispatcher import EventDispatcher
+
+        student_id = finished_meeting.student_telegram_id
+        participant_ids = [p.telegram_id for p in finished_meeting.participants]
+        mentor_id = finished_meeting.mentor_telegram_id or actor_id
+        completed_count = await MeetingDAO.count_completed_for_pair(
+            mentor_id, student_id
+        )
+        is_first_call = completed_count == 1
+
+        student_stage = None
+        if is_first_call and student_id:
+            greeting_ids = await CohortDAO.get_telegram_ids_in_cohort(
+                "Status", "greeting"
+            )
+            if student_id in greeting_ids:
+                student_stage = "greeting"
+
+        await EventDispatcher.emit(
+            TriggerType.call_ended,
+            {
+                "meeting_id": finished_meeting.id,
+                "mentor_id": finished_meeting.mentor_telegram_id,
+                "student_id": student_id,
+                "participant_ids": participant_ids,
+                "is_first_call": is_first_call,
+                "student_stage": student_stage,
+                "call_duration_minutes": finished_meeting.call_duration_minutes,
+            },
+        )
+    except Exception:
+        logger.exception("Failed to emit call_ended event")
+
+
 class CallFlowService:
     async def start_call(
         self,
@@ -154,58 +193,71 @@ class CallFlowService:
         if not active_meeting:
             raise ActiveCallNotFoundError
 
-        finished_meeting = await MeetingDAO.finish_call(active_meeting.id, mentor_id)
+        completed_at = datetime.now(timezone.utc)
+        actual_duration_minutes = None
+        if active_meeting.call_started_at:
+            actual_duration_minutes = max(
+                1,
+                round(
+                    (completed_at - active_meeting.call_started_at).total_seconds() / 60
+                ),
+            )
+
+        finished_meeting = await MeetingDAO.finish_call(
+            active_meeting.id,
+            mentor_id,
+            completed_at=completed_at,
+            actual_duration_minutes=actual_duration_minutes,
+            duration_answered_by=mentor_id,
+        )
         if not finished_meeting:
             raise ActiveCallNotFoundError
 
-        meeting_was_completed = finished_meeting.completed_at is not None
-
-        result = EndCallResult(
-            meeting=finished_meeting,
-            meeting_was_completed=meeting_was_completed,
-        )
+        result = await self._build_end_call_result(finished_meeting, mentor_id)
         logger.info(
             "Call ended: meeting=%s user=%s meeting_completed=%s",
             finished_meeting.id,
             mentor_id,
-            meeting_was_completed,
+            result.meeting_was_completed,
+        )
+        return result
+
+    async def end_call_with_actual_duration(
+        self,
+        *,
+        meeting_id: int,
+        user_id: int,
+        actual_duration_minutes: int,
+    ) -> EndCallResult | None:
+        finished_meeting = await MeetingDAO.finish_call(
+            meeting_id,
+            user_id,
+            actual_duration_minutes=actual_duration_minutes,
+            duration_answered_by=user_id,
+        )
+        if not finished_meeting:
+            return None
+
+        result = await self._build_end_call_result(finished_meeting, user_id)
+        logger.info(
+            "Call ended with actual duration: meeting=%s user=%s duration=%s",
+            finished_meeting.id,
+            user_id,
+            actual_duration_minutes,
+        )
+        return result
+
+    async def _build_end_call_result(
+        self, finished_meeting: Meeting, actor_id: int
+    ) -> EndCallResult:
+        meeting_was_completed = finished_meeting.completed_at is not None
+        result = EndCallResult(
+            meeting=finished_meeting,
+            meeting_was_completed=meeting_was_completed,
         )
 
         # Emit call_ended trigger for dynamic actions (surveys, notifications)
         if meeting_was_completed:
-            try:
-                from src.dao.cohort import CohortDAO
-                from src.models.trigger import TriggerType
-                from src.services.events.dispatcher import EventDispatcher
-
-                student_id = finished_meeting.student_telegram_id
-                participant_ids = [p.telegram_id for p in finished_meeting.participants]
-                completed_count = await MeetingDAO.count_completed_for_pair(
-                    mentor_id, student_id
-                )
-                is_first_call = completed_count == 1
-
-                student_stage = None
-                if is_first_call and student_id:
-                    greeting_ids = await CohortDAO.get_telegram_ids_in_cohort(
-                        "Status", "greeting"
-                    )
-                    if student_id in greeting_ids:
-                        student_stage = "greeting"
-
-                await EventDispatcher.emit(
-                    TriggerType.call_ended,
-                    {
-                        "meeting_id": finished_meeting.id,
-                        "mentor_id": finished_meeting.mentor_telegram_id,
-                        "student_id": student_id,
-                        "participant_ids": participant_ids,
-                        "is_first_call": is_first_call,
-                        "student_stage": student_stage,
-                        "call_duration_minutes": finished_meeting.call_duration_minutes,
-                    },
-                )
-            except Exception:
-                logger.exception("Failed to emit call_ended event")
+            await _emit_call_ended_event(finished_meeting, actor_id)
 
         return result
