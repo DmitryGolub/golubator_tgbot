@@ -10,6 +10,44 @@ from src.models.meeting import ProposalStatus
 from src.services.notion_sync_v2 import NotionSyncServiceV2
 
 
+async def test_future_pending_notifies_real_participants():
+    future_dt = datetime.now(timezone.utc) + timedelta(days=1)
+    existing = _meeting(participants=[_user(100), _user(200)])
+    rescheduled = _meeting(
+        scheduled_at=future_dt,
+        participants=[_user(100, "Mentor"), _user(200, "Real")],
+        proposal_status=ProposalStatus.pending_confirmation,
+        original_scheduled_at=datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc),
+    )
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+
+    with (
+        patch(
+            "src.dao.meeting.MeetingDAO.get_with_participants",
+            AsyncMock(return_value=existing),
+        ),
+        patch(
+            "src.dao.meeting.MeetingDAO.propose_reschedule",
+            AsyncMock(return_value=rescheduled),
+        ),
+        patch(
+            "src.dao.user.UserDAO.find_one_or_none",
+            AsyncMock(return_value=_user(100, "Mentor")),
+        ),
+        patch(
+            "src.tasks.meeting._send_confirmation_request",
+            AsyncMock(return_value=True),
+        ) as send_conf,
+        patch("src.tasks._db.get_worker_bot", lambda: bot),
+    ):
+        await _service()._apply_notion_reschedule(42, future_dt)
+
+    send_conf.assert_awaited_once_with(42, 200, bot=bot)
+    assert bot.send_message.await_count == 1
+    assert bot.send_message.await_args.args[0] == 100
+
+
 def _user(telegram_id, name="Alice", registered=True):
     return SimpleNamespace(
         telegram_id=telegram_id,
@@ -115,14 +153,21 @@ async def test_future_autoconfirm_only_notifies_proposer():
     assert recipients == [100]
 
 
-async def test_future_pending_notifies_real_participants():
+async def test_future_autoconfirm_skips_placeholder():
     future_dt = datetime.now(timezone.utc) + timedelta(days=1)
-    existing = _meeting(participants=[_user(100), _user(200)])
+    existing = _meeting(
+        participants=[
+            _user(100, "Mentor"),
+            _user(-1, "Placeholder", registered=False),
+        ]
+    )
     rescheduled = _meeting(
         scheduled_at=future_dt,
-        participants=[_user(100, "Mentor"), _user(200, "Real")],
-        proposal_status=ProposalStatus.pending_confirmation,
-        original_scheduled_at=datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc),
+        participants=[
+            _user(100, "Mentor"),
+            _user(-1, "Placeholder", registered=False),
+        ],
+        proposal_status=ProposalStatus.confirmed,
     )
     bot = MagicMock()
     bot.send_message = AsyncMock()
@@ -135,20 +180,23 @@ async def test_future_pending_notifies_real_participants():
         patch(
             "src.dao.meeting.MeetingDAO.propose_reschedule",
             AsyncMock(return_value=rescheduled),
-        ),
+        ) as propose,
         patch(
             "src.dao.user.UserDAO.find_one_or_none",
             AsyncMock(return_value=_user(100, "Mentor")),
         ),
+        patch(
+            "src.tasks.meeting._send_confirmation_request",
+            AsyncMock(return_value=True),
+        ) as send_conf,
         patch("src.tasks._db.get_worker_bot", lambda: bot),
     ):
         await _service()._apply_notion_reschedule(42, future_dt)
 
-    assert bot.send_message.await_count == 2
-    calls = {c.args[0]: c for c in bot.send_message.await_args_list}
-    assert 200 in calls and 100 in calls
-    assert "reply_markup" in calls[200].kwargs
-    assert "reply_markup" not in calls[100].kwargs
+    propose.assert_awaited_once()
+    send_conf.assert_not_awaited()
+    assert bot.send_message.await_count == 1
+    assert bot.send_message.await_args.args[0] == 100
 
 
 async def test_cancelled_meeting_skipped():

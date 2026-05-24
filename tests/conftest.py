@@ -104,6 +104,8 @@ def make_meeting(
         student=None,
         proposal_status=proposal_status,
         proposed_by=proposed_by,
+        is_cancelled=False,
+        original_scheduled_at=None,
     )
     # Add computed properties matching Meeting model
     ns.other_participants = [p for p in p_list if p.telegram_id != mentor_telegram_id]

@@ -7,6 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from src.bot.callbacks.dynamic_survey import StartDynamicSurveyCB
 from src.dao.survey_session import SurveySessionDAO
 from src.dao.survey_template import SurveyTemplateDAO
+from src.dao.user import UserDAO
 from src.models.survey_template import TemplateKind
 from src.models.trigger import TriggerRule, TriggerType
 from src.services.broadcast_sender import send_broadcast_message
@@ -28,6 +29,12 @@ class SendSurveyAction(BaseAction):
     ) -> None:
         if recipient_id < 0:
             logger.debug("Skipping placeholder user %s", recipient_id)
+            return
+
+        # Skip unregistered users
+        user = await UserDAO.find_one_or_none(telegram_id=recipient_id)
+        if user is None or user.registered_at is None:
+            logger.info("Skipping survey for unregistered user %s", recipient_id)
             return
 
         template_id = rule.action_config.get("survey_template_id")

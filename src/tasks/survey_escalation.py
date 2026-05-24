@@ -48,6 +48,17 @@ async def _check_survey_escalations_async() -> None:
                 if respondent_id < 0:
                     continue
 
+                # Skip unregistered respondents
+                if (
+                    survey_session.respondent
+                    and survey_session.respondent.registered_at is None
+                ):
+                    logger.info(
+                        "Skipping escalation for unregistered respondent %s",
+                        respondent_id,
+                    )
+                    continue
+
                 # Step 1: Reminder after 24h
                 if (
                     age > timedelta(hours=REMINDER_AFTER_HOURS)
