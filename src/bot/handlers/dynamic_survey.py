@@ -161,6 +161,7 @@ async def cb_start_survey(
         multi_selected=[],
         survey_chat_id=chat_id,
         survey_msg_id=msg_id,
+        survey_title=session.template.title,
     )
 
     await callback.answer()
@@ -239,6 +240,24 @@ async def cb_answer(
             await callback.answer(f"Выбрано: {len(selected)}")
             return
 
+    if question["question_type"] == "text":
+        config = question.get("config") or {}
+        if config.get("input_type") == "positive_int_minutes":
+            normalized = _normalize_minutes_answer(value, config)
+            if normalized is None:
+                await callback.answer("Введите число минут от 1 до 1440")
+                await _show_question(
+                    callback.bot,
+                    chat_id,
+                    msg_id,
+                    state,
+                    idx,
+                    questions,
+                    data.get("survey_title", "Опрос"),
+                )
+                return
+            value = normalized
+
     q_obj = await _load_question(question["id"])
     await service.save_answer(
         session_id=data["session_id"],
@@ -278,6 +297,19 @@ async def msg_text_answer(message: Message, state: FSMContext):
                 bot, chat_id, msg_id, state, idx, questions, session.template.title
             )
         return
+
+    config = question.get("config") or {}
+    if config.get("input_type") == "positive_int_minutes":
+        normalized = _normalize_minutes_answer(text, config)
+        if normalized is None:
+            if msg_id is not None:
+                session_service = SurveySessionService()
+                session = await session_service.get_session(data["session_id"])
+                await _show_question(
+                    bot, chat_id, msg_id, state, idx, questions, session.template.title
+                )
+            return
+        text = normalized
 
     service = SurveySessionService()
     q_obj = await _load_question(question["id"])
@@ -352,6 +384,42 @@ def _cancel_only_keyboard():
     return builder.as_markup()
 
 
+def _text_question_keyboard(question: dict):
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    quick_options = (question.get("config") or {}).get("quick_options") or []
+    if not quick_options:
+        return _cancel_only_keyboard()
+
+    builder = InlineKeyboardBuilder()
+    for option in quick_options:
+        builder.button(
+            text=option["label"],
+            callback_data=DynamicSurveyAnswerCB(value=str(option["value"])),
+        )
+    builder.adjust(4)
+    builder.row(
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data=DynamicSurveyAnswerCB(value="__cancel__").pack(),
+        )
+    )
+    return builder.as_markup()
+
+
+def _normalize_minutes_answer(raw: str, config: dict) -> str | None:
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+    min_value = int(config.get("min", 1))
+    max_value = int(config.get("max", 1440))
+    if value < min_value or value > max_value:
+        return None
+    return str(value)
+
+
 async def _load_question(question_id: int):
     from src.dao.survey_template import SurveyTemplateDAO
 
@@ -381,9 +449,13 @@ async def _show_question(
 
     if qtype == "text":
         await state.set_state(DynamicSurveyFSM.waiting_text)
-        if not question["is_required"]:
+        if (question.get("config") or {}).get("quick_options"):
+            text += (
+                "\n\n<i>Можно выбрать кнопку или отправить число минут сообщением.</i>"
+            )
+        elif not question["is_required"]:
             text += "\n\n<i>Отправьте текст или «-» чтобы пропустить</i>"
-        keyboard = _cancel_only_keyboard()
+        keyboard = _text_question_keyboard(question)
     else:
         await state.set_state(DynamicSurveyFSM.answering)
         keyboard = _build_keyboard_from_dict(question)

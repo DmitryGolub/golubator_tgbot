@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import delete, func, insert, or_, select, update
+from sqlalchemy import String, cast, delete, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -9,6 +9,7 @@ from sqlalchemy.orm import joinedload
 from src.core.dao import BaseDAO
 from src.core.database import async_session_maker
 from src.models.meeting import CallStatus, Meeting, MeetingUser, ProposalStatus
+from src.models.survey_session import SurveySession
 from src.models.user import User
 
 
@@ -262,14 +263,22 @@ class MeetingDAO(BaseDAO):
             return await cls._reload_with_participants(session, meeting_id)
 
     @classmethod
-    async def finish_call(cls, meeting_id: int, user_id: int) -> Optional[Meeting]:
+    async def finish_call(
+        cls,
+        meeting_id: int,
+        user_id: int,
+        *,
+        completed_at: datetime | None = None,
+        actual_duration_minutes: int | None = None,
+        duration_answered_by: int | None = None,
+    ) -> Optional[Meeting]:
         async with async_session_maker() as session:
             # Verify user is a participant
             participant_check = select(MeetingUser.meeting_id).where(
                 MeetingUser.meeting_id == meeting_id,
                 MeetingUser.user_id == user_id,
             )
-            now = datetime.now(timezone.utc)
+            now = completed_at or datetime.now(timezone.utc)
             stmt = (
                 update(Meeting)
                 .where(
@@ -280,6 +289,8 @@ class MeetingDAO(BaseDAO):
                 .values(
                     call_status=CallStatus.finished,
                     completed_at=now,
+                    actual_duration_minutes=actual_duration_minutes,
+                    duration_answered_by=duration_answered_by,
                 )
                 .returning(Meeting.id)
             )
@@ -291,6 +302,43 @@ class MeetingDAO(BaseDAO):
                 return None
 
             return await cls._reload_with_participants(session, meeting_id)
+
+    @classmethod
+    async def find_due_call_duration_request_meetings(
+        cls,
+        *,
+        template_id: int,
+        now: datetime,
+        limit: int = 100,
+    ) -> list[Meeting]:
+        cutoff = now - timedelta(hours=1)
+        existing_session = (
+            select(SurveySession.id)
+            .where(
+                SurveySession.template_id == template_id,
+                SurveySession.respondent_id == Meeting.mentor_telegram_id,
+                SurveySession.context_type == "call_duration",
+                SurveySession.context_id == cast(Meeting.id, String),
+            )
+            .exists()
+        )
+        async with async_session_maker() as session:
+            query = (
+                select(Meeting)
+                .where(
+                    Meeting.call_status == CallStatus.ongoing,
+                    Meeting.actual_duration_minutes.is_(None),
+                    Meeting.call_started_at.isnot(None),
+                    Meeting.call_started_at <= cutoff,
+                    Meeting.mentor_telegram_id.isnot(None),
+                    Meeting.mentor_telegram_id > 0,
+                    ~existing_session,
+                )
+                .order_by(Meeting.call_started_at.asc())
+                .limit(limit)
+            )
+            result = await session.execute(query)
+            return list(result.scalars().all())
 
     @classmethod
     async def count_completed_for_pair(cls, mentor_id: int, student_id: int) -> int:
@@ -715,14 +763,18 @@ class MeetingDAO(BaseDAO):
         non_proposer_ids = [uid for uid in all_ids if uid != proposer_id]
         if non_proposer_ids:
             real_rows = (
-                await session.execute(
-                    select(User.telegram_id).where(
-                        User.telegram_id.in_(non_proposer_ids),
-                        User.telegram_id > 0,
-                        User.registered_at.isnot(None),
+                (
+                    await session.execute(
+                        select(User.telegram_id).where(
+                            User.telegram_id.in_(non_proposer_ids),
+                            User.telegram_id > 0,
+                            User.registered_at.isnot(None),
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             real_set = set(real_rows)
         else:
             real_set = set()

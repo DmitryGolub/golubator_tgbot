@@ -37,7 +37,14 @@ class ProposalStatus(enum.Enum):
 
 class Meeting(Base):
     __tablename__ = "meetings"
-    __table_args__ = ({"schema": "meetings"},)
+    __table_args__ = (
+        sa.CheckConstraint(
+            "actual_duration_minutes IS NULL OR "
+            "(actual_duration_minutes > 0 AND actual_duration_minutes <= 1440)",
+            name="ck_meetings_actual_duration_minutes_range",
+        ),
+        {"schema": "meetings"},
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -53,6 +60,14 @@ class Meeting(Base):
     )
     call_started_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    actual_duration_minutes: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    duration_answered_by: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("iam.users.telegram_id", ondelete="SET NULL"),
+        nullable=True,
     )
     is_cancelled: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
@@ -148,6 +163,8 @@ class Meeting(Base):
 
     @property
     def call_duration_minutes(self) -> int | None:
+        if self.actual_duration_minutes is not None:
+            return self.actual_duration_minutes
         d = self.call_duration
         return round(d.total_seconds() / 60) if d else None
 

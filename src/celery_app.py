@@ -87,6 +87,11 @@ celery_app.conf.update(
             "task": "meeting.send_final_reminders",
             "schedule": crontab(minute="*"),
         },
+        # Meetings: request actual call duration for long-running calls
+        "meeting.request_due_call_durations": {
+            "task": "meeting.request_due_call_durations",
+            "schedule": crontab(minute="*"),
+        },
         # Triggers
         "triggers.tick_periodic": {
             "task": "triggers.tick_periodic",

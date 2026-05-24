@@ -59,11 +59,27 @@ async def _check_survey_escalations_async() -> None:
                     )
                     continue
 
-                # Step 1: Reminder after 24h
-                if (
-                    age > timedelta(hours=REMINDER_AFTER_HOURS)
-                    and survey_session.reminder_sent_at is None
-                ):
+                reminder_interval = None
+                if survey_session.template:
+                    reminder_interval = (
+                        survey_session.template.reminder_interval_minutes
+                    )
+
+                if reminder_interval is None:
+                    reminder_due = (
+                        age > timedelta(hours=REMINDER_AFTER_HOURS)
+                        and survey_session.reminder_sent_at is None
+                    )
+                else:
+                    last_reminder_at = (
+                        survey_session.reminder_sent_at or survey_session.created_at
+                    )
+                    reminder_due = now - last_reminder_at >= timedelta(
+                        minutes=reminder_interval
+                    )
+
+                # Step 1: Reminder after 24h or by template interval
+                if reminder_due:
                     kb = InlineKeyboardBuilder()
                     kb.button(
                         text="Пройти опрос",
@@ -71,14 +87,28 @@ async def _check_survey_escalations_async() -> None:
                             session_id=survey_session.id
                         ),
                     )
-                    try:
-                        await bot.send_message(
-                            respondent_id,
+                    reminder_text = (
+                        survey_session.template.body
+                        if survey_session.template and survey_session.template.body
+                        else None
+                    )
+                    if reminder_text:
+                        reminder_message = (
+                            f"{e(reminder_text)}\n\n"
+                            f"Опрос «{e(template_title)}» ожидает вашего ответа."
+                        )
+                    else:
+                        reminder_message = (
                             f"⚠️ <b>Незаполненный опрос</b>\n\n"
                             f"Опрос «{e(template_title)}» ожидает вашего ответа.\n"
                             f"Заполнение опроса — обязательная часть программы.\n\n"
                             f"Если опрос не будет заполнен в ближайшее время, "
-                            f"информация будет передана вашему ментору.",
+                            f"информация будет передана вашему ментору."
+                        )
+                    try:
+                        await bot.send_message(
+                            respondent_id,
+                            reminder_message,
                             reply_markup=kb.as_markup(),
                             parse_mode="HTML",
                         )
@@ -92,20 +122,21 @@ async def _check_survey_escalations_async() -> None:
                             "will notify mentor immediately",
                             respondent_id,
                         )
-                        # Bot blocked -> notify mentor right away
-                        await _notify_mentor(
-                            bot,
-                            survey_session,
-                            template_title,
-                            blocked=True,
-                        )
-                        await SurveySessionDAO.update_escalation_field(
-                            survey_session.id, "mentor_notified_at", now
-                        )
+                        if survey_session.is_escalatable:
+                            # Bot blocked -> notify mentor right away
+                            await _notify_mentor(
+                                bot,
+                                survey_session,
+                                template_title,
+                                blocked=True,
+                            )
+                            await SurveySessionDAO.update_escalation_field(
+                                survey_session.id, "mentor_notified_at", now
+                            )
+                            mentor_notifs += 1
                         await SurveySessionDAO.update_escalation_field(
                             survey_session.id, "reminder_sent_at", now
                         )
-                        mentor_notifs += 1
                     except TelegramBadRequest as err:
                         logger.warning(
                             "Cannot send reminder to %s: %s",
@@ -116,6 +147,9 @@ async def _check_survey_escalations_async() -> None:
                         await SurveySessionDAO.update_escalation_field(
                             survey_session.id, "reminder_sent_at", now
                         )
+
+                if not survey_session.is_escalatable:
+                    continue
 
                 # Step 2: Notify mentor after 72h
                 if (
