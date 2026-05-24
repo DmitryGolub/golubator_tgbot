@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     DateTime,
     ForeignKey,
+    UniqueConstraint,
     func,
 )
 
@@ -195,4 +196,70 @@ class MeetingUser(Base):
     __table_args__ = (
         Index("ix_meeting_users_user_id", "user_id"),
         {"schema": "meetings"},
+    )
+
+
+class MeetingNotificationType(str, enum.Enum):
+    confirmation_request = "confirmation_request"
+    reminder_repeat = "reminder_repeat"
+    final_5min = "final_5min"
+    created = "created"
+
+
+class MeetingNotificationStatus(str, enum.Enum):
+    pending = "pending"
+    sent = "sent"
+    failed = "failed"
+
+
+class MeetingNotification(Base):
+    __tablename__ = "meeting_notifications"
+    __table_args__ = (
+        UniqueConstraint(
+            "meeting_id",
+            "user_id",
+            "notification_type",
+            "scheduled_window",
+            name="uq_meeting_notification",
+        ),
+        {"schema": "meetings"},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    meeting_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("meetings.meetings.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    notification_type: Mapped[MeetingNotificationType] = mapped_column(
+        Enum(
+            MeetingNotificationType,
+            name="meeting_notification_type_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+            create_type=False,
+        ),
+        nullable=False,
+    )
+    scheduled_window: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status: Mapped[MeetingNotificationStatus] = mapped_column(
+        Enum(
+            MeetingNotificationStatus,
+            name="meeting_notification_status_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+            create_type=False,
+        ),
+        nullable=False,
+        default=MeetingNotificationStatus.pending,
+    )
+    sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
     )

@@ -48,6 +48,17 @@ async def _check_survey_escalations_async() -> None:
                 if respondent_id < 0:
                     continue
 
+                # Skip unregistered respondents
+                if (
+                    survey_session.respondent
+                    and survey_session.respondent.registered_at is None
+                ):
+                    logger.info(
+                        "Skipping escalation for unregistered respondent %s",
+                        respondent_id,
+                    )
+                    continue
+
                 reminder_interval = None
                 if survey_session.template:
                     reminder_interval = (

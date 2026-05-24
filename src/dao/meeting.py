@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import String, cast, delete, func, insert, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -743,6 +744,71 @@ class MeetingDAO(BaseDAO):
             if updated_id is None:
                 return None
             return await cls._reload_with_participants(session, meeting_id)
+
+    @classmethod
+    async def setup_confirmation_state(
+        cls,
+        session: AsyncSession,
+        meeting_id: int,
+        all_ids: set[int],
+        proposer_id: int,
+    ) -> ProposalStatus:
+        """Set accepted values for participants and return effective proposal_status.
+
+        - proposer → accepted=True
+        - real registered non-proposers → accepted=None
+        - placeholder / unregistered non-proposers → accepted=True
+        If no real non-proposer exists, the meeting is auto-confirmed.
+        """
+        non_proposer_ids = [uid for uid in all_ids if uid != proposer_id]
+        if non_proposer_ids:
+            real_rows = (
+                (
+                    await session.execute(
+                        select(User.telegram_id).where(
+                            User.telegram_id.in_(non_proposer_ids),
+                            User.telegram_id > 0,
+                            User.registered_at.isnot(None),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            real_set = set(real_rows)
+        else:
+            real_set = set()
+
+        if not real_set:
+            status = ProposalStatus.confirmed
+        else:
+            status = ProposalStatus.pending_confirmation
+
+        accepted_by_user: dict[int, bool | None] = {}
+        for uid in all_ids:
+            if uid == proposer_id:
+                accepted_by_user[uid] = True
+            elif uid in real_set:
+                accepted_by_user[uid] = None
+            else:
+                accepted_by_user[uid] = True
+
+        for uid, accepted in accepted_by_user.items():
+            await session.execute(
+                pg_insert(MeetingUser)
+                .values(meeting_id=meeting_id, user_id=uid, accepted=accepted)
+                .on_conflict_do_update(
+                    index_elements=["meeting_id", "user_id"],
+                    set_=dict(accepted=accepted),
+                )
+            )
+
+        await session.execute(
+            update(Meeting)
+            .where(Meeting.id == meeting_id)
+            .values(proposal_status=status, proposed_by=proposer_id)
+        )
+        return status
 
     @classmethod
     async def get_pending_for_user(cls, user_id: int) -> list[Meeting]:

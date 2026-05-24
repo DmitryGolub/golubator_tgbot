@@ -11,7 +11,6 @@ from datetime import datetime, date, timezone
 
 from src.utils.tz import MSK
 from src.utils.time import is_past as _is_past  # noqa: F401 — re-exported for tests
-from src.utils.bot_send import safe_send_message
 
 from src.bot.callbacks.meeting import (
     ChooseMeetingTypeCB,
@@ -42,7 +41,6 @@ from src.bot.keyboards.meeting import (
     meeting_type_keyboard,
     meeting_calendar_keyboard,
     meeting_time_keyboard,
-    pending_meeting_keyboard,
     edit_meeting_fields_keyboard,
 )
 from src.bot.keyboards.menu import menu_keyboard
@@ -71,6 +69,7 @@ from src.services.call_flow import (
     MentorNotInMeetingError,
     NoOtherParticipantsError,
 )
+from src.tasks.meeting import _send_confirmation_request
 
 logger = logging.getLogger(__name__)
 MOSCOW_TZ = MSK
@@ -922,9 +921,6 @@ async def _finalize_reschedule(user_id: int, state: FSMContext, reply_func, bot)
         )
         return
 
-    proposer = await UserDAO.find_one_or_none(telegram_id=user_id)
-    proposer_name = proposer.name if proposer else "Неизвестный участник"
-
     if meeting.proposal_status == ProposalStatus.confirmed:
         other_names = [
             p.name if p.name else f"id{p.telegram_id}"
@@ -942,12 +938,7 @@ async def _finalize_reschedule(user_id: int, state: FSMContext, reply_func, bot)
     for p in meeting.participants:
         if p.telegram_id == user_id:
             continue
-        await safe_send_message(
-            bot,
-            p,
-            _format_proposal_text(meeting, proposer_name),
-            reply_markup=pending_meeting_keyboard(meeting.id),
-        )
+        await _send_confirmation_request(meeting.id, p.telegram_id, bot=bot)
 
     await reply_func(
         "Предложение о переносе отправлено, ожидаем подтверждения.",
@@ -1024,10 +1015,6 @@ async def _finalize_meeting(
 
     _trigger_caldav_sync(meeting.id)
 
-    # Get proposer name for notification
-    proposer = await UserDAO.find_one_or_none(telegram_id=user_id)
-    proposer_name = proposer.name if proposer else "Неизвестный участник"
-
     if meeting.proposal_status == ProposalStatus.confirmed:
         other_names = [
             p.name if p.name else f"id{p.telegram_id}"
@@ -1045,12 +1032,7 @@ async def _finalize_meeting(
     for p in meeting.participants:
         if p.telegram_id == user_id:
             continue
-        await safe_send_message(
-            bot,
-            p,
-            _format_proposal_text(meeting, proposer_name),
-            reply_markup=pending_meeting_keyboard(meeting.id),
-        )
+        await _send_confirmation_request(meeting.id, p.telegram_id, bot=bot)
 
     await reply_func(
         "Предложение о созвоне отправлено, ожидаем подтверждения.",

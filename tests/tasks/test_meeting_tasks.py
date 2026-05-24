@@ -1,13 +1,17 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.exc import IntegrityError
 
 from tests.conftest import make_meeting, make_user
+from src.models.meeting import MeetingNotificationType, ProposalStatus
 from src.tasks.meeting import (
     _auto_start_due_calls_async,
     _request_due_call_durations_async,
+    _send_confirmation_request,
+    _send_final_reminders_async,
+    _send_meeting_notification,
     _split_participants,
 )
 
@@ -149,6 +153,208 @@ class TestAutoStartDueCalls:
             # Should not raise
             await _auto_start_due_calls_async()
             mock_dao.start_call.assert_awaited_once_with(1, started_at=sched1)
+
+
+class TestSendMeetingNotification:
+    async def test_idempotent_second_call_skips(self):
+        bot = MagicMock()
+        bot.send_message = AsyncMock()
+
+        user = make_user(telegram_id=200, registered_at=datetime.now(timezone.utc))
+
+        with (
+            patch(
+                "src.dao.meeting_notification.MeetingNotificationDAO.try_create",
+                AsyncMock(return_value=(SimpleNamespace(id=1), True)),
+            ) as try_create,
+            patch(
+                "src.dao.user.UserDAO.find_one_or_none",
+                AsyncMock(return_value=user),
+            ),
+            patch(
+                "src.tasks.meeting.safe_send_message",
+                AsyncMock(return_value=True),
+            ) as safe_send,
+            patch(
+                "src.dao.meeting_notification.MeetingNotificationDAO.mark_sent",
+                AsyncMock(),
+            ) as mark_sent,
+        ):
+            result1 = await _send_meeting_notification(
+                1,
+                200,
+                MeetingNotificationType.confirmation_request,
+                "test",
+                bot=bot,
+            )
+            assert result1 is True
+            assert try_create.await_count == 1
+            assert safe_send.await_count == 1
+            assert mark_sent.await_count == 1
+
+            # Second call with same idempotency key
+            try_create.return_value = (SimpleNamespace(id=1), False)
+            result2 = await _send_meeting_notification(
+                1,
+                200,
+                MeetingNotificationType.confirmation_request,
+                "test",
+                bot=bot,
+            )
+            assert result2 is False
+            assert try_create.await_count == 2
+            assert safe_send.await_count == 1  # no additional send
+            assert mark_sent.await_count == 1
+
+    async def test_skips_unregistered_user(self):
+        bot = MagicMock()
+        bot.send_message = AsyncMock()
+
+        with (
+            patch(
+                "src.dao.meeting_notification.MeetingNotificationDAO.try_create",
+                AsyncMock(return_value=(SimpleNamespace(id=1), True)),
+            ) as try_create,
+            patch(
+                "src.dao.user.UserDAO.find_one_or_none",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "src.dao.meeting_notification.MeetingNotificationDAO.mark_failed",
+                AsyncMock(),
+            ) as mark_failed,
+        ):
+            result = await _send_meeting_notification(
+                1,
+                200,
+                MeetingNotificationType.confirmation_request,
+                "test",
+                bot=bot,
+            )
+            assert result is False
+            try_create.assert_not_awaited()
+            mark_failed.assert_not_awaited()
+            bot.send_message.assert_not_awaited()
+
+
+class TestSendConfirmationRequest:
+    async def test_sends_only_when_pending(self):
+        meeting = make_meeting(
+            id=1,
+            participants=[_creator(), _other(200)],
+            mentor_telegram_id=CREATOR_ID,
+            proposal_status=ProposalStatus.pending_confirmation,
+            proposed_by=CREATOR_ID,
+            scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+
+        with (
+            patch("src.tasks.meeting._load_meeting", AsyncMock(return_value=meeting)),
+            patch(
+                "src.tasks.meeting._send_meeting_notification",
+                AsyncMock(return_value=True),
+            ) as notify,
+            patch(
+                "src.core.database.async_session_maker",
+                MagicMock(),
+            ) as session_mock,
+            patch(
+                "src.dao.user.UserDAO.find_one_or_none",
+                AsyncMock(return_value=_creator()),
+            ),
+        ):
+            session_instance = AsyncMock()
+            session_mock.return_value.__aenter__ = AsyncMock(
+                return_value=session_instance
+            )
+            session_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+            result_mock = MagicMock()
+            result_mock.scalar_one_or_none = MagicMock(return_value=None)
+            session_instance.execute = AsyncMock(return_value=result_mock)
+
+            result = await _send_confirmation_request(1, 200)
+            assert result is True
+            notify.assert_awaited_once()
+
+    async def test_skips_when_already_accepted(self):
+        meeting = make_meeting(
+            id=1,
+            participants=[_creator(), _other(200)],
+            mentor_telegram_id=CREATOR_ID,
+            proposal_status=ProposalStatus.pending_confirmation,
+            proposed_by=CREATOR_ID,
+        )
+
+        with (
+            patch("src.tasks.meeting._load_meeting", AsyncMock(return_value=meeting)),
+            patch(
+                "src.tasks.meeting._send_meeting_notification",
+                AsyncMock(return_value=True),
+            ) as notify,
+            patch(
+                "src.core.database.async_session_maker",
+                MagicMock(),
+            ) as session_mock,
+            patch(
+                "src.dao.user.UserDAO.find_one_or_none",
+                AsyncMock(return_value=_creator()),
+            ),
+        ):
+            session_instance = AsyncMock()
+            session_mock.return_value.__aenter__ = AsyncMock(
+                return_value=session_instance
+            )
+            session_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+            result_mock = MagicMock()
+            result_mock.scalar_one_or_none = MagicMock(return_value=True)
+            session_instance.execute = AsyncMock(return_value=result_mock)
+
+            result = await _send_confirmation_request(1, 200)
+            assert result is False
+            notify.assert_not_awaited()
+
+
+class TestSendFinalReminders:
+    async def test_sends_to_all_registered_participants(self):
+        future = datetime.now(timezone.utc) + timedelta(minutes=5)
+        meeting = make_meeting(
+            id=1,
+            participants=[_creator(), _other(200)],
+            mentor_telegram_id=CREATOR_ID,
+            scheduled_at=future,
+        )
+
+        with (
+            patch("src.tasks.meeting.celery_db") as mock_db,
+            patch(
+                "src.core.database.async_session_maker",
+                MagicMock(),
+            ) as session_mock,
+            patch("src.tasks.meeting.get_worker_bot", MagicMock()),
+            patch(
+                "src.tasks.meeting._send_meeting_notification",
+                AsyncMock(return_value=True),
+            ) as notify,
+        ):
+            mock_db.return_value.__aenter__ = AsyncMock()
+            mock_db.return_value.__aexit__ = AsyncMock()
+
+            session_instance = AsyncMock()
+            session_mock.return_value.__aenter__ = AsyncMock(
+                return_value=session_instance
+            )
+            session_mock.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            # Mock scalar_one_or_none to return a future meeting
+            result_mock = MagicMock()
+            result_mock.unique = MagicMock(return_value=result_mock)
+            result_mock.scalars = MagicMock(return_value=result_mock)
+            result_mock.all = MagicMock(return_value=[meeting])
+            session_instance.execute = AsyncMock(return_value=result_mock)
+
+            await _send_final_reminders_async()
+
+            assert notify.await_count == 2  # creator + other
 
 
 class TestRequestDueCallDurations:

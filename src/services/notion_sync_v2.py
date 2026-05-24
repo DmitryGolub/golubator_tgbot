@@ -544,6 +544,20 @@ class NotionSyncServiceV2:
                     await _ensure_meeting_users(
                         session, new_meeting.id, user_ids=all_user_ids
                     )
+                    # Set confirmation state for Notion-created meetings
+                    clean_user_ids = [uid for uid in all_user_ids if uid is not None]
+                    if clean_user_ids:
+                        from src.dao.meeting import MeetingDAO
+                        proposer_id = mentor_tid or next(
+                            (uid for uid in clean_user_ids if uid > 0),
+                            clean_user_ids[0],
+                        )
+                        await MeetingDAO.setup_confirmation_state(
+                            session,
+                            new_meeting.id,
+                            set(clean_user_ids),
+                            proposer_id,
+                        )
 
                 await session.commit()
         finally:
@@ -612,21 +626,14 @@ class NotionSyncServiceV2:
         if meeting is None:
             return
 
-        from src.bot.keyboards.meeting import pending_meeting_keyboard
         from src.dao.user import UserDAO
         from src.models.meeting import ProposalStatus
-        from src.services.meeting.proposal_text import (
-            format_proposal_text,
-            format_when,
-        )
+        from src.services.meeting.proposal_text import format_when
         from src.tasks._db import get_worker_bot
-        from src.utils.bot_send import safe_send_message
+        from src.tasks.meeting import _send_confirmation_request
         from src.utils.escape import e as _escape
 
         proposer = await UserDAO.find_one_or_none(telegram_id=proposer_id)
-        proposer_name = (
-            proposer.name if proposer and proposer.name else f"id{proposer_id}"
-        )
 
         bot = get_worker_bot()
         when_str = format_when(meeting.scheduled_at)
@@ -640,11 +647,8 @@ class NotionSyncServiceV2:
             )
             if auto_confirmed:
                 continue
-            await safe_send_message(
-                bot,
-                participant,
-                format_proposal_text(meeting, proposer_name),
-                reply_markup=pending_meeting_keyboard(meeting.id),
+            await _send_confirmation_request(
+                meeting.id, participant.telegram_id, bot=bot
             )
 
         if proposer is not None and proposer_id > 0:
@@ -659,7 +663,7 @@ class NotionSyncServiceV2:
                     f"✅ Перенос встречи на {when_str} предложен. "
                     f"Ждём подтверждения от <b>{_escape(other_label)}</b>."
                 )
-            await safe_send_message(bot, proposer, proposer_text)
+            await bot.send_message(proposer.telegram_id, proposer_text)
 
     async def _upsert_mentor(self, session: AsyncSession, data, page_id: str) -> None:
         result = await session.execute(

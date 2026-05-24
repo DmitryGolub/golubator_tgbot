@@ -21,6 +21,7 @@ def _session(
     reminder_sent_delta=None,
     is_escalatable=True,
     template=None,
+    respondent=None,
 ):
     now = datetime.now(timezone.utc)
     return SimpleNamespace(
@@ -32,7 +33,82 @@ def _session(
         escalated_at=None,
         is_escalatable=is_escalatable,
         template=template or _template(),
-        respondent=None,
+        respondent=respondent,
+    )
+
+
+async def test_skips_placeholder_respondent():
+    survey_session = _session(respondent_id=-1)
+    bot = AsyncMock()
+
+    with (
+        patch("src.tasks.survey_escalation.celery_db") as mock_db,
+        patch("src.tasks.survey_escalation.get_worker_bot", return_value=bot),
+        patch("src.dao.survey_session.SurveySessionDAO") as mock_session_dao,
+    ):
+        mock_db.return_value.__aenter__ = AsyncMock()
+        mock_db.return_value.__aexit__ = AsyncMock()
+        mock_session_dao.get_overdue_sessions = AsyncMock(return_value=[survey_session])
+        mock_session_dao.update_escalation_field = AsyncMock()
+
+        await _check_survey_escalations_async()
+
+    bot.send_message.assert_not_called()
+    mock_session_dao.update_escalation_field.assert_not_called()
+
+
+async def test_skips_unregistered_respondent():
+    survey_session = _session(
+        respondent=SimpleNamespace(
+            telegram_id=100,
+            registered_at=None,
+            name="Test",
+        ),
+    )
+    bot = AsyncMock()
+
+    with (
+        patch("src.tasks.survey_escalation.celery_db") as mock_db,
+        patch("src.tasks.survey_escalation.get_worker_bot", return_value=bot),
+        patch("src.dao.survey_session.SurveySessionDAO") as mock_session_dao,
+    ):
+        mock_db.return_value.__aenter__ = AsyncMock()
+        mock_db.return_value.__aexit__ = AsyncMock()
+        mock_session_dao.get_overdue_sessions = AsyncMock(return_value=[survey_session])
+        mock_session_dao.update_escalation_field = AsyncMock()
+
+        await _check_survey_escalations_async()
+
+    bot.send_message.assert_not_called()
+    mock_session_dao.update_escalation_field.assert_not_called()
+
+
+async def test_sends_reminder_to_registered_respondent():
+    survey_session = _session(
+        respondent=SimpleNamespace(
+            telegram_id=100,
+            registered_at=datetime.now(timezone.utc),
+            name="Test",
+        ),
+    )
+    bot = AsyncMock()
+
+    with (
+        patch("src.tasks.survey_escalation.celery_db") as mock_db,
+        patch("src.tasks.survey_escalation.get_worker_bot", return_value=bot),
+        patch("src.dao.survey_session.SurveySessionDAO") as mock_session_dao,
+        patch("src.tasks.survey_escalation._notify_mentor", new_callable=AsyncMock),
+    ):
+        mock_db.return_value.__aenter__ = AsyncMock()
+        mock_db.return_value.__aexit__ = AsyncMock()
+        mock_session_dao.get_overdue_sessions = AsyncMock(return_value=[survey_session])
+        mock_session_dao.update_escalation_field = AsyncMock()
+
+        await _check_survey_escalations_async()
+
+    bot.send_message.assert_awaited_once()
+    mock_session_dao.update_escalation_field.assert_any_await(
+        survey_session.id, "reminder_sent_at", ANY
     )
 
 

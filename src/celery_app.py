@@ -77,6 +77,17 @@ celery_app.conf.update(
             "task": "meeting.auto_start_due_calls",
             "schedule": crontab(minute="*"),
         },
+        # Meetings: daily reminder for unconfirmed future meetings
+        "meeting.send_confirmation_reminders": {
+            "task": "meeting.send_confirmation_reminders",
+            "schedule": crontab(hour="9", minute="0"),
+        },
+        # Meetings: final ~5-minute reminder
+        "meeting.send_final_reminders": {
+            "task": "meeting.send_final_reminders",
+            "schedule": crontab(minute="*"),
+        },
+        # Meetings: request actual call duration for long-running calls
         "meeting.request_due_call_durations": {
             "task": "meeting.request_due_call_durations",
             "schedule": crontab(minute="*"),
