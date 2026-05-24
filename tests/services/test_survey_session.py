@@ -16,6 +16,10 @@ def _template(id=1, slug="test"):
     return SimpleNamespace(id=id, slug=slug, questions=[])
 
 
+def _answer(value_text="45"):
+    return SimpleNamespace(value_text=value_text)
+
+
 def _session(id=1, status="pending", template_id=1):
     return SimpleNamespace(
         id=id,
@@ -207,12 +211,55 @@ class TestCompleteSession:
             id=1,
             status=SessionStatus.completed,
             template_id=1,
-            template=None,
+            template=_template(slug="regular_survey"),
             answers=[],
             respondent_id=1,
+            context_type=None,
             context_id=None,
         )
         mock_sess_dao.get_by_id = AsyncMock(side_effect=[session, completed])
         mock_sess_dao.complete = AsyncMock(return_value=completed)
-        result = await SurveySessionService().complete_session(1)
+
+        with patch("src.services.survey_analytics.SurveyAnalytics") as mock_analytics:
+            mock_analytics.return_value.process_completed_session = AsyncMock()
+            result = await SurveySessionService().complete_session(1)
+
         assert result is completed
+        mock_analytics.return_value.process_completed_session.assert_awaited_once_with(
+            completed
+        )
+
+    async def test_call_duration_completion_closes_call_without_analytics(
+        self, mock_tmpl_dao, mock_sess_dao
+    ):
+        from src.models.survey_session import SessionStatus
+
+        session = SimpleNamespace(id=1, status=SessionStatus.in_progress, template_id=1)
+        completed = SimpleNamespace(
+            id=1,
+            status=SessionStatus.completed,
+            template_id=1,
+            template=_template(slug="call_duration_actual"),
+            answers=[_answer("73")],
+            respondent_id=100,
+            context_type="call_duration",
+            context_id="42",
+        )
+        mock_sess_dao.get_by_id = AsyncMock(side_effect=[session, completed])
+        mock_sess_dao.complete = AsyncMock(return_value=completed)
+
+        with (
+            patch("src.services.call_flow.CallFlowService") as mock_call_flow,
+            patch("src.services.survey_analytics.SurveyAnalytics") as mock_analytics,
+        ):
+            mock_call_flow.return_value.end_call_with_actual_duration = AsyncMock()
+            mock_analytics.return_value.process_completed_session = AsyncMock()
+            result = await SurveySessionService().complete_session(1)
+
+        assert result is completed
+        mock_call_flow.return_value.end_call_with_actual_duration.assert_awaited_once_with(
+            meeting_id=42,
+            user_id=100,
+            actual_duration_minutes=73,
+        )
+        mock_analytics.return_value.process_completed_session.assert_not_called()

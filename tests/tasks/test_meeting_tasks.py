@@ -1,10 +1,15 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.exc import IntegrityError
 
 from tests.conftest import make_meeting, make_user
-from src.tasks.meeting import _auto_start_due_calls_async, _split_participants
+from src.tasks.meeting import (
+    _auto_start_due_calls_async,
+    _request_due_call_durations_async,
+    _split_participants,
+)
 
 
 CREATOR_ID = 100
@@ -144,3 +149,109 @@ class TestAutoStartDueCalls:
             # Should not raise
             await _auto_start_due_calls_async()
             mock_dao.start_call.assert_awaited_once_with(1, started_at=sched1)
+
+
+class TestRequestDueCallDurations:
+    async def test_missing_template_returns(self):
+        with (
+            patch("src.tasks.meeting.celery_db") as mock_db,
+            patch("src.dao.survey_template.SurveyTemplateDAO") as mock_template_dao,
+            patch("src.tasks.meeting.MeetingDAO") as mock_meeting_dao,
+        ):
+            mock_db.return_value.__aenter__ = AsyncMock()
+            mock_db.return_value.__aexit__ = AsyncMock()
+            mock_template_dao.get_by_slug = AsyncMock(return_value=None)
+            mock_meeting_dao.find_due_call_duration_request_meetings = AsyncMock()
+
+            await _request_due_call_durations_async()
+
+            mock_template_dao.get_by_slug.assert_awaited_once_with(
+                "call_duration_actual"
+            )
+            mock_meeting_dao.find_due_call_duration_request_meetings.assert_not_called()
+
+    async def test_no_due_meetings(self):
+        template = SimpleNamespace(id=10)
+        with (
+            patch("src.tasks.meeting.celery_db") as mock_db,
+            patch("src.dao.survey_template.SurveyTemplateDAO") as mock_template_dao,
+            patch("src.tasks.meeting.MeetingDAO") as mock_meeting_dao,
+            patch("src.services.survey_session.SurveySessionService") as mock_service,
+        ):
+            mock_db.return_value.__aenter__ = AsyncMock()
+            mock_db.return_value.__aexit__ = AsyncMock()
+            mock_template_dao.get_by_slug = AsyncMock(return_value=template)
+            mock_meeting_dao.find_due_call_duration_request_meetings = AsyncMock(
+                return_value=[]
+            )
+
+            await _request_due_call_durations_async()
+
+            mock_service.assert_not_called()
+
+    async def test_due_meeting_creates_session_and_sends_initial_message(self):
+        template = SimpleNamespace(id=10)
+        meeting = make_meeting(id=42, mentor_telegram_id=CREATOR_ID)
+        survey_session = SimpleNamespace(id=77)
+        bot = AsyncMock()
+        with (
+            patch("src.tasks.meeting.celery_db") as mock_db,
+            patch("src.dao.survey_template.SurveyTemplateDAO") as mock_template_dao,
+            patch("src.tasks.meeting.MeetingDAO") as mock_meeting_dao,
+            patch("src.services.survey_session.SurveySessionService") as mock_service,
+            patch("src.dao.survey_session.SurveySessionDAO") as mock_session_dao,
+            patch("src.tasks.meeting.get_worker_bot", return_value=bot),
+        ):
+            mock_db.return_value.__aenter__ = AsyncMock()
+            mock_db.return_value.__aexit__ = AsyncMock()
+            mock_template_dao.get_by_slug = AsyncMock(return_value=template)
+            mock_meeting_dao.find_due_call_duration_request_meetings = AsyncMock(
+                return_value=[meeting]
+            )
+            mock_service.return_value.create_session = AsyncMock(
+                return_value=(survey_session, False)
+            )
+            mock_session_dao.update_escalation_field = AsyncMock()
+
+            await _request_due_call_durations_async()
+
+            mock_service.return_value.create_session.assert_awaited_once_with(
+                template_id=10,
+                respondent_id=CREATOR_ID,
+                context_type="call_duration",
+                context_id="42",
+            )
+            mock_session_dao.update_escalation_field.assert_awaited_once_with(
+                77, "is_escalatable", False
+            )
+            bot.send_message.assert_awaited_once()
+            assert bot.send_message.await_args.args[0] == CREATOR_ID
+
+    async def test_existing_session_skips_initial_message(self):
+        template = SimpleNamespace(id=10)
+        meeting = make_meeting(id=42, mentor_telegram_id=CREATOR_ID)
+        survey_session = SimpleNamespace(id=77)
+        bot = AsyncMock()
+        with (
+            patch("src.tasks.meeting.celery_db") as mock_db,
+            patch("src.dao.survey_template.SurveyTemplateDAO") as mock_template_dao,
+            patch("src.tasks.meeting.MeetingDAO") as mock_meeting_dao,
+            patch("src.services.survey_session.SurveySessionService") as mock_service,
+            patch("src.dao.survey_session.SurveySessionDAO") as mock_session_dao,
+            patch("src.tasks.meeting.get_worker_bot", return_value=bot),
+        ):
+            mock_db.return_value.__aenter__ = AsyncMock()
+            mock_db.return_value.__aexit__ = AsyncMock()
+            mock_template_dao.get_by_slug = AsyncMock(return_value=template)
+            mock_meeting_dao.find_due_call_duration_request_meetings = AsyncMock(
+                return_value=[meeting]
+            )
+            mock_service.return_value.create_session = AsyncMock(
+                return_value=(survey_session, True)
+            )
+            mock_session_dao.update_escalation_field = AsyncMock()
+
+            await _request_due_call_durations_async()
+
+            bot.send_message.assert_not_called()
+            mock_session_dao.update_escalation_field.assert_not_called()

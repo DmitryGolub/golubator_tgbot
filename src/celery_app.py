@@ -77,6 +77,10 @@ celery_app.conf.update(
             "task": "meeting.auto_start_due_calls",
             "schedule": crontab(minute="*"),
         },
+        "meeting.request_due_call_durations": {
+            "task": "meeting.request_due_call_durations",
+            "schedule": crontab(minute="*"),
+        },
         # Triggers
         "triggers.tick_periodic": {
             "task": "triggers.tick_periodic",

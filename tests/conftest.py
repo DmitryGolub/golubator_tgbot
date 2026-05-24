@@ -77,6 +77,8 @@ def make_meeting(
     mentor_telegram_id: int | None = None,
     proposal_status=None,
     proposed_by: int | None = None,
+    actual_duration_minutes: int | None = None,
+    duration_answered_by: int | None = None,
 ):
     p_list = participants or []
     ns = SimpleNamespace(
@@ -100,6 +102,8 @@ def make_meeting(
         updated_at=None,
         call_status=call_status,
         student_telegram_id=student_telegram_id,
+        actual_duration_minutes=actual_duration_minutes,
+        duration_answered_by=duration_answered_by,
         participants=p_list,
         student=None,
         proposal_status=proposal_status,
@@ -113,9 +117,14 @@ def make_meeting(
     if ns.call_started_at and ns.completed_at:
         _duration = ns.completed_at - ns.call_started_at
         ns.call_duration = _duration
-        ns.call_duration_minutes = round(_duration.total_seconds() / 60)
     else:
         ns.call_duration = None
+
+    if ns.actual_duration_minutes is not None:
+        ns.call_duration_minutes = ns.actual_duration_minutes
+    elif ns.call_duration is not None:
+        ns.call_duration_minutes = round(ns.call_duration.total_seconds() / 60)
+    else:
         ns.call_duration_minutes = None
 
     return ns

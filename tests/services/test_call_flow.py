@@ -175,7 +175,8 @@ class TestStartCall:
 @patch("src.services.call_flow.MeetingDAO")
 class TestEndActiveCall:
     async def test_happy_path(self, mock_meeting_dao):
-        started_at = datetime.now(timezone.utc) - timedelta(minutes=45)
+        completed_at = datetime(2026, 4, 12, 11, 45, tzinfo=timezone.utc)
+        started_at = completed_at - timedelta(minutes=45)
         active = _meeting(
             call_status="ongoing",
             call_started_at=started_at,
@@ -185,16 +186,28 @@ class TestEndActiveCall:
         finished = _meeting(
             call_status="finished",
             call_started_at=started_at,
-            completed_at=datetime.now(timezone.utc),
+            completed_at=completed_at,
+            actual_duration_minutes=45,
+            duration_answered_by=MENTOR_ID,
             mentor_telegram_id=MENTOR_ID,
             student_telegram_id=STUDENT_ID,
         )
         mock_meeting_dao.get_active_call_for_user = AsyncMock(return_value=active)
         mock_meeting_dao.finish_call = AsyncMock(return_value=finished)
 
-        result = await CallFlowService().end_active_call(mentor_id=MENTOR_ID)
+        with patch("src.services.call_flow.datetime") as mock_datetime:
+            mock_datetime.now.return_value = completed_at
+            result = await CallFlowService().end_active_call(mentor_id=MENTOR_ID)
+
         assert result.meeting is finished
         assert result.meeting_was_completed is True
+        mock_meeting_dao.finish_call.assert_awaited_once_with(
+            MEETING_ID,
+            MENTOR_ID,
+            completed_at=completed_at,
+            actual_duration_minutes=45,
+            duration_answered_by=MENTOR_ID,
+        )
 
     async def test_no_active_call(self, mock_meeting_dao):
         mock_meeting_dao.get_active_call_for_user = AsyncMock(return_value=None)
@@ -229,6 +242,54 @@ class TestEndActiveCall:
         with pytest.raises(ActiveCallNotFoundError):
             await CallFlowService().end_active_call(mentor_id=MENTOR_ID)
 
+    async def test_end_call_with_actual_duration_emits_event(self, mock_meeting_dao):
+        finished = _meeting(
+            call_status="finished",
+            completed_at=datetime.now(timezone.utc),
+            actual_duration_minutes=73,
+            duration_answered_by=MENTOR_ID,
+            mentor_telegram_id=MENTOR_ID,
+            student_telegram_id=STUDENT_ID,
+        )
+        mock_meeting_dao.finish_call = AsyncMock(return_value=finished)
+
+        with patch(
+            "src.services.call_flow._emit_call_ended_event", new_callable=AsyncMock
+        ) as mock_emit:
+            result = await CallFlowService().end_call_with_actual_duration(
+                meeting_id=MEETING_ID,
+                user_id=MENTOR_ID,
+                actual_duration_minutes=73,
+            )
+
+        assert result is not None
+        assert result.meeting is finished
+        assert result.meeting_was_completed is True
+        mock_meeting_dao.finish_call.assert_awaited_once_with(
+            MEETING_ID,
+            MENTOR_ID,
+            actual_duration_minutes=73,
+            duration_answered_by=MENTOR_ID,
+        )
+        mock_emit.assert_awaited_once_with(finished, MENTOR_ID)
+
+    async def test_end_call_with_actual_duration_none_does_not_emit(
+        self, mock_meeting_dao
+    ):
+        mock_meeting_dao.finish_call = AsyncMock(return_value=None)
+
+        with patch(
+            "src.services.call_flow._emit_call_ended_event", new_callable=AsyncMock
+        ) as mock_emit:
+            result = await CallFlowService().end_call_with_actual_duration(
+                meeting_id=MEETING_ID,
+                user_id=MENTOR_ID,
+                actual_duration_minutes=73,
+            )
+
+        assert result is None
+        mock_emit.assert_not_awaited()
+
 
 class TestCallDuration:
     def test_duration_with_both_timestamps(self):
@@ -237,6 +298,17 @@ class TestCallDuration:
         meeting = make_meeting(call_started_at=started, completed_at=ended)
         assert meeting.call_duration == timedelta(hours=1, minutes=30)
         assert meeting.call_duration_minutes == 90
+
+    def test_actual_duration_overrides_timestamp_duration(self):
+        started = datetime(2026, 4, 5, 10, 0, tzinfo=timezone.utc)
+        ended = datetime(2026, 4, 5, 11, 30, tzinfo=timezone.utc)
+        meeting = make_meeting(
+            call_started_at=started,
+            completed_at=ended,
+            actual_duration_minutes=73,
+        )
+        assert meeting.call_duration == timedelta(hours=1, minutes=30)
+        assert meeting.call_duration_minutes == 73
 
     def test_duration_without_completed_at(self):
         started = datetime(2026, 4, 5, 10, 0, tzinfo=timezone.utc)
